@@ -431,6 +431,229 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 「库属性…」/「删除数据库…」的目标库：优先上下文栏选择，其次连接配置里的库。
+    ///
+    /// 服务器节点本身不带数据库，因此入口必须以「当前正在用的库」为目标，
+    /// 而不是猜一个名字。
+    var adminTargetDatabase: String? {
+        guard let configuration = selectedConnection else { return nil }
+        let selected = selectedDatabase?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let selected, !selected.isEmpty { return selected }
+        let configured = currentDatabaseName(for: configuration)
+        return configured.isEmpty ? nil : configured
+    }
+
+    // MARK: - 库属性 / 删除数据库（FR-SESS-05）
+
+    /// 生成 `ALTER DATABASE` 语句，供界面**执行前预览**（不执行）。
+    func alterDatabaseStatements(
+        name: String,
+        alterations: SQLGenerator.DatabaseAlterations
+    ) -> String? {
+        guard let configuration = selectedConnection else { return nil }
+        return SQLGenerator.alterDatabase(
+            name: name,
+            alterations: alterations,
+            dialect: SQLDialectFactory.make(for: configuration.dbType)
+        )
+    }
+
+    /// 执行 `ALTER DATABASE`（FR-SESS-05）；成功后刷新数据库列表与对象树。
+    @discardableResult
+    func alterDatabase(
+        name: String,
+        alterations: SQLGenerator.DatabaseAlterations
+    ) async -> Bool {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+        guard let sql = alterDatabaseStatements(name: name, alterations: alterations) else {
+            errorMessage = L(.dbPropsInvalid)
+            return false
+        }
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: currentDatabaseName(for: configuration)
+            )
+            try await runStatements(sql, databaseType: configuration.dbType, on: service)
+
+            statusMessage = L(.dbPropsSucceeded, name)
+            await loadDatabases()
+            metadataRevision += 1
+            return true
+        } catch {
+            errorMessage = L(.dbPropsFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    /// 生成 `DROP DATABASE` 语句，供界面**执行前预览**（不执行）。
+    func dropDatabaseStatement(name: String, ifExists: Bool = true) -> String? {
+        guard let configuration = selectedConnection else { return nil }
+        return SQLGenerator.dropDatabase(
+            name: name,
+            ifExists: ifExists,
+            dialect: SQLDialectFactory.make(for: configuration.dbType)
+        )
+    }
+
+    /// 执行 `DROP DATABASE`（FR-SESS-05）。
+    ///
+    /// 调用方必须先完成「手输库名」二次确认；这里只负责执行与**可读的错误归类**
+    /// （「还有其他会话连接」等由 `DatabaseAdminHint` 翻成整句提示）。
+    @discardableResult
+    func dropDatabase(name: String) async -> Bool {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+        guard let sql = dropDatabaseStatement(name: name) else {
+            errorMessage = L(.createDatabaseInvalid)
+            return false
+        }
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: currentDatabaseName(for: configuration)
+            )
+            try await runStatements(sql, databaseType: configuration.dbType, on: service)
+
+            statusMessage = L(.dropDbSucceeded, name)
+            await loadDatabases()
+            metadataRevision += 1
+            return true
+        } catch {
+            errorMessage = L(.dropDbFailed, dropDatabaseFailureReason(error))
+            return false
+        }
+    }
+
+    /// 把删库失败归类成可读原因；无法归类时回退为原始错误文本。
+    private func dropDatabaseFailureReason(_ error: Error) -> String {
+        let raw = ErrorPresenter.message(for: error)
+        switch DatabaseAdminHint.classify(serverMessage: raw) {
+        case .activeConnections:
+            return L(.dropDbActiveConnections)
+        case .currentDatabase:
+            return L(.dropDbCurrentDatabase)
+        case .databaseDoesNotExist:
+            return L(.dropDbNotExist)
+        case .insufficientPrivilege:
+            return L(.dropDbNoPrivilege)
+        case nil:
+            return raw
+        }
+    }
+
+    // MARK: - 对象权限（FR-SESS-04）
+
+    /// 查询指定角色在当前库上的已授权限；方言不支持时抛可读错误。
+    func loadObjectPrivileges(role rawRole: String) async throws -> [ObjectPrivilege] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+
+        let role = rawRole.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard PrivilegeProbe.isValidRoleName(role) else {
+            throw AppError.queryFailed(L(.privilegeInvalidRole))
+        }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.objectPrivilegeQuery(role: role) else {
+            throw AppError.notImplemented(L(.privilegeUnsupported))
+        }
+
+        let service = try await ensureService(
+            for: configuration,
+            database: currentDatabaseName(for: configuration)
+        )
+        let result = try await runSingleQuery(query, on: service)
+        return ObjectPrivilegeParser.privileges(from: result)
+    }
+
+    /// 生成 `GRANT` / `REVOKE` 语句，供界面**执行前预览**（不执行）。
+    func privilegeStatement(
+        _ change: SQLGenerator.PrivilegeChange,
+        revoke: Bool
+    ) -> String? {
+        guard let configuration = selectedConnection else { return nil }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        return revoke
+            ? SQLGenerator.revoke(change, dialect: dialect)
+            : SQLGenerator.grant(change, dialect: dialect)
+    }
+
+    /// 执行 `GRANT` / `REVOKE`（FR-SESS-04；界面已先展示预览 SQL）。
+    @discardableResult
+    func applyPrivilegeChange(
+        _ change: SQLGenerator.PrivilegeChange,
+        revoke: Bool
+    ) async -> Bool {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+        guard let sql = privilegeStatement(change, revoke: revoke) else {
+            errorMessage = L(.privilegeInvalid)
+            return false
+        }
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: currentDatabaseName(for: configuration)
+            )
+            try await runStatements(sql, databaseType: configuration.dbType, on: service)
+            statusMessage = L(.privilegeSucceeded)
+            return true
+        } catch {
+            errorMessage = L(.privilegeFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    // MARK: - 锁与阻塞链（FR-DIAG-05）
+
+    /// 查询锁等待关系；方言不支持时抛可读错误。
+    func loadLockWaits() async throws -> [LockWait] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.lockWaitingQuery() else {
+            throw AppError.notImplemented(L(.lockUnsupported))
+        }
+
+        let service = try await ensureService(
+            for: configuration,
+            database: currentDatabaseName(for: configuration)
+        )
+        let result = try await runSingleQuery(query, on: service)
+        return LockMonitor.waits(from: result)
+    }
+
+    // MARK: - 管理语句执行
+
+    /// 逐条执行管理类语句。
+    ///
+    /// `ALTER DATABASE` 会被生成器拆成多条，因此走 `StatementSplitter` 逐条下发；
+    /// 这类语句没有结果集，事件丢弃即可，服务端报错会从流里抛出。
+    private func runStatements(
+        _ sql: String,
+        databaseType: DatabaseType,
+        on service: any DatabaseService
+    ) async throws {
+        let statements = StatementSplitter(databaseType: databaseType).split(sql)
+        for statement in statements {
+            for try await _ in service.execute(statement.sql, options: .default) {}
+        }
+    }
+
     func loadMetadataRoot() async throws -> [DatabaseObject] {
         guard let configuration = selectedConnection else {
             throw AppError.notConnected

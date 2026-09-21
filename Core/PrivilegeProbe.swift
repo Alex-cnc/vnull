@@ -11,6 +11,14 @@ public enum PrivilegeProbe {
     /// - 支持 `t` / `f`（PostgreSQL 布尔文本）、`true` / `false`、`1` / `0`、`on` / `off`、`yes` / `no`
     /// - 空值或无法识别时返回 `nil`：**未知一律不呈现**建库入口
     public static func databaseCreationAllowed(from rawValue: String?) -> Bool? {
+        booleanValue(from: rawValue)
+    }
+
+    /// 把服务端返回的布尔文本解析成 `Bool`（无法识别时返回 `nil`）。
+    ///
+    /// PostgreSQL 经驱动返回 `t` / `f`，GBase（MySQL 协议族）返回 `1` / `0`，
+    /// 因此这里统一兼容几种常见写法；权限查询等场景也用这一处解析，避免各写一份。
+    public static func booleanValue(from rawValue: String?) -> Bool? {
         guard let rawValue else { return nil }
 
         switch rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {

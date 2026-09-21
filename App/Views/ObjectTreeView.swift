@@ -22,6 +22,12 @@ struct ObjectTreeView: View {
     @State private var isLoadingRoot = false
     @State private var rootError: String?
     @State private var isCreateDatabasePresented = false
+    /// 库属性 / 删除数据库（FR-SESS-05）。
+    @State private var isPropertiesPresented = false
+    @State private var isDropDatabasePresented = false
+    /// 权限与锁面板（FR-SESS-04 / FR-DIAG-05）。
+    @State private var isPrivilegePanelPresented = false
+    @State private var isLockPanelPresented = false
     /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
     @State private var groupByType = false
 
@@ -85,6 +91,26 @@ struct ObjectTreeView: View {
             CreateDatabaseSheet { name in
                 Task { await appState.createDatabase(named: name) }
             }
+        }
+        .sheet(isPresented: $isPropertiesPresented) {
+            if let database = appState.adminTargetDatabase {
+                DatabasePropertiesSheet(databaseName: database) { alterations in
+                    Task { await appState.alterDatabase(name: database, alterations: alterations) }
+                }
+            }
+        }
+        .sheet(isPresented: $isDropDatabasePresented) {
+            if let database = appState.adminTargetDatabase {
+                DropDatabaseSheet(databaseName: database) { name in
+                    Task { await appState.dropDatabase(name: name) }
+                }
+            }
+        }
+        .sheet(isPresented: $isPrivilegePanelPresented) {
+            PrivilegePanel()
+        }
+        .sheet(isPresented: $isLockPanelPresented) {
+            LockPanel()
         }
     }
 
@@ -295,6 +321,34 @@ struct ObjectTreeView: View {
             }
         }
         .disabled(appState.selectedConnection == nil)
+
+        Divider()
+
+        // 库级管理（FR-SESS-05）：目标是「当前正在用的库」，没连库时不呈现入口。
+        Button(L(.objectTreeMenuDatabaseProperties)) {
+            isPropertiesPresented = true
+        }
+        .disabled(appState.adminTargetDatabase == nil)
+
+        Button(L(.objectTreeMenuDropDatabase)) {
+            isDropDatabasePresented = true
+        }
+        .disabled(appState.adminTargetDatabase == nil)
+
+        Divider()
+
+        // 诊断与权限面板（FR-SESS-04 / FR-DIAG-05）；未连接时查询必然失败，故禁用。
+        Button(L(.objectTreeMenuPrivileges)) {
+            isPrivilegePanelPresented = true
+        }
+        .disabled(!isConnected)
+
+        Button(L(.objectTreeMenuLocks)) {
+            isLockPanelPresented = true
+        }
+        .disabled(!isConnected)
+
+        Divider()
 
         // 权限未知（nil）或明确无权限（false）时不呈现入口，避免给出必然失败的按钮。
         if appState.canCreateDatabase == true {

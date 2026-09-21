@@ -128,6 +128,78 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeGroupFunction
     case treeGroupOther
 
+    // 服务器 / 库级管理（T-52）
+    case objectTreeMenuDatabaseProperties
+    case objectTreeMenuDropDatabase
+    case objectTreeMenuPrivileges
+    case objectTreeMenuLocks
+    case dbPropsTitle
+    case dbPropsOwner
+    case dbPropsConnectionLimit
+    case dbPropsAllowConnections
+    case dbPropsUnchanged
+    case dbPropsAllow
+    case dbPropsDeny
+    case dbPropsParameter
+    case dbPropsParameterName
+    case dbPropsParameterValue
+    case dbPropsPreview
+    case dbPropsEmpty
+    case dbPropsInvalid
+    case dbPropsApply
+    case dbPropsSucceeded
+    case dbPropsFailed
+    case dbPropsUnsupported
+    case dropDbTitle
+    case dropDbWarning
+    case dropDbTypeToConfirm
+    case dropDbConfirm
+    case dropDbSucceeded
+    case dropDbFailed
+    case dropDbActiveConnections
+    case dropDbCurrentDatabase
+    case dropDbNotExist
+    case dropDbNoPrivilege
+    case privilegeTitle
+    case privilegeRole
+    case privilegeLoad
+    case privilegeEmpty
+    case privilegeUnsupported
+    case privilegeInvalidRole
+    case privilegeColumnObject
+    case privilegeColumnGrantee
+    case privilegeColumnPrivilege
+    case privilegeColumnGrantOption
+    case privilegeGrantSection
+    case privilegeObjectKind
+    case privilegeObjectName
+    case privilegeSchema
+    case privilegePrivileges
+    case privilegeGrantee
+    case privilegeWithGrantOption
+    case privilegePreview
+    case privilegeInvalid
+    case privilegeGrant
+    case privilegeRevoke
+    case privilegeSucceeded
+    case privilegeFailed
+    case lockTitle
+    case lockRefresh
+    case lockEmpty
+    case lockUnsupported
+    case lockPermissionHint
+    case lockColumnPid
+    case lockColumnBlockedBy
+    case lockColumnUser
+    case lockColumnDatabase
+    case lockColumnLock
+    case lockColumnWaiting
+    case lockGranted
+    case lockWaitingState
+    case lockShowBlocker
+    case lockFailed
+    case commonClose
+
     // 执行状态
     case stateNotConnected
     case stateNotExecuted
@@ -332,6 +404,76 @@ public enum LocalizedStrings {
         .treeGroupSequence: [.simplifiedChinese: "序列", .english: "Sequences"],
         .treeGroupFunction: [.simplifiedChinese: "函数", .english: "Functions"],
         .treeGroupOther: [.simplifiedChinese: "其他", .english: "Other"],
+        .objectTreeMenuDatabaseProperties: [.simplifiedChinese: "库属性…", .english: "Database properties…"],
+        .objectTreeMenuDropDatabase: [.simplifiedChinese: "删除数据库…", .english: "Drop database…"],
+        .objectTreeMenuPrivileges: [.simplifiedChinese: "权限…", .english: "Privileges…"],
+        .objectTreeMenuLocks: [.simplifiedChinese: "锁与阻塞…", .english: "Locks & blocking…"],
+        .dbPropsTitle: [.simplifiedChinese: "库属性", .english: "Database properties"],
+        .dbPropsOwner: [.simplifiedChinese: "属主（留空不修改）", .english: "Owner (blank = unchanged)"],
+        .dbPropsConnectionLimit: [.simplifiedChinese: "连接数上限（-1 不限，留空不修改）", .english: "Connection limit (-1 unlimited, blank = unchanged)"],
+        .dbPropsAllowConnections: [.simplifiedChinese: "允许连接", .english: "Allow connections"],
+        .dbPropsUnchanged: [.simplifiedChinese: "不修改", .english: "Unchanged"],
+        .dbPropsAllow: [.simplifiedChinese: "允许", .english: "Allow"],
+        .dbPropsDeny: [.simplifiedChinese: "禁止", .english: "Deny"],
+        .dbPropsParameter: [.simplifiedChinese: "库级参数", .english: "Database parameter"],
+        .dbPropsParameterName: [.simplifiedChinese: "参数名（如 search_path）", .english: "Name (e.g. search_path)"],
+        .dbPropsParameterValue: [.simplifiedChinese: "参数值", .english: "Value"],
+        .dbPropsPreview: [.simplifiedChinese: "将执行的语句", .english: "Statements to run"],
+        .dbPropsEmpty: [.simplifiedChinese: "尚未填写任何改动。", .english: "No changes entered yet."],
+        .dbPropsInvalid: [.simplifiedChinese: "填写内容不合法，已阻止生成语句。", .english: "Invalid input; no statement was generated."],
+        .dbPropsApply: [.simplifiedChinese: "执行", .english: "Apply"],
+        .dbPropsSucceeded: [.simplifiedChinese: "已更新数据库 %@ 的属性。", .english: "Updated properties of %@."],
+        .dbPropsFailed: [.simplifiedChinese: "改库属性失败：%@", .english: "Altering database failed: %@"],
+        .dbPropsUnsupported: [.simplifiedChinese: "当前方言不支持改库属性（仅 PostgreSQL）。", .english: "Altering database properties is not supported for this dialect (PostgreSQL only)."],
+        .dropDbTitle: [.simplifiedChinese: "删除数据库", .english: "Drop database"],
+        .dropDbWarning: [.simplifiedChinese: "删除不可回滚，库内全部对象都会丢失。", .english: "This cannot be undone; every object in the database will be lost."],
+        .dropDbTypeToConfirm: [.simplifiedChinese: "请输入数据库名 %@ 以确认", .english: "Type %@ to confirm"],
+        .dropDbConfirm: [.simplifiedChinese: "删除", .english: "Drop"],
+        .dropDbSucceeded: [.simplifiedChinese: "已删除数据库 %@。", .english: "Dropped database %@."],
+        .dropDbFailed: [.simplifiedChinese: "删除数据库失败：%@", .english: "Dropping database failed: %@"],
+        .dropDbActiveConnections: [.simplifiedChinese: "该库仍有其他会话连接，服务端拒绝了删除。请先断开这些连接再试。", .english: "Other sessions are still connected; the server refused. Disconnect them first."],
+        .dropDbCurrentDatabase: [.simplifiedChinese: "不能删除当前连接的数据库。请先切换到其他数据库。", .english: "You cannot drop the database you are connected to. Switch to another database first."],
+        .dropDbNotExist: [.simplifiedChinese: "该数据库不存在（可能已被删除）。", .english: "That database does not exist (it may already be dropped)."],
+        .dropDbNoPrivilege: [.simplifiedChinese: "当前账号权限不足：删除数据库需要属主或超级用户权限。", .english: "Insufficient privilege: dropping a database requires ownership or superuser."],
+        .privilegeTitle: [.simplifiedChinese: "权限", .english: "Privileges"],
+        .privilegeRole: [.simplifiedChinese: "角色", .english: "Role"],
+        .privilegeLoad: [.simplifiedChinese: "查询", .english: "Load"],
+        .privilegeEmpty: [.simplifiedChinese: "该角色在当前库上没有已授权限。", .english: "No privileges found for this role."],
+        .privilegeUnsupported: [.simplifiedChinese: "当前方言不支持对象权限查询。", .english: "Object privilege query is not supported for this dialect."],
+        .privilegeInvalidRole: [.simplifiedChinese: "角色名不合法。", .english: "Invalid role name."],
+        .privilegeColumnObject: [.simplifiedChinese: "对象", .english: "Object"],
+        .privilegeColumnGrantee: [.simplifiedChinese: "角色", .english: "Grantee"],
+        .privilegeColumnPrivilege: [.simplifiedChinese: "权限", .english: "Privilege"],
+        .privilegeColumnGrantOption: [.simplifiedChinese: "可转授", .english: "Grantable"],
+        .privilegeGrantSection: [.simplifiedChinese: "授予 / 回收（执行前先预览）", .english: "Grant / revoke (preview before running)"],
+        .privilegeObjectKind: [.simplifiedChinese: "对象类别", .english: "Object kind"],
+        .privilegeObjectName: [.simplifiedChinese: "对象名", .english: "Object name"],
+        .privilegeSchema: [.simplifiedChinese: "schema（可留空）", .english: "Schema (optional)"],
+        .privilegePrivileges: [.simplifiedChinese: "权限（逗号分隔；ALL 不可与其他混用）", .english: "Privileges (comma separated; ALL cannot be mixed)"],
+        .privilegeGrantee: [.simplifiedChinese: "被授权角色（PUBLIC 表示所有角色）", .english: "Grantee (PUBLIC means everyone)"],
+        .privilegeWithGrantOption: [.simplifiedChinese: "含 WITH GRANT OPTION", .english: "With grant option"],
+        .privilegePreview: [.simplifiedChinese: "将执行的语句", .english: "Statement to run"],
+        .privilegeInvalid: [.simplifiedChinese: "输入不合法，无法生成语句。", .english: "Invalid input; no statement could be generated."],
+        .privilegeGrant: [.simplifiedChinese: "授予", .english: "Grant"],
+        .privilegeRevoke: [.simplifiedChinese: "回收", .english: "Revoke"],
+        .privilegeSucceeded: [.simplifiedChinese: "已执行权限变更。", .english: "Privilege change applied."],
+        .privilegeFailed: [.simplifiedChinese: "权限变更失败：%@", .english: "Privilege change failed: %@"],
+        .lockTitle: [.simplifiedChinese: "锁与阻塞", .english: "Locks & blocking"],
+        .lockRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .lockEmpty: [.simplifiedChinese: "当前没有检测到锁等待。", .english: "No lock waits detected."],
+        .lockUnsupported: [.simplifiedChinese: "当前方言不支持锁与阻塞链查询。", .english: "Lock/blocking query is not supported for this dialect."],
+        .lockPermissionHint: [.simplifiedChinese: "非超级用户且不在 pg_monitor 角色时，其他会话的语句文本不可见。", .english: "Without superuser or pg_monitor, other sessions' query text is not visible."],
+        .lockColumnPid: [.simplifiedChinese: "被阻塞 pid", .english: "Blocked pid"],
+        .lockColumnBlockedBy: [.simplifiedChinese: "阻塞者 pid", .english: "Blocking pid"],
+        .lockColumnUser: [.simplifiedChinese: "用户", .english: "User"],
+        .lockColumnDatabase: [.simplifiedChinese: "数据库", .english: "Database"],
+        .lockColumnLock: [.simplifiedChinese: "锁", .english: "Lock"],
+        .lockColumnWaiting: [.simplifiedChinese: "已等待", .english: "Waiting"],
+        .lockGranted: [.simplifiedChinese: "已授予", .english: "Granted"],
+        .lockWaitingState: [.simplifiedChinese: "等待中", .english: "Waiting"],
+        .lockShowBlocker: [.simplifiedChinese: "定位阻塞者", .english: "Locate blocker"],
+        .lockFailed: [.simplifiedChinese: "锁查询失败：%@", .english: "Lock query failed: %@"],
+        .commonClose: [.simplifiedChinese: "关闭", .english: "Close"],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],
