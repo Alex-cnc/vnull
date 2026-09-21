@@ -47,13 +47,24 @@ public struct ServerSession: Identifiable, Hashable, Sendable {
     }
 
     /// 是否正在执行语句。
+    ///
+    /// 跨库判定：PostgreSQL 的 `state` 用 `active`；
+    /// MySQL 的 `SHOW PROCESSLIST` 用 `Command = Query` 表示在跑，`State` 形如 `executing`。
+    /// 没有 `application_name` 列时，`Command` 会回退落在 `applicationName` 上。
     public var isActive: Bool {
-        (state ?? "").lowercased().hasPrefix("active")
+        let value = (state ?? "").lowercased()
+        if value.hasPrefix("active") || value == "query" || value.hasPrefix("executing") {
+            return true
+        }
+        return (applicationName ?? "").lowercased() == "query"
     }
 
-    /// 是否空闲（含 `idle in transaction` 之外的 idle）。
+    /// 是否空闲（`idle in transaction` 不算空闲）。
+    ///
+    /// 跨库判定：PostgreSQL 是 `idle`；MySQL 的 `Command = Sleep` 对应空闲连接。
     public var isIdle: Bool {
-        (state ?? "").lowercased() == "idle"
+        let value = (state ?? "").lowercased()
+        return value == "idle" || value == "sleep"
     }
 
     /// 是否被锁 / 等待事件阻塞。

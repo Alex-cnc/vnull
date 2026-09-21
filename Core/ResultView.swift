@@ -224,6 +224,20 @@ public enum ResultView {
                 for descriptor in descriptors {
                     let left = cell(lhs.element, at: descriptor.columnIndex)
                     let right = cell(rhs.element, at: descriptor.columnIndex)
+
+                    // NULL 的先后只由 nullsFirst 决定，与升/降序无关。
+                    // 早期实现把整段比较结果按方向取反，于是降序时 NULL 被翻到最前面。
+                    switch (left == nil, right == nil) {
+                    case (true, true):
+                        continue
+                    case (true, false):
+                        return descriptor.nullsFirst
+                    case (false, true):
+                        return !descriptor.nullsFirst
+                    case (false, false):
+                        break
+                    }
+
                     let base = compareValues(left, right, nullsFirst: descriptor.nullsFirst)
                     guard base != .orderedSame else { continue }
                     let ordered = base == .orderedAscending
