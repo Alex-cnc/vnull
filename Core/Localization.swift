@@ -200,6 +200,32 @@ public enum LKey: String, CaseIterable, Sendable {
     case lockFailed
     case commonClose
 
+    // 智能体设置（FR-AI-01）
+    case menuAgent
+    case menuAgentSettings
+    case agentSettingsTitle
+    case agentEnabled
+    case agentEnabledHint
+    case agentEndpoint
+    case agentEndpointPlaceholder
+    case agentModel
+    case agentModelPlaceholder
+    case agentTimeout
+    case agentQuotaSection
+    case agentMaxRequests
+    case agentMaxOutputTokens
+    case agentMaxTotalTokens
+    case agentAPIKey
+    case agentAPIKeyConfigured
+    case agentAPIKeyMissing
+    case agentAPIKeyClear
+    case agentLocalEndpointHint
+    case agentStatusSection
+    case agentSave
+    case agentSaved
+    case agentSaveFailed
+    case agentInvalidHint
+
     // 执行状态
     case stateNotConnected
     case stateNotExecuted
@@ -474,6 +500,30 @@ public enum LocalizedStrings {
         .lockShowBlocker: [.simplifiedChinese: "定位阻塞者", .english: "Locate blocker"],
         .lockFailed: [.simplifiedChinese: "锁查询失败：%@", .english: "Lock query failed: %@"],
         .commonClose: [.simplifiedChinese: "关闭", .english: "Close"],
+        .menuAgent: [.simplifiedChinese: "智能体", .english: "Agent"],
+        .menuAgentSettings: [.simplifiedChinese: "智能体设置…", .english: "Agent settings…"],
+        .agentSettingsTitle: [.simplifiedChinese: "智能体设置", .english: "Agent settings"],
+        .agentEnabled: [.simplifiedChinese: "启用智能体", .english: "Enable agent"],
+        .agentEnabledHint: [.simplifiedChinese: "关闭时不会向任何模型服务发送数据。", .english: "When off, nothing is sent to any model service."],
+        .agentEndpoint: [.simplifiedChinese: "模型服务端点（OpenAI 兼容）", .english: "Model endpoint (OpenAI-compatible)"],
+        .agentEndpointPlaceholder: [.simplifiedChinese: "http://127.0.0.1:11434/v1", .english: "https://api.example.com/v1"],
+        .agentModel: [.simplifiedChinese: "模型名", .english: "Model"],
+        .agentModelPlaceholder: [.simplifiedChinese: "qwen2.5:7b", .english: "gpt-4o-mini"],
+        .agentTimeout: [.simplifiedChinese: "超时（秒）", .english: "Timeout (seconds)"],
+        .agentQuotaSection: [.simplifiedChinese: "配额（留空表示不限）", .english: "Quota (blank means unlimited)"],
+        .agentMaxRequests: [.simplifiedChinese: "单次会话调用次数上限", .english: "Max requests per session"],
+        .agentMaxOutputTokens: [.simplifiedChinese: "单次输出 token 上限", .english: "Max output tokens per request"],
+        .agentMaxTotalTokens: [.simplifiedChinese: "累计 token 上限", .english: "Max total tokens"],
+        .agentAPIKey: [.simplifiedChinese: "API Key", .english: "API Key"],
+        .agentAPIKeyConfigured: [.simplifiedChinese: "已配置（存于系统钥匙串，不写入配置文件）", .english: "Configured (kept in Keychain, never in the config file)"],
+        .agentAPIKeyMissing: [.simplifiedChinese: "未配置。远端端点需要 API Key；本地端点不需要。", .english: "Not configured. Remote endpoints need one; local endpoints do not."],
+        .agentAPIKeyClear: [.simplifiedChinese: "清除已保存的 Key", .english: "Clear saved key"],
+        .agentLocalEndpointHint: [.simplifiedChinese: "本地 / 局域网端点无需 API Key（本地模型优先）。", .english: "Local or LAN endpoints need no API key."],
+        .agentStatusSection: [.simplifiedChinese: "当前状态", .english: "Status"],
+        .agentSave: [.simplifiedChinese: "保存", .english: "Save"],
+        .agentSaved: [.simplifiedChinese: "已保存智能体设置。", .english: "Agent settings saved."],
+        .agentSaveFailed: [.simplifiedChinese: "保存智能体设置失败：%@", .english: "Saving agent settings failed: %@"],
+        .agentInvalidHint: [.simplifiedChinese: "配置尚不完整，即使打开总开关也不会外发。", .english: "Configuration is incomplete; nothing will be sent even with the switch on."],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],

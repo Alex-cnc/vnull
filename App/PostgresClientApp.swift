@@ -24,6 +24,13 @@ struct PostgresClientApp: App {
                 .keyboardShortcut("t", modifiers: [.command])
             }
 
+            CommandMenu(L(.menuAgent)) {
+                Button(L(.menuAgentSettings)) {
+                    appState.isAgentSettingsPresented = true
+                }
+                .keyboardShortcut(",", modifiers: [.command, .shift])
+            }
+
             CommandMenu(L(.menuLanguage)) {
                 Picker(L(.menuLanguage), selection: Binding(
                     get: { localization.language },

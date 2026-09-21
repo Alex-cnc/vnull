@@ -65,6 +65,12 @@ struct MainWindow: View {
                 }
             }
         }
+        .sheet(isPresented: $appState.isAgentSettingsPresented) {
+            AgentSettingsSheet()
+        }
+        .task {
+            await appState.loadAgentConfiguration()
+        }
         .alert(
             L(.alertErrorTitle),
             isPresented: Binding(

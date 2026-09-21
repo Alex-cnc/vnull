@@ -91,12 +91,26 @@ final class AppState: ObservableObject {
     @Published var tabs: [QueryTab] = []
     @Published var selectedTabID: UUID?
     @Published var savedQueries: [SavedQuery] = []
+    // MARK: 智能体（FR-AI-01）
+
+    /// 智能体接入配置；默认是「总开关关闭 + 端点为空」的安全默认（AC-AI-01）。
+    @Published var agentConfiguration: AgentConfiguration = .default
+    /// 已保存的 API Key（只存在于内存与系统钥匙串，**永不写入配置文件**）。
+    @Published var agentAPIKey: String?
+    /// 钥匙串里是否已有 Key（界面显示「已配置 / 未配置」）。
+    @Published var hasAgentAPIKey = false
+    /// 「智能体设置…」面板的呈现开关（菜单命令驱动）。
+    @Published var isAgentSettingsPresented = false
+
     @Published var errorMessage: String?
     @Published var statusMessage: String = L(.stateNotConnected)
 
     private let store = ConnectionStore.shared
     private let secretStore: SecretStore = KeychainSecretStore()
     private let savedQueryStore = SavedQueryStore.shared
+    private let agentConfigurationStore = AgentConfigurationStore.shared
+    private let agentKeyStore: AgentKeyStore = KeychainAgentKeyStore()
+
 
     /// 连接缓存键：同一个「已保存连接」可以在多个数据库上各持有一条连接。
     private struct ServiceKey: Hashable {
@@ -614,6 +628,65 @@ final class AppState: ObservableObject {
             errorMessage = L(.privilegeFailed, ErrorPresenter.message(for: error))
             return false
         }
+    }
+
+    // MARK: - 智能体接入配置（FR-AI-01）
+
+    /// 读取智能体配置与 Key 状态（进入面板 / 启动时调用）。
+    ///
+    /// 配置读失败不弹错误框：退回安全默认即可（关掉开关不会外发任何东西），
+    /// 把原因留在状态栏，避免一个坏文件把整个界面卡在错误弹窗里。
+    func loadAgentConfiguration() async {
+        do {
+            agentConfiguration = try await agentConfigurationStore.load()
+        } catch {
+            agentConfiguration = .default
+            statusMessage = L(.agentSaveFailed, ErrorPresenter.message(for: error))
+        }
+
+        // 钥匙串不可用时（未签名 / 无授权）按「没有 Key」处理，不阻断界面。
+        let key = (try? agentKeyStore.apiKey()) ?? nil
+        agentAPIKey = key
+        hasAgentAPIKey = !(key?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    /// 保存智能体配置；`apiKey` 传 `nil` 表示不改动已保存的 Key，传空串表示清除。
+    @discardableResult
+    func saveAgentConfiguration(_ configuration: AgentConfiguration, apiKey: String?) async -> Bool {
+        do {
+            try await agentConfigurationStore.save(configuration)
+            agentConfiguration = configuration
+        } catch {
+            errorMessage = L(.agentSaveFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+
+        if let apiKey {
+            let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            do {
+                if trimmed.isEmpty {
+                    try agentKeyStore.deleteAPIKey()
+                    agentAPIKey = nil
+                    hasAgentAPIKey = false
+                } else {
+                    try agentKeyStore.setAPIKey(trimmed)
+                    agentAPIKey = trimmed
+                    hasAgentAPIKey = true
+                }
+            } catch {
+                // 配置已存下、Key 没存下：如实告知，不要把失败吞掉。
+                errorMessage = L(.agentSaveFailed, ErrorPresenter.message(for: error))
+                return false
+            }
+        }
+
+        statusMessage = L(.agentSaved)
+        return true
+    }
+
+    /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
+    var agentOutboundDecision: AgentOutboundDecision {
+        AgentGate.decide(configuration: agentConfiguration, apiKey: agentAPIKey)
     }
 
     // MARK: - 锁与阻塞链（FR-DIAG-05）
