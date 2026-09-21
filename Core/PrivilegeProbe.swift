@@ -24,10 +24,39 @@ public enum PrivilegeProbe {
     }
 
     /// 数据库名的本地预校验（服务端仍会再校验一次）。
-    ///
-    /// 规则按 PostgreSQL 标识符：首字符为字母或下划线，其余为字母 / 数字 / `_` / `$`，
-    /// 长度不超过 63 字节（NAT 上限），允许 Unicode 字母（中文库名可用，执行时会加引号）。
     public static func isValidDatabaseName(_ name: String) -> Bool {
+        isValidIdentifier(name)
+    }
+
+    /// 角色 / 属主名的本地预校验（FR-SESS-04 / FR-SESS-05）。
+    public static func isValidRoleName(_ name: String) -> Bool {
+        isValidIdentifier(name)
+    }
+
+    /// 库级参数名预校验（FR-SESS-05）：允许 `a.b` 形式（如 `search_path`）。
+    ///
+    /// 只允许字母 / 数字 / `_` / `.`，且每段以字母或 `_` 开头；拒绝空白与引号，避免拼接注入。
+    public static func isValidSettingName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.utf8.count <= 63 else { return false }
+        for segment in trimmed.split(separator: ".", omittingEmptySubsequences: false) {
+            guard !segment.isEmpty else { return false }
+            for (index, character) in segment.enumerated() {
+                if index == 0 {
+                    guard character == "_" || character.isLetter else { return false }
+                } else {
+                    guard character == "_" || character.isLetter || character.isNumber else { return false }
+                }
+            }
+        }
+        return true
+    }
+
+    /// 通用标识符预校验（PostgreSQL 标识符规则）。
+    ///
+    /// 规则：首字符为字母或下划线，其余为字母 / 数字 / `_` / `$`，长度不超过 63 字节（NAT 上限）；
+    /// 允许 Unicode 字母（中文库名可用，执行时会加引号）。
+    public static func isValidIdentifier(_ name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.utf8.count <= 63 else { return false }
 

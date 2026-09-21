@@ -164,4 +164,114 @@ public enum SQLGenerator {
         }
         return text
     }
+
+    // MARK: - 库级管理（FR-SESS-05）
+
+    /// `ALTER DATABASE` 的可改项（FR-SESS-05）。
+    ///
+    /// PostgreSQL 把「改属主」与「改选项 / 参数」分成不同语句形，因此本类型允许多项并存，
+    /// 生成时拆成多条语句（由 `StatementSplitter` 逐条执行）。全部字段为空即视为「无改动」。
+    public struct DatabaseAlterations: Equatable, Sendable {
+        /// 新属主（角色名）。
+        public var owner: String?
+        /// 连接数上限；`-1` 表示不限。
+        public var connectionLimit: Int?
+        /// 是否允许连接。
+        public var allowConnections: Bool?
+        /// 库级参数名（如 `search_path`）。
+        public var parameterName: String?
+        /// 库级参数值（数字 / 布尔裸写，其余加引号转义）。
+        public var parameterValue: String?
+
+        public init(
+            owner: String? = nil,
+            connectionLimit: Int? = nil,
+            allowConnections: Bool? = nil,
+            parameterName: String? = nil,
+            parameterValue: String? = nil
+        ) {
+            self.owner = owner
+            self.connectionLimit = connectionLimit
+            self.allowConnections = allowConnections
+            self.parameterName = parameterName
+            self.parameterValue = parameterValue
+        }
+
+        /// 是否没有任何可执行的改动。
+        public var isEmpty: Bool {
+            owner == nil && connectionLimit == nil && allowConnections == nil
+                && parameterName == nil && parameterValue == nil
+        }
+    }
+
+    /// 生成 `ALTER DATABASE`（FR-SESS-05）。
+    ///
+    /// - 返回 `nil` 的情形：方言非 PostgreSQL（GBase 的 `ALTER DATABASE` 选项集不同）、
+    ///   库名 / 属主名 / 参数名非法、连接数小于 `-1`、参数名与值只给了一个、或没有任何改动。
+    ///   采用「全有或全无」：任一字段非法即整条不生成，避免界面拿着一半合法一半非法的语句去执行。
+    /// - 属主与选项 / 参数无法合成一条语句，因此返回值可能含多行（每行一条语句，以 `;` 结尾）。
+    public static func alterDatabase(
+        name: String,
+        alterations: DatabaseAlterations,
+        dialect: any SQLDialect
+    ) -> String? {
+        guard dialect.databaseType == .postgresql else { return nil }
+        guard PrivilegeProbe.isValidDatabaseName(name), !alterations.isEmpty else { return nil }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = dialect.quoteIdentifier(trimmedName)
+        var statements: [String] = []
+
+        if let owner = alterations.owner {
+            let trimmedOwner = owner.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard PrivilegeProbe.isValidRoleName(trimmedOwner) else { return nil }
+            statements.append("ALTER DATABASE \(target) OWNER TO \(dialect.quoteIdentifier(trimmedOwner));")
+        }
+
+        var options: [String] = []
+        if let limit = alterations.connectionLimit {
+            guard limit >= -1 else { return nil }
+            options.append("CONNECTION LIMIT \(limit)")
+        }
+        if let allow = alterations.allowConnections {
+            options.append("ALLOW_CONNECTIONS \(allow ? "true" : "false")")
+        }
+        if !options.isEmpty {
+            statements.append("ALTER DATABASE \(target) WITH " + options.joined(separator: " ") + ";")
+        }
+
+        if alterations.parameterName != nil || alterations.parameterValue != nil {
+            guard let rawName = alterations.parameterName,
+                  let rawValue = alterations.parameterValue,
+                  PrivilegeProbe.isValidSettingName(rawName)
+            else { return nil }
+            let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            statements.append("ALTER DATABASE \(target) SET \(name) TO \(settingLiteral(rawValue));")
+        }
+
+        guard !statements.isEmpty else { return nil }
+        return statements.joined(separator: "\n")
+    }
+
+    /// 生成 `DROP DATABASE`（FR-SESS-05）。
+    ///
+    /// **不可回滚且会删除库内全部对象**，调用方必须二次确认；`ifExists` 默认 `true`，
+    /// 避免「库不存在」直接中断脚本。库名非法时返回 `nil`。
+    public static func dropDatabase(
+        name: String,
+        ifExists: Bool = true,
+        dialect: any SQLDialect
+    ) -> String? {
+        guard PrivilegeProbe.isValidDatabaseName(name) else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "DROP DATABASE \(ifExists ? "IF EXISTS " : "")\(dialect.quoteIdentifier(trimmed));"
+    }
+
+    /// 把库级参数值渲染成 SQL 字面量：数字与布尔 / 开关字面量裸写，其余加单引号并转义 `'`。
+    static func settingLiteral(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Double(trimmed) != nil { return trimmed }
+        if ["true", "false", "on", "off"].contains(trimmed.lowercased()) { return trimmed.lowercased() }
+        return "'" + trimmed.replacingOccurrences(of: "'", with: "''") + "'"
+    }
 }

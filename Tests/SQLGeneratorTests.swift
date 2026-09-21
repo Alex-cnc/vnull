@@ -123,4 +123,124 @@ final class SQLGeneratorTests: XCTestCase {
         let sql = SQLGenerator.explain(sql: "SELECT 1", analyze: true, buffers: true, formatJSON: true, dialect: gbase)
         XCTAssertEqual(sql, "EXPLAIN SELECT 1;")
     }
+
+    // MARK: - 库级管理（FR-SESS-05）
+
+    func testDropDatabaseHasIfExistsByDefault() {
+        XCTAssertEqual(SQLGenerator.dropDatabase(name: "mydb", dialect: pg),
+                       "DROP DATABASE IF EXISTS \"mydb\";")
+        XCTAssertEqual(SQLGenerator.dropDatabase(name: "mydb", ifExists: false, dialect: pg),
+                       "DROP DATABASE \"mydb\";")
+    }
+
+    func testDropDatabaseQuotesPerDialect() {
+        // GBase（MySQL 系）用反引号，且同样支持 DROP DATABASE。
+        XCTAssertEqual(SQLGenerator.dropDatabase(name: "mydb", dialect: gbase),
+                       "DROP DATABASE IF EXISTS `mydb`;")
+    }
+
+    func testDropDatabaseRejectsInvalidName() {
+        XCTAssertNil(SQLGenerator.dropDatabase(name: "1bad", dialect: pg))
+        XCTAssertNil(SQLGenerator.dropDatabase(name: "my-db", dialect: pg))
+        XCTAssertNil(SQLGenerator.dropDatabase(name: "   ", dialect: pg))
+    }
+
+    func testAlterDatabaseOwner() {
+        let sql = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(owner: "alice"),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "ALTER DATABASE \"mydb\" OWNER TO \"alice\";")
+    }
+
+    func testAlterDatabaseConnectionOptions() {
+        let sql = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(connectionLimit: 10, allowConnections: false),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "ALTER DATABASE \"mydb\" WITH CONNECTION LIMIT 10 ALLOW_CONNECTIONS false;")
+    }
+
+    func testAlterDatabaseUnlimitedConnectionsAreAllowed() {
+        let sql = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(connectionLimit: -1),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "ALTER DATABASE \"mydb\" WITH CONNECTION LIMIT -1;")
+    }
+
+    func testAlterDatabaseSettingQuotesStringsAndLeavesNumbersBare() {
+        let text = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(parameterName: "search_path", parameterValue: "app, public"),
+            dialect: pg
+        )
+        XCTAssertEqual(text, "ALTER DATABASE \"mydb\" SET search_path TO 'app, public';")
+
+        let number = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(parameterName: "statement_timeout", parameterValue: "5000"),
+            dialect: pg
+        )
+        XCTAssertEqual(number, "ALTER DATABASE \"mydb\" SET statement_timeout TO 5000;")
+    }
+
+    func testAlterDatabaseEscapesSingleQuotesInSettingValue() {
+        let sql = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(parameterName: "search_path", parameterValue: "o'brien"),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "ALTER DATABASE \"mydb\" SET search_path TO 'o''brien';")
+    }
+
+    func testAlterDatabaseCombinesOwnerAndOptionsIntoMultipleStatements() {
+        let sql = SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(owner: "alice", connectionLimit: 5),
+            dialect: pg
+        )
+        // 属主与选项是两种语句形，必须拆成两条（StatementSplitter 会逐条执行）。
+        XCTAssertEqual(sql, "ALTER DATABASE \"mydb\" OWNER TO \"alice\";\nALTER DATABASE \"mydb\" WITH CONNECTION LIMIT 5;")
+    }
+
+    func testAlterDatabaseRejectsInvalidInputs() {
+        // 无改动
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(), dialect: pg))
+        // 非法库名
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "1bad", alterations: SQLGenerator.DatabaseAlterations(owner: "alice"), dialect: pg))
+        // 非法属主
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(owner: "a b"), dialect: pg))
+        // 连接数越界
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(connectionLimit: -2), dialect: pg))
+        // 参数名与值只给一个
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(parameterName: "search_path"), dialect: pg))
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(parameterValue: "app"), dialect: pg))
+        // 非法参数名（含引号，防注入）
+        XCTAssertNil(SQLGenerator.alterDatabase(name: "mydb", alterations: SQLGenerator.DatabaseAlterations(parameterName: "a'=1--", parameterValue: "x"), dialect: pg))
+    }
+
+    func testAlterDatabaseRejectedForNonPostgresDialect() {
+        // GBase 的 ALTER DATABASE 选项集与 PostgreSQL 不同，本期不生成（FR-SESS-05 已注明）。
+        XCTAssertNil(SQLGenerator.alterDatabase(
+            name: "mydb",
+            alterations: SQLGenerator.DatabaseAlterations(owner: "alice"),
+            dialect: gbase
+        ))
+    }
+
+    func testDatabaseAlterationsIsEmpty() {
+        XCTAssertTrue(SQLGenerator.DatabaseAlterations().isEmpty)
+        XCTAssertFalse(SQLGenerator.DatabaseAlterations(connectionLimit: 0).isEmpty)
+    }
+
+    func testSettingLiteralKeepsBooleansBareAndQuotesText() {
+        XCTAssertEqual(SQLGenerator.settingLiteral("true"), "true")
+        XCTAssertEqual(SQLGenerator.settingLiteral("OFF"), "off")
+        XCTAssertEqual(SQLGenerator.settingLiteral("1.5"), "1.5")
+        XCTAssertEqual(SQLGenerator.settingLiteral("app, public"), "'app, public'")
+    }
 }
