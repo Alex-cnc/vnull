@@ -66,7 +66,7 @@ public struct MetadataService: Sendable {
         case .table, .view:
             return try await loadColumns(of: object)
 
-        case .column, .function:
+        case .column, .function, .sequence:
             return []
         }
     }

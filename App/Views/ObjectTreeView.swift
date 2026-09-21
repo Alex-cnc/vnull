@@ -22,6 +22,8 @@ struct ObjectTreeView: View {
     @State private var isLoadingRoot = false
     @State private var rootError: String?
     @State private var isCreateDatabasePresented = false
+    /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
+    @State private var groupByType = false
 
     /// 对象树刷新键：连接变化或「新建数据库」等操作后重新加载根节点（FR-META-11）。
     private struct RefreshKey: Hashable {
@@ -96,6 +98,8 @@ struct ObjectTreeView: View {
         let isLoading: Bool
         let error: String?
         let children: [DatabaseObject]?
+        /// 分组视图下的虚拟类型表头（不是真实数据库对象）。
+        let isGroupHeader: Bool
 
         var id: String { object.id }
     }
@@ -113,13 +117,44 @@ struct ObjectTreeView: View {
                     isExpanded: isExpanded,
                     isLoading: loadingIDs.contains(object.id),
                     error: errors[object.id],
-                    children: childrenCache[object.id]
+                    children: childrenCache[object.id],
+                    isGroupHeader: false
                 )
             )
 
             if isExpanded, let children = childrenCache[object.id] {
-                for child in children {
-                    visit(child, depth: depth + 1)
+                if groupByType {
+                    // 分组只对**已缓存的子节点**做聚合，因此切换视图不触发重新查库。
+                    for group in ObjectTreeGrouping.groupedByType(
+                        children,
+                        parentID: object.id,
+                        language: LocalizationManager.shared.language
+                    ) {
+                        rows.append(
+                            VisibleRow(
+                                object: DatabaseObject(
+                                    id: group.id,
+                                    name: group.title(language: LocalizationManager.shared.language),
+                                    kind: ObjectTreeGrouping.headerKind(for: group.kind),
+                                    detail: "\(group.count)"
+                                ),
+                                depth: depth + 1,
+                                isExpandable: false,
+                                isExpanded: false,
+                                isLoading: false,
+                                error: nil,
+                                children: nil,
+                                isGroupHeader: true
+                            )
+                        )
+                        for child in group.objects {
+                            visit(child, depth: depth + 2)
+                        }
+                    }
+                } else {
+                    for child in children {
+                        visit(child, depth: depth + 1)
+                    }
                 }
             }
         }
@@ -132,8 +167,18 @@ struct ObjectTreeView: View {
 
     // MARK: - 行渲染
 
+    /// 视图切换 + 刷新（FR-META-15 / FR-META-11）。
     private var refreshRow: some View {
-        HStack {
+        HStack(spacing: 6) {
+            Picker("", selection: $groupByType) {
+                Text(L(.treeGroupHierarchy)).tag(false)
+                Text(L(.treeGroupByType)).tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.mini)
+            .help(L(.treeGroupByType))
+
             Spacer()
             Button {
                 Task { await reloadRoot() }
@@ -151,7 +196,9 @@ struct ObjectTreeView: View {
     private func rowView(_ row: VisibleRow) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                if row.isExpandable {
+                if row.isGroupHeader {
+                    Color.clear.frame(width: 12, height: 12)
+                } else if row.isExpandable {
                     Button {
                         toggle(row.object)
                     } label: {
@@ -174,6 +221,7 @@ struct ObjectTreeView: View {
 
                 Text(row.object.name)
                     .font(.caption)
+                    .fontWeight(row.isGroupHeader ? .semibold : .regular)
                     .lineLimit(1)
 
                 if let detail = row.object.detail {
@@ -186,15 +234,14 @@ struct ObjectTreeView: View {
             .padding(.leading, CGFloat(row.depth) * 12)
             .contentShape(Rectangle())
             .onTapGesture {
-                if row.isExpandable {
-                    toggle(row.object)
-                }
+                guard !row.isGroupHeader, row.isExpandable else { return }
+                toggle(row.object)
             }
             .contextMenuIf(row.object.kind == .server) {
                 serverContextMenu
             }
 
-            if row.isExpanded {
+            if row.isExpanded && !row.isGroupHeader {
                 if row.isLoading {
                     placeholderRow(
                         text: L(.treeLoading),
@@ -344,7 +391,7 @@ struct ObjectTreeView: View {
             return L(.treeEmptyDatabase)
         case .schema:
             return L(.treeEmptySchema)
-        case .table, .view:
+        case .table, .view, .sequence:
             return L(.treeEmptyTable)
         case .column, .function:
             return L(.treeEmptyGeneric)
@@ -367,6 +414,8 @@ struct ObjectTreeView: View {
             return .secondary
         case .function:
             return .orange
+        case .sequence:
+            return .indigo
         }
     }
 }

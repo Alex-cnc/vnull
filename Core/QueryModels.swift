@@ -86,6 +86,7 @@ public struct DatabaseObject: Identifiable, Hashable, Sendable {
         case view
         case column
         case function
+        case sequence
     }
 
     public let id: String
@@ -122,7 +123,7 @@ public struct DatabaseObject: Identifiable, Hashable, Sendable {
         switch kind {
         case .server, .database, .schema, .table, .view:
             return true
-        case .column, .function:
+        case .column, .function, .sequence:
             return false
         }
     }
@@ -143,6 +144,8 @@ public struct DatabaseObject: Identifiable, Hashable, Sendable {
             return "text.alignleft"
         case .function:
             return "function"
+        case .sequence:
+            return "number"
         }
     }
 }

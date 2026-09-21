@@ -120,6 +120,13 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeEmptySchema
     case treeEmptyTable
     case treeEmptyGeneric
+    case treeGroupByType
+    case treeGroupHierarchy
+    case treeGroupTable
+    case treeGroupView
+    case treeGroupSequence
+    case treeGroupFunction
+    case treeGroupOther
 
     // 执行状态
     case stateNotConnected
@@ -318,6 +325,13 @@ public enum LocalizedStrings {
         .treeEmptySchema: [.simplifiedChinese: "该 schema 下暂无表 / 视图", .english: "No tables/views in this schema"],
         .treeEmptyTable: [.simplifiedChinese: "没有列信息", .english: "No column information"],
         .treeEmptyGeneric: [.simplifiedChinese: "暂无子对象", .english: "No child objects"],
+        .treeGroupByType: [.simplifiedChinese: "按类型分组", .english: "Group by type"],
+        .treeGroupHierarchy: [.simplifiedChinese: "层级视图", .english: "Hierarchy"],
+        .treeGroupTable: [.simplifiedChinese: "表", .english: "Tables"],
+        .treeGroupView: [.simplifiedChinese: "视图", .english: "Views"],
+        .treeGroupSequence: [.simplifiedChinese: "序列", .english: "Sequences"],
+        .treeGroupFunction: [.simplifiedChinese: "函数", .english: "Functions"],
+        .treeGroupOther: [.simplifiedChinese: "其他", .english: "Other"],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],
