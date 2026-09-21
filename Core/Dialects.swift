@@ -54,6 +54,8 @@ public protocol SQLDialect: Sendable {
     func serverActivityQuery() -> String?
     /// 指定角色的对象权限查询（FR-SESS-04）：库 / schema / 表 / 视图 / 序列上的已授权限；nil = 不支持。
     func objectPrivilegeQuery(role: String) -> String?
+    /// 锁等待 / 阻塞链查询（FR-DIAG-05）；nil = 该方言不支持。
+    func lockWaitingQuery() -> String?
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -75,6 +77,7 @@ public extension SQLDialect {
     func cancelSessionStatement(pid: Int) -> String? { nil }
     func terminateSessionStatement(pid: Int) -> String? { nil }
     func objectPrivilegeQuery(role: String) -> String? { nil }
+    func lockWaitingQuery() -> String? { nil }
 }
 
 public struct PostgresDialect: SQLDialect {
@@ -151,6 +154,34 @@ public struct PostgresDialect: SQLDialect {
     ///
     /// `aclexplode` 把 ACL 数组展开成行；`grantee = 0` 即 `PUBLIC`，故 `LEFT JOIN pg_roles` 兜住并 `COALESCE` 成 `PUBLIC`。
     /// PostgreSQL 没有统一的「权限总览」视图，只能拼三类目录表（`pg_database` / `pg_namespace` / `pg_class`）。
+    /// 锁等待与阻塞链（FR-DIAG-05）。
+    ///
+    /// `pg_locks` 只说明「谁在等什么锁」，`pg_blocking_pids()` 才给出「被谁挡住」，
+    /// 两者按 pid 合并后，界面才能画出「谁堵住谁」的链。
+    /// `pg_blocking_pids` 是 int[]，这里用 `array_to_string` 转成 `101,102` 便于驱动侧统一成文本；
+    /// `query` 截断 500 字符（要全文可以点开该会话）。
+    public func lockWaitingQuery() -> String? {
+        """
+        SELECT a.pid,
+               a.usename,
+               a.datname,
+               a.state,
+               a.wait_event_type,
+               a.wait_event,
+               l.locktype,
+               l.mode,
+               l.granted,
+               COALESCE(l.relation::regclass::text, '') AS relation,
+               COALESCE(array_to_string(pg_blocking_pids(a.pid), ','), '') AS blocking_pids,
+               left(a.query, 500) AS query,
+               GREATEST(0, EXTRACT(EPOCH FROM (now() - COALESCE(a.query_start, now())))::int) AS waiting_seconds
+        FROM pg_locks l
+        JOIN pg_stat_activity a ON a.pid = l.pid
+        WHERE NOT l.granted OR cardinality(pg_blocking_pids(a.pid)) > 0
+        ORDER BY a.pid, l.locktype
+        """
+    }
+
     public func objectPrivilegeQuery(role: String) -> String? {
         """
         WITH target AS (SELECT oid AS role_oid FROM pg_roles WHERE rolname = \(literal(role)))
