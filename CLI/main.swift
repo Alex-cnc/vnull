@@ -1,0 +1,259 @@
+import Foundation
+import Darwin
+import PostgresClientCore
+
+@main
+struct PostgresClientCLI {
+    /// 解析 `--cancel-after <秒>`；未指定时返回 nil。
+    private static func cancelDelay(arguments: [String]) -> Double? {
+        guard let index = arguments.firstIndex(of: "--cancel-after"),
+              index + 1 < arguments.count,
+              let value = Double(arguments[index + 1]),
+              value > 0 else {
+            return nil
+        }
+        return value
+    }
+
+    static func main() async {
+        let environment = ProcessInfo.processInfo.environment
+        let arguments = Array(CommandLine.arguments.dropFirst())
+
+        let host = environment["PGHOST"] ?? "127.0.0.1"
+        let port = Int(environment["PGPORT"] ?? "5432") ?? 5432
+        let username = environment["PGUSER"] ?? "postgres"
+        let password = environment["PGPASSWORD"]
+        let database = environment["PGDATABASE"] ?? ""
+        let sslMode = SSLMode(rawValue: environment["PGSSLMODE"] ?? "prefer") ?? .prefer
+
+        let config = ConnectionConfig(
+            name: "CLI",
+            dbType: .postgresql,
+            host: host,
+            port: port,
+            database: database,
+            username: username,
+            sslMode: sslMode,
+            timeout: 10
+        )
+
+        print("PostgreSQL 连接测试")
+        print("目标：\(username)@\(host):\(port)/\(database.isEmpty ? "<default>" : database)")
+        print("SSL：\(sslMode.rawValue)")
+        print("")
+
+        let service = PostgresService(config: config, password: password)
+
+        let serverInfo: ServerInfo
+        do {
+            serverInfo = try await service.connect()
+            print("连接成功")
+            print("server_version: \(serverInfo.version)")
+            print("database:      \(serverInfo.database)")
+            print("user:          \(serverInfo.user)")
+            print("")
+        } catch {
+            print("连接失败")
+            print("")
+            print("简要信息：\(error.localizedDescription)")
+            print("")
+            print("调试详情：")
+            print(String(reflecting: error))
+            exit(1)
+        }
+
+        // --tree [--columns]：验证元数据 / 对象树链路
+        // 层级：server(0) → database(1) → schema(2) → table/view(3) → column(4)
+        if arguments.contains("--tree") {
+            let includeColumns = arguments.contains("--columns")
+            let maxDepth = includeColumns ? 4 : 3
+            do {
+                let serverLabel = "\(username)@\(host):\(port)"
+                var extraServices: [String: any DatabaseService] = [:]
+                var metadataCache: [String: MetadataService] = [:]
+
+                /// 取某个数据库的元数据服务；非当前库会按需建立独立连接。
+                func metadata(for database: String) async throws -> MetadataService {
+                    if let cached = metadataCache[database] {
+                        return cached
+                    }
+
+                    let databaseService: any DatabaseService
+                    if database == serverInfo.database {
+                        databaseService = service
+                    } else if let cachedService = extraServices[database] {
+                        databaseService = cachedService
+                    } else {
+                        var derived = config
+                        derived.database = database
+                        let newService = PostgresService(config: derived, password: password)
+                        _ = try await newService.connect()
+                        extraServices[database] = newService
+                        databaseService = newService
+                    }
+
+                    let created = MetadataService(
+                        service: databaseService,
+                        dialect: PostgresDialect(),
+                        databaseName: database,
+                        serverLabel: serverLabel
+                    )
+                    metadataCache[database] = created
+                    return created
+                }
+
+                func printTree(_ object: DatabaseObject, depth: Int) async {
+                    let indent = String(repeating: "  ", count: depth)
+                    if let detail = object.detail, !detail.isEmpty {
+                        print("\(indent)\(object.kind.rawValue) \(object.name): \(detail)")
+                    } else {
+                        print("\(indent)\(object.kind.rawValue) \(object.name)")
+                    }
+
+                    guard depth < maxDepth else { return }
+
+                    let database = object.database ?? serverInfo.database
+                    do {
+                        let tree = try await metadata(for: database)
+                        let children = try await tree.loadChildren(of: object)
+                        for child in children.prefix(50) {
+                            await printTree(child, depth: depth + 1)
+                        }
+                        if children.count > 50 {
+                            print("\(indent)  … 还有 \(children.count - 50) 个对象")
+                        }
+                    } catch {
+                        print("\(indent)  ⚠️ \(error.localizedDescription)")
+                    }
+                }
+
+                let rootTree = try await metadata(for: serverInfo.database)
+                let roots = try await rootTree.loadRoot()
+                for root in roots {
+                    await printTree(root, depth: 0)
+                }
+
+                for (_, extraService) in extraServices {
+                    await extraService.disconnect()
+                }
+                await service.disconnect()
+                print("")
+                print("对象树加载完成。")
+                return
+            } catch {
+                print("对象树加载失败")
+                print("简要信息：\(error.localizedDescription)")
+                print("调试详情：")
+                print(String(reflecting: error))
+                await service.disconnect()
+                exit(3)
+            }
+        }
+
+        // --can-create-database：验证「当前用户能否建库」的探测链路（FR-META-11）。
+        if arguments.contains("--can-create-database") {
+            let dialect = PostgresDialect()
+            guard let query = dialect.databaseCreationPrivilegeQuery() else {
+                print("canCreateDatabase: unknown（该方言未实现探测）")
+                await service.disconnect()
+                return
+            }
+
+            do {
+                var rawValue: String?
+                for try await event in service.execute(query, options: .default) {
+                    if case .resultSet(let result) = event {
+                        rawValue = result.rows.first?.first ?? nil
+                    }
+                }
+
+                let allowed = PrivilegeProbe.databaseCreationAllowed(from: rawValue)
+                let text = allowed.map { $0 ? "true" : "false" } ?? "unknown"
+                print("canCreateDatabase: \(text)（原始值：\(rawValue ?? "NULL")）")
+                await service.disconnect()
+                return
+            } catch {
+                print("建库权限探测失败")
+                print("简要信息：\(error.localizedDescription)")
+                await service.disconnect()
+                exit(4)
+            }
+        }
+
+        let sql = resolveSQL(arguments: arguments) ?? "SELECT version(), current_database(), current_user;"
+
+        print("SQL：")
+        print(sql)
+        print("")
+
+        // --cancel-after <秒>：用于验证服务端取消（FR-EXEC-08）。
+        let cancelDelay = Self.cancelDelay(arguments: arguments)
+
+        do {
+            let stream = service.execute(sql, options: .default)
+
+            let canceller: Task<Void, Never>? = cancelDelay.map { delay in
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    print("cancel: 触发服务端取消")
+                    await service.cancel()
+                }
+            }
+            defer { canceller?.cancel() }
+
+            for try await event in stream {
+                switch event {
+                case .started(let index):
+                    print("--- statement \(index + 1) ---")
+                case .resultSet(let result):
+                    if result.columns.isEmpty {
+                        print("(no result set)")
+                    } else {
+                        print(result.columns.map { "\($0.name):\($0.typeName)" }.joined(separator: " | "))
+                        for row in result.rows {
+                            print(row.map { $0 ?? "NULL" }.joined(separator: " | "))
+                        }
+                    }
+                case .affectedRows(let count):
+                    print("affectedRows: \(count)")
+                case .notice(let message):
+                    print("notice: \(message)")
+                case .finished(let summary):
+                    let duration = String(format: "%.3f", summary.duration)
+                    print("finished: \(summary.statementCount) statement(s), \(duration)s")
+                }
+            }
+
+            await service.disconnect()
+            print("")
+            print("查询执行完成。")
+        } catch {
+            print("查询失败")
+            print("")
+            print("简要信息：\(error.localizedDescription)")
+            print("")
+            print("调试详情：")
+            print(String(reflecting: error))
+            await service.disconnect()
+            exit(2)
+        }
+    }
+
+    /// 支持三种输入方式：`-c "SQL"`、`--command "SQL"`，或从标准输入管道读取。
+    private static func resolveSQL(arguments: [String]) -> String? {
+        if let commandIndex = arguments.firstIndex(where: { $0 == "-c" || $0 == "--command" }),
+           commandIndex + 1 < arguments.count {
+            return arguments[commandIndex + 1]
+        }
+
+        if isatty(STDIN_FILENO) == 0 {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            if let text = String(data: data, encoding: .utf8),
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
+            }
+        }
+
+        return nil
+    }
+}
