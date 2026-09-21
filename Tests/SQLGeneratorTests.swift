@@ -243,4 +243,134 @@ final class SQLGeneratorTests: XCTestCase {
         XCTAssertEqual(SQLGenerator.settingLiteral("1.5"), "1.5")
         XCTAssertEqual(SQLGenerator.settingLiteral("app, public"), "'app, public'")
     }
+
+    // MARK: - 权限管理（FR-SESS-04）
+
+    func testGrantOnTable() {
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(
+                privileges: ["select", "insert"],
+                object: .table(schema: "public", name: "users"),
+                grantee: "alice"
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "GRANT SELECT, INSERT ON TABLE \"public\".\"users\" TO \"alice\";")
+    }
+
+    func testGrantAllOnDatabaseToPublic() {
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["ALL"], object: .database("mydb"), grantee: "PUBLIC"),
+            dialect: pg
+        )
+        // PUBLIC 是关键字，不能加引号。
+        XCTAssertEqual(sql, "GRANT ALL ON DATABASE \"mydb\" TO PUBLIC;")
+    }
+
+    func testGrantWithGrantOption() {
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(
+                privileges: ["USAGE"],
+                object: .schema("app"),
+                grantee: "alice",
+                withGrantOption: true
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "GRANT USAGE ON SCHEMA \"app\" TO \"alice\" WITH GRANT OPTION;")
+    }
+
+    func testGrantOnAllTablesInSchema() {
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["SELECT"], object: .allTablesInSchema("app"), grantee: "readers"),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "GRANT SELECT ON ALL TABLES IN SCHEMA \"app\" TO \"readers\";")
+    }
+
+    func testGrantOnSequence() {
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["USAGE"], object: .sequence(schema: "app", name: "orders_id_seq"), grantee: "alice"),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "GRANT USAGE ON SEQUENCE \"app\".\"orders_id_seq\" TO \"alice\";")
+    }
+
+    func testRevokeBasic() {
+        let sql = SQLGenerator.revoke(
+            SQLGenerator.PrivilegeChange(privileges: ["DELETE"], object: .table(schema: "public", name: "users"), grantee: "alice"),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "REVOKE DELETE ON TABLE \"public\".\"users\" FROM \"alice\";")
+    }
+
+    func testRevokeGrantOptionOnly() {
+        let sql = SQLGenerator.revoke(
+            SQLGenerator.PrivilegeChange(
+                privileges: ["SELECT"],
+                object: .table(schema: nil, name: "users"),
+                grantee: "alice",
+                withGrantOption: true
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "REVOKE GRANT OPTION FOR SELECT ON TABLE \"users\" FROM \"alice\";")
+    }
+
+    func testGrantRejectsUnknownPrivilege() {
+        // 白名单外的一律拒绝，避免把任意文本拼进 SQL。
+        let sql = SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["SELECT; DROP TABLE x--"], object: .database("mydb"), grantee: "alice"),
+            dialect: pg
+        )
+        XCTAssertNil(sql)
+    }
+
+    func testGrantRejectsAllMixedWithOthers() {
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["ALL", "SELECT"], object: .database("mydb"), grantee: "alice"),
+            dialect: pg
+        ))
+    }
+
+    func testGrantRejectsEmptyPrivileges() {
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: [], object: .database("mydb"), grantee: "alice"),
+            dialect: pg
+        ))
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["", "  "], object: .database("mydb"), grantee: "alice"),
+            dialect: pg
+        ))
+    }
+
+    func testGrantRejectsInvalidGranteeAndObject() {
+        // 非法角色名
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["SELECT"], object: .database("mydb"), grantee: "a b"),
+            dialect: pg
+        ))
+        // 非法对象名
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["SELECT"], object: .table(schema: nil, name: "1bad"), grantee: "alice"),
+            dialect: pg
+        ))
+        XCTAssertNil(SQLGenerator.grant(
+            SQLGenerator.PrivilegeChange(privileges: ["SELECT"], object: .allTablesInSchema("bad-schema"), grantee: "alice"),
+            dialect: pg
+        ))
+    }
+
+    func testPostgresObjectPrivilegeQueryEscapesRoleName() {
+        let sql = pg.objectPrivilegeQuery(role: "o'brien")
+        XCTAssertNotNil(sql)
+        XCTAssertTrue(sql?.contains("rolname = 'o''brien'") == true)
+        XCTAssertTrue(sql?.contains("aclexplode") == true)
+        XCTAssertTrue(sql?.contains("pg_blocking_pids") == false)
+    }
+
+    func testGBaseHasNoObjectPrivilegeQuery() {
+        // GBase（MySQL 系）的权限模型与 PostgreSQL 不同，本期不接入（FR-SESS-04 已注明）。
+        XCTAssertNil(gbase.objectPrivilegeQuery(role: "root"))
+    }
 }

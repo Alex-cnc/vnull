@@ -267,6 +267,127 @@ public enum SQLGenerator {
         return "DROP DATABASE \(ifExists ? "IF EXISTS " : "")\(dialect.quoteIdentifier(trimmed));"
     }
 
+    // MARK: - 权限管理（FR-SESS-04）
+
+    /// `GRANT` / `REVOKE` 的作用对象。
+    public enum PrivilegeObject: Equatable, Sendable {
+        case database(String)
+        case schema(String)
+        case table(schema: String?, name: String)
+        case sequence(schema: String?, name: String)
+        case allTablesInSchema(String)
+        case allSequencesInSchema(String)
+    }
+
+    /// 一次权限变更。
+    public struct PrivilegeChange: Equatable, Sendable {
+        /// 权限关键字（大小写不敏感）；`ALL` 不能与其他关键字混用。
+        public var privileges: [String]
+        public var object: PrivilegeObject
+        /// 被授权 / 回收的角色；`PUBLIC` 视为关键字（不加引号）。
+        public var grantee: String
+        /// `GRANT` → `WITH GRANT OPTION`；`REVOKE` → 只回收授权选项。
+        public var withGrantOption: Bool
+
+        public init(
+            privileges: [String],
+            object: PrivilegeObject,
+            grantee: String,
+            withGrantOption: Bool = false
+        ) {
+            self.privileges = privileges
+            self.object = object
+            self.grantee = grantee
+            self.withGrantOption = withGrantOption
+        }
+    }
+
+    /// 允许的权限关键字白名单：拒绝把任意文本拼进 SQL。
+    static let allowedPrivileges: Set<String> = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
+        "USAGE", "CREATE", "CONNECT", "TEMPORARY", "EXECUTE", "ALL"
+    ]
+
+    /// 生成 `GRANT`；输入非法返回 `nil`。
+    public static func grant(_ change: PrivilegeChange, dialect: any SQLDialect) -> String? {
+        guard let clause = privilegeClause(change, dialect: dialect),
+              let grantee = granteeToken(change.grantee)
+        else { return nil }
+        let suffix = change.withGrantOption ? " WITH GRANT OPTION" : ""
+        return "GRANT \(clause) TO \(grantee)\(suffix);"
+    }
+
+    /// 生成 `REVOKE`；`withGrantOption = true` 时只回收授权选项。
+    public static func revoke(_ change: PrivilegeChange, dialect: any SQLDialect) -> String? {
+        guard let clause = privilegeClause(change, dialect: dialect),
+              let grantee = granteeToken(change.grantee)
+        else { return nil }
+        let option = change.withGrantOption ? "GRANT OPTION FOR " : ""
+        return "REVOKE \(option)\(clause) FROM \(grantee);"
+    }
+
+    /// `<权限列表> ON <对象>`；任一字段非法即返回 `nil`（全有或全无）。
+    static func privilegeClause(_ change: PrivilegeChange, dialect: any SQLDialect) -> String? {
+        let privileges = change.privileges
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+            .filter { !$0.isEmpty }
+        guard !privileges.isEmpty, privileges.allSatisfy({ allowedPrivileges.contains($0) }) else { return nil }
+        if privileges.contains("ALL"), privileges.count > 1 { return nil }
+        guard let object = privilegeObjectToken(change.object, dialect: dialect) else { return nil }
+        return "\(privileges.joined(separator: ", ")) ON \(object)"
+    }
+
+    /// 对象片段：标识符一律先校验再按方言引用。
+    static func privilegeObjectToken(_ object: PrivilegeObject, dialect: any SQLDialect) -> String? {
+        switch object {
+        case .database(let name):
+            guard PrivilegeProbe.isValidDatabaseName(name) else { return nil }
+            return "DATABASE \(dialect.quoteIdentifier(trimmedSQLIdentifier(name)))"
+        case .schema(let name):
+            guard PrivilegeProbe.isValidIdentifier(name) else { return nil }
+            return "SCHEMA \(dialect.quoteIdentifier(trimmedSQLIdentifier(name)))"
+        case .table(let schema, let name):
+            guard let target = qualifiedNameChecked(table: name, schema: schema, dialect: dialect) else { return nil }
+            return "TABLE \(target)"
+        case .sequence(let schema, let name):
+            guard let target = qualifiedNameChecked(table: name, schema: schema, dialect: dialect) else { return nil }
+            return "SEQUENCE \(target)"
+        case .allTablesInSchema(let schema):
+            guard PrivilegeProbe.isValidIdentifier(schema) else { return nil }
+            return "ALL TABLES IN SCHEMA \(dialect.quoteIdentifier(trimmedSQLIdentifier(schema)))"
+        case .allSequencesInSchema(let schema):
+            guard PrivilegeProbe.isValidIdentifier(schema) else { return nil }
+            return "ALL SEQUENCES IN SCHEMA \(dialect.quoteIdentifier(trimmedSQLIdentifier(schema)))"
+        }
+    }
+
+    /// 被授权者：`PUBLIC` 为关键字（不加引号），其余必须是合法标识符。
+    static func granteeToken(_ grantee: String) -> String? {
+        let trimmed = grantee.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.uppercased() == "PUBLIC" { return "PUBLIC" }
+        guard PrivilegeProbe.isValidRoleName(trimmed) else { return nil }
+        return "\(dialectIndependentQuote(trimmed))"
+    }
+
+    /// 角色名统一用双引号（PostgreSQL 语义；GBase 的权限模型本期不接入）。
+    static func dialectIndependentQuote(_ identifier: String) -> String {
+        "\"\(identifier)\""
+    }
+
+    /// 与 `qualifiedName` 同义，但先校验标识符（非法返回 `nil`）。
+    static func qualifiedNameChecked(table: String, schema: String?, dialect: any SQLDialect) -> String? {
+        guard PrivilegeProbe.isValidIdentifier(table) else { return nil }
+        if let schema, !schema.isEmpty {
+            guard PrivilegeProbe.isValidIdentifier(schema) else { return nil }
+            return qualifiedName(table: table, schema: schema, dialect: dialect)
+        }
+        return qualifiedName(table: table, schema: nil, dialect: dialect)
+    }
+
+    static func trimmedSQLIdentifier(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// 把库级参数值渲染成 SQL 字面量：数字与布尔 / 开关字面量裸写，其余加单引号并转义 `'`。
     static func settingLiteral(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

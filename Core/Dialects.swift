@@ -52,6 +52,8 @@ public protocol SQLDialect: Sendable {
     func databaseCreationPrivilegeQuery() -> String?
     /// 服务器会话 / 进程列表查询（FR-SESS-01）；返回 nil 表示该方言暂不支持。
     func serverActivityQuery() -> String?
+    /// 指定角色的对象权限查询（FR-SESS-04）：库 / schema / 表 / 视图 / 序列上的已授权限；nil = 不支持。
+    func objectPrivilegeQuery(role: String) -> String?
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -72,6 +74,7 @@ public extension SQLDialect {
     func serverActivityQuery() -> String? { nil }
     func cancelSessionStatement(pid: Int) -> String? { nil }
     func terminateSessionStatement(pid: Int) -> String? { nil }
+    func objectPrivilegeQuery(role: String) -> String? { nil }
 }
 
 public struct PostgresDialect: SQLDialect {
@@ -142,6 +145,40 @@ public struct PostgresDialect: SQLDialect {
     /// 终止会话：断开该后端的连接（FR-SESS-02）。
     public func terminateSessionStatement(pid: Int) -> String? {
         "SELECT pg_terminate_backend(\(pid))"
+    }
+
+    /// 对象权限查询（FR-SESS-04）：列出指定角色在**库 / schema / 表 / 视图 / 序列**上的已授权限。
+    ///
+    /// `aclexplode` 把 ACL 数组展开成行；`grantee = 0` 即 `PUBLIC`，故 `LEFT JOIN pg_roles` 兜住并 `COALESCE` 成 `PUBLIC`。
+    /// PostgreSQL 没有统一的「权限总览」视图，只能拼三类目录表（`pg_database` / `pg_namespace` / `pg_class`）。
+    public func objectPrivilegeQuery(role: String) -> String? {
+        """
+        WITH target AS (SELECT oid AS role_oid FROM pg_roles WHERE rolname = \(literal(role)))
+        SELECT 'database' AS object_kind, d.datname AS object_name, NULL::text AS schema_name,
+               COALESCE(r.rolname, 'PUBLIC') AS grantee, p.privilege_type, p.is_grantable
+          FROM pg_database d
+          CROSS JOIN LATERAL aclexplode(d.datacl) AS p
+          LEFT JOIN pg_roles r ON r.oid = p.grantee
+         WHERE p.grantee = (SELECT role_oid FROM target) OR p.grantee = 0
+        UNION ALL
+        SELECT 'schema', n.nspname, NULL,
+               COALESCE(r.rolname, 'PUBLIC'), p.privilege_type, p.is_grantable
+          FROM pg_namespace n
+          CROSS JOIN LATERAL aclexplode(n.nspacl) AS p
+          LEFT JOIN pg_roles r ON r.oid = p.grantee
+         WHERE p.grantee = (SELECT role_oid FROM target) OR p.grantee = 0
+        UNION ALL
+        SELECT CASE c.relkind WHEN 'S' THEN 'sequence' WHEN 'v' THEN 'view' ELSE 'table' END,
+               c.relname, n.nspname,
+               COALESCE(r.rolname, 'PUBLIC'), p.privilege_type, p.is_grantable
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          CROSS JOIN LATERAL aclexplode(c.relacl) AS p
+          LEFT JOIN pg_roles r ON r.oid = p.grantee
+         WHERE c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
+           AND (p.grantee = (SELECT role_oid FROM target) OR p.grantee = 0)
+         ORDER BY 1, 2, 3
+        """
     }
 
     public func listSchemasQuery(database: String) -> String {
