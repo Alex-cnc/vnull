@@ -1,0 +1,869 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		064451130DA0A384EC98A529 /* QueryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F018EA6AEE8809567E7DD73D /* QueryModels.swift */; };
+		0A0F3EC651C2877261A8F0D3 /* TabNumberGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52CF539A99323094779A6E4 /* TabNumberGenerator.swift */; };
+		195768308A13A681C63CDC7F /* ConnectionFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81AA4ABF9CF72733FEAB7251 /* ConnectionFormView.swift */; };
+		1E10F924C52A5EB71908A16D /* PostgresClientCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		1E8D7BB22617A3E9D226FE13 /* CreateDatabaseSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0F09A2E1A3340C251FFF5D /* CreateDatabaseSheet.swift */; };
+		1EF615501D41FA055F483938 /* SQLLinter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01911800B15572A05AB0098F /* SQLLinter.swift */; };
+		232960B77202537D2E8DBC0F /* SavedQueryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753341E62F5CE1BAABFD943E /* SavedQueryStoreTests.swift */; };
+		24AC944F8CB298A0EF312FFE /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A838B481DD4F8470B63B88D9 /* Security.framework */; };
+		2AB5B960575951F2E7DC16C1 /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8FEC4CA8122E5D6039FB6A /* ConnectionStore.swift */; };
+		2C04FF0D1D08BF4F2FE5E6F2 /* ConnectionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53684536E6453FE6B204AA66 /* ConnectionListView.swift */; };
+		2DE4CFA0BD8DB20317B5E341 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89474F5A1A8B41222A2F6109 /* LocalizationManager.swift */; };
+		32469759A022AD5E1ED23D32 /* DialectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18E63E37DB14E5854BD32814 /* DialectTests.swift */; };
+		328B0CD2C7FB4C81C91D1BBA /* EditorTextSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8FEDF50C08F3565D076584 /* EditorTextSyncTests.swift */; };
+		362EA6C69015B6F1AE800C02 /* ExplainPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7EFDD6FF0A5A10D68D92073 /* ExplainPlanTests.swift */; };
+		366C04D8FC5C10B94E4A9DE7 /* ResultGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E00CE64030BC91E620D96290 /* ResultGrid.swift */; };
+		372A6EB84EDD233918133010 /* ConnectionConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF74A82596DA101170090A7 /* ConnectionConfigTests.swift */; };
+		430AD7767BE16A07FE0DD354 /* SessionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17532F4242A171E0ED87F1D6 /* SessionMonitor.swift */; };
+		44403FCDD5AE2EB3FD7D241C /* SQLEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462783EBAFB54B89B2467F4A /* SQLEditorView.swift */; };
+		451D5DA7935AA536AA602A5F /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55253269A8A4CDE86E8707FB /* KeychainHelper.swift */; };
+		46914107AC84691233FEBAB6 /* EditorCommandCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451A474C178DC8B282AF4B79 /* EditorCommandCenter.swift */; };
+		482DC7BEF2896D633E51EF14 /* QueryToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A872263E55D63E55B03425 /* QueryToolbar.swift */; };
+		49A4F6F1C1BD79518EAF961B /* ResultExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 017B542F5D87E4E079990123 /* ResultExporterTests.swift */; };
+		4BD0F85BE373538A78AF1F3B /* SQLFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B14F13D4C167AC27680570 /* SQLFormatter.swift */; };
+		4C0FED44D294BEB4079126DB /* PostgresClientCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; };
+		504A69DFDBCAA6630AB7FE86 /* PostgresClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BA86921CC190D3C34464059 /* PostgresClientApp.swift */; };
+		5422A0FD22EC47849FE33089 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EAA933988F41E72CBA8A786 /* ResultView.swift */; };
+		553783B91B91440AE1454046 /* SQLFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE761441E016E1647CA1398B /* SQLFormatterTests.swift */; };
+		55605FDEEE0BA191C4BCB023 /* MetadataServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29721E3892586E8C4D0AC6AA /* MetadataServiceTests.swift */; };
+		587C897F893190D1CE655E8E /* SQLCompleter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3EC5923CC92F78BE31CDFD /* SQLCompleter.swift */; };
+		6785A020E7765476F8C023DF /* PostgresCellFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C6A5197F7C3CDE5FC6B21D /* PostgresCellFormatter.swift */; };
+		6A66B47BC218AF3304827E69 /* ErrorPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC91E156DB9309EFED9A7DF /* ErrorPresenter.swift */; };
+		72288EC7D272FE8F2ED3D1E9 /* PrivilegeProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF91E702B30215FF5541A5FF /* PrivilegeProbeTests.swift */; };
+		7B4FABAB6A090AABBE9233FE /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1528749A8C5862E60566C02 /* MetadataService.swift */; };
+		7B8DCC4F3C2687BAD6F392ED /* SQLTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F4D8CD8C0DD21A900C14AB1 /* SQLTokenizer.swift */; };
+		7BD81DBF3D6519DF5D52BE33 /* PostgresNIO in Frameworks */ = {isa = PBXBuildFile; productRef = B728A1E7F03E926C61B3488C /* PostgresNIO */; };
+		7FC784D03A5A7537153C567D /* SecureASCIIField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7359577E004A412372A0A9B /* SecureASCIIField.swift */; };
+		82F0C1D9DCFD68F3D88F92AD /* SessionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 227D6DEAAD12199057ABB061 /* SessionMonitorTests.swift */; };
+		87BDEBCCB0A4B5602F02FD51 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C17AF0C5C4E6236CC64D53 /* LocalizationTests.swift */; };
+		8B37A26E0495D692913698A8 /* PostgresClientCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; };
+		916CCFF2979ED159891AD5E7 /* PrivilegeProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F988138E63413A1CA9E52B /* PrivilegeProbe.swift */; };
+		93A6FB40095277A3600377C3 /* DatabaseType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B19D8C4881F610903ED30C71 /* DatabaseType.swift */; };
+		94113F965CB13A32C9E27F12 /* TabNumberGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DACB96E5B9414F7EF1A942B /* TabNumberGeneratorTests.swift */; };
+		94F99DA05E7D67AF8DE69C6B /* PostgresServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C423164DCAAC13E22C3C7D /* PostgresServiceTests.swift */; };
+		9AB95365B58520F933FAF7B6 /* EditorTextSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6AB8A3EA6084883799A5A32 /* EditorTextSync.swift */; };
+		9F7304FC4BF5A9386E18FB92 /* StatementSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F79F3D842E457E3F39F8DD2 /* StatementSplitterTests.swift */; };
+		A06AAC9462F15D3C2FFB4620 /* PostgresClientCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A79CA3E3FEC2F7085DD87D6B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95032B9D1BEABE0EC51F6FF /* AppState.swift */; };
+		AC34B9D27166E23867320F04 /* PostgresService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9BD17A79290627AA8124318 /* PostgresService.swift */; };
+		C19081BED1A685BF1DC718E1 /* SQLLinterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D489E85A8C697E91CB8A9EF0 /* SQLLinterTests.swift */; };
+		C2B85170B0F35E408552F598 /* ResultExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F52F27F253BA345B065D70 /* ResultExporter.swift */; };
+		C56D7B39CFEB887B9B050BC8 /* ResultViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E37A705BAE93EF0FCF40577 /* ResultViewTests.swift */; };
+		C6A56ADF38E6A62AB8E522F5 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A06FA03EB72E992BD1BB4FA /* MainWindow.swift */; };
+		C7147F764E90887288C84E4F /* ObjectTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA520BFB7CB1A63254299F /* ObjectTreeView.swift */; };
+		C94FD10B2AD2794B30F4E119 /* ExplainPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBC61DB5101F734145CFE0E /* ExplainPlan.swift */; };
+		CB1006508AE965DBBCD1EB49 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A4F656850E0F940DCB6EF0 /* Localization.swift */; };
+		D186CD72EB9F1EB4AEEF667A /* SavedQueryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D235342BDBAE1EA7B719928 /* SavedQueryStore.swift */; };
+		E0079B6F1613C5EFA08365C3 /* StatementSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5268941A54B634416DE683A7 /* StatementSplitter.swift */; };
+		E084EC1E5DB06E3738CE7F7C /* SaveQuerySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF1EB089F820E0AABCB4C628 /* SaveQuerySheet.swift */; };
+		E3A393F91941C515E59F3665 /* ResultTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104E6C55A19CEBD6083F92B6 /* ResultTableView.swift */; };
+		EBF76DEBEA54B3168FB17BDA /* DatabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63E66A5E7E9CD347733E6FAF /* DatabaseService.swift */; };
+		EE18C3EB54B9E6A6462C9B91 /* SQLGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60872A8615708BBC5C514D20 /* SQLGeneratorTests.swift */; };
+		F159B5636C6BCCAEF919E377 /* SQLHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2896CB2B7076B2F3625DDA9 /* SQLHighlighter.swift */; };
+		F40A35BEE559B78F02F592A1 /* SQLGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 297E5B5B60163E07FBBFAA99 /* SQLGenerator.swift */; };
+		F7C894E5878BA67DCF84DEA4 /* Dialects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF5F783D42FCA1D99D4E01B /* Dialects.swift */; };
+		F8A7357DFB2EE577BC2A44D1 /* ConnectionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4923B2E069359BFFAE9909CB /* ConnectionConfig.swift */; };
+		F9733C3A70231E52AFADDE65 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C8FA36C2686B186269EBF65 /* AppError.swift */; };
+		FC0C42F097D79F1A1C65B713 /* QueryContextBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6A014F8EE59E559079B004 /* QueryContextBar.swift */; };
+		FEA65E0AF1E82FC489DC5C45 /* QueryWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B975A15675096FA72837C333 /* QueryWorkspaceView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3EA133F5DED83E386BCD44D5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1503A7B795E103E81B82B4E2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 814EEA159BE6A01C935B82E9;
+			remoteInfo = PostgresClientCore;
+		};
+		CAE39761C5719C3560EAFE41 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1503A7B795E103E81B82B4E2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 814EEA159BE6A01C935B82E9;
+			remoteInfo = PostgresClientCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		764CA94AB214580CFF8442D5 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A06AAC9462F15D3C2FFB4620 /* PostgresClientCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		88A4A2A6AC8A3DC723A0EC90 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				1E10F924C52A5EB71908A16D /* PostgresClientCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		017B542F5D87E4E079990123 /* ResultExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultExporterTests.swift; sourceTree = "<group>"; };
+		01911800B15572A05AB0098F /* SQLLinter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLLinter.swift; sourceTree = "<group>"; };
+		104E6C55A19CEBD6083F92B6 /* ResultTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultTableView.swift; sourceTree = "<group>"; };
+		17532F4242A171E0ED87F1D6 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
+		18E63E37DB14E5854BD32814 /* DialectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialectTests.swift; sourceTree = "<group>"; };
+		1BA86921CC190D3C34464059 /* PostgresClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresClientApp.swift; sourceTree = "<group>"; };
+		227D6DEAAD12199057ABB061 /* SessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorTests.swift; sourceTree = "<group>"; };
+		29721E3892586E8C4D0AC6AA /* MetadataServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataServiceTests.swift; sourceTree = "<group>"; };
+		297E5B5B60163E07FBBFAA99 /* SQLGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLGenerator.swift; sourceTree = "<group>"; };
+		2C8FEC4CA8122E5D6039FB6A /* ConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStore.swift; sourceTree = "<group>"; };
+		32A4F656850E0F940DCB6EF0 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		3A06FA03EB72E992BD1BB4FA /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
+		3C8FA36C2686B186269EBF65 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
+		3C8FEDF50C08F3565D076584 /* EditorTextSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTextSyncTests.swift; sourceTree = "<group>"; };
+		3D235342BDBAE1EA7B719928 /* SavedQueryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedQueryStore.swift; sourceTree = "<group>"; };
+		416D140D4FF3E0851263273F /* postgres-nio */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "postgres-nio"; path = "Vendor/postgres-nio"; sourceTree = SOURCE_ROOT; };
+		451A474C178DC8B282AF4B79 /* EditorCommandCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorCommandCenter.swift; sourceTree = "<group>"; };
+		462783EBAFB54B89B2467F4A /* SQLEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLEditorView.swift; sourceTree = "<group>"; };
+		4923B2E069359BFFAE9909CB /* ConnectionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionConfig.swift; sourceTree = "<group>"; };
+		4DACB96E5B9414F7EF1A942B /* TabNumberGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabNumberGeneratorTests.swift; sourceTree = "<group>"; };
+		4EAA933988F41E72CBA8A786 /* ResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultView.swift; sourceTree = "<group>"; };
+		4FF5F783D42FCA1D99D4E01B /* Dialects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dialects.swift; sourceTree = "<group>"; };
+		5268941A54B634416DE683A7 /* StatementSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatementSplitter.swift; sourceTree = "<group>"; };
+		53684536E6453FE6B204AA66 /* ConnectionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionListView.swift; sourceTree = "<group>"; };
+		55253269A8A4CDE86E8707FB /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		5CF74A82596DA101170090A7 /* ConnectionConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionConfigTests.swift; sourceTree = "<group>"; };
+		5E37A705BAE93EF0FCF40577 /* ResultViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultViewTests.swift; sourceTree = "<group>"; };
+		60872A8615708BBC5C514D20 /* SQLGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLGeneratorTests.swift; sourceTree = "<group>"; };
+		63E66A5E7E9CD347733E6FAF /* DatabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseService.swift; sourceTree = "<group>"; };
+		6A6A014F8EE59E559079B004 /* QueryContextBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryContextBar.swift; sourceTree = "<group>"; };
+		6F79F3D842E457E3F39F8DD2 /* StatementSplitterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatementSplitterTests.swift; sourceTree = "<group>"; };
+		753341E62F5CE1BAABFD943E /* SavedQueryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedQueryStoreTests.swift; sourceTree = "<group>"; };
+		75B14F13D4C167AC27680570 /* SQLFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLFormatter.swift; sourceTree = "<group>"; };
+		75F988138E63413A1CA9E52B /* PrivilegeProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegeProbe.swift; sourceTree = "<group>"; };
+		7D3EC5923CC92F78BE31CDFD /* SQLCompleter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLCompleter.swift; sourceTree = "<group>"; };
+		7E0F09A2E1A3340C251FFF5D /* CreateDatabaseSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateDatabaseSheet.swift; sourceTree = "<group>"; };
+		7EC91E156DB9309EFED9A7DF /* ErrorPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorPresenter.swift; sourceTree = "<group>"; };
+		81AA4ABF9CF72733FEAB7251 /* ConnectionFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionFormView.swift; sourceTree = "<group>"; };
+		88C17AF0C5C4E6236CC64D53 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
+		89474F5A1A8B41222A2F6109 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
+		8F4D8CD8C0DD21A900C14AB1 /* SQLTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLTokenizer.swift; sourceTree = "<group>"; };
+		98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PostgresClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1A872263E55D63E55B03425 /* QueryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryToolbar.swift; sourceTree = "<group>"; };
+		A5C6A5197F7C3CDE5FC6B21D /* PostgresCellFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresCellFormatter.swift; sourceTree = "<group>"; };
+		A838B481DD4F8470B63B88D9 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		A95032B9D1BEABE0EC51F6FF /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A9F52F27F253BA345B065D70 /* ResultExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultExporter.swift; sourceTree = "<group>"; };
+		AAAA520BFB7CB1A63254299F /* ObjectTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectTreeView.swift; sourceTree = "<group>"; };
+		B19D8C4881F610903ED30C71 /* DatabaseType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseType.swift; sourceTree = "<group>"; };
+		B6AB8A3EA6084883799A5A32 /* EditorTextSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTextSync.swift; sourceTree = "<group>"; };
+		B975A15675096FA72837C333 /* QueryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryWorkspaceView.swift; sourceTree = "<group>"; };
+		BA28582C03392AE33E0094EA /* PostgresClientCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PostgresClientCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		CF1EB089F820E0AABCB4C628 /* SaveQuerySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveQuerySheet.swift; sourceTree = "<group>"; };
+		D2896CB2B7076B2F3625DDA9 /* SQLHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLHighlighter.swift; sourceTree = "<group>"; };
+		D489E85A8C697E91CB8A9EF0 /* SQLLinterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLLinterTests.swift; sourceTree = "<group>"; };
+		D52CF539A99323094779A6E4 /* TabNumberGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabNumberGenerator.swift; sourceTree = "<group>"; };
+		DE761441E016E1647CA1398B /* SQLFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLFormatterTests.swift; sourceTree = "<group>"; };
+		DFBC61DB5101F734145CFE0E /* ExplainPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainPlan.swift; sourceTree = "<group>"; };
+		E00CE64030BC91E620D96290 /* ResultGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultGrid.swift; sourceTree = "<group>"; };
+		E1528749A8C5862E60566C02 /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataService.swift; sourceTree = "<group>"; };
+		E7EFDD6FF0A5A10D68D92073 /* ExplainPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplainPlanTests.swift; sourceTree = "<group>"; };
+		EF91E702B30215FF5541A5FF /* PrivilegeProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegeProbeTests.swift; sourceTree = "<group>"; };
+		F018EA6AEE8809567E7DD73D /* QueryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryModels.swift; sourceTree = "<group>"; };
+		F2C423164DCAAC13E22C3C7D /* PostgresServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresServiceTests.swift; sourceTree = "<group>"; };
+		F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgresClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F7359577E004A412372A0A9B /* SecureASCIIField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureASCIIField.swift; sourceTree = "<group>"; };
+		F9BD17A79290627AA8124318 /* PostgresService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		30A712CFF99752B4A5505065 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4C0FED44D294BEB4079126DB /* PostgresClientCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3911B76AEA6C1D9B9A2FA13A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				24AC944F8CB298A0EF312FFE /* Security.framework in Frameworks */,
+				7BD81DBF3D6519DF5D52BE33 /* PostgresNIO in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E82FB90EE041D0BC13854C45 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8B37A26E0495D692913698A8 /* PostgresClientCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		14E944935968790E31D78F03 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				3C8FA36C2686B186269EBF65 /* AppError.swift */,
+				4923B2E069359BFFAE9909CB /* ConnectionConfig.swift */,
+				2C8FEC4CA8122E5D6039FB6A /* ConnectionStore.swift */,
+				63E66A5E7E9CD347733E6FAF /* DatabaseService.swift */,
+				B19D8C4881F610903ED30C71 /* DatabaseType.swift */,
+				4FF5F783D42FCA1D99D4E01B /* Dialects.swift */,
+				B6AB8A3EA6084883799A5A32 /* EditorTextSync.swift */,
+				DFBC61DB5101F734145CFE0E /* ExplainPlan.swift */,
+				55253269A8A4CDE86E8707FB /* KeychainHelper.swift */,
+				32A4F656850E0F940DCB6EF0 /* Localization.swift */,
+				E1528749A8C5862E60566C02 /* MetadataService.swift */,
+				A5C6A5197F7C3CDE5FC6B21D /* PostgresCellFormatter.swift */,
+				F9BD17A79290627AA8124318 /* PostgresService.swift */,
+				75F988138E63413A1CA9E52B /* PrivilegeProbe.swift */,
+				F018EA6AEE8809567E7DD73D /* QueryModels.swift */,
+				A9F52F27F253BA345B065D70 /* ResultExporter.swift */,
+				4EAA933988F41E72CBA8A786 /* ResultView.swift */,
+				3D235342BDBAE1EA7B719928 /* SavedQueryStore.swift */,
+				17532F4242A171E0ED87F1D6 /* SessionMonitor.swift */,
+				75B14F13D4C167AC27680570 /* SQLFormatter.swift */,
+				297E5B5B60163E07FBBFAA99 /* SQLGenerator.swift */,
+				01911800B15572A05AB0098F /* SQLLinter.swift */,
+				8F4D8CD8C0DD21A900C14AB1 /* SQLTokenizer.swift */,
+				5268941A54B634416DE683A7 /* StatementSplitter.swift */,
+				D52CF539A99323094779A6E4 /* TabNumberGenerator.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		1BEFC42DA7A8BA0DBE07156C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				81AA4ABF9CF72733FEAB7251 /* ConnectionFormView.swift */,
+				53684536E6453FE6B204AA66 /* ConnectionListView.swift */,
+				7E0F09A2E1A3340C251FFF5D /* CreateDatabaseSheet.swift */,
+				3A06FA03EB72E992BD1BB4FA /* MainWindow.swift */,
+				AAAA520BFB7CB1A63254299F /* ObjectTreeView.swift */,
+				6A6A014F8EE59E559079B004 /* QueryContextBar.swift */,
+				A1A872263E55D63E55B03425 /* QueryToolbar.swift */,
+				B975A15675096FA72837C333 /* QueryWorkspaceView.swift */,
+				E00CE64030BC91E620D96290 /* ResultGrid.swift */,
+				104E6C55A19CEBD6083F92B6 /* ResultTableView.swift */,
+				CF1EB089F820E0AABCB4C628 /* SaveQuerySheet.swift */,
+				462783EBAFB54B89B2467F4A /* SQLEditorView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		1C45C63C123D400DF5B1781F /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				416D140D4FF3E0851263273F /* postgres-nio */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		86A84067C5B10C100227CD92 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */,
+				BA28582C03392AE33E0094EA /* PostgresClientCore.framework */,
+				F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA779237D138AD4E5EBC84A7 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				5CF74A82596DA101170090A7 /* ConnectionConfigTests.swift */,
+				18E63E37DB14E5854BD32814 /* DialectTests.swift */,
+				3C8FEDF50C08F3565D076584 /* EditorTextSyncTests.swift */,
+				E7EFDD6FF0A5A10D68D92073 /* ExplainPlanTests.swift */,
+				88C17AF0C5C4E6236CC64D53 /* LocalizationTests.swift */,
+				29721E3892586E8C4D0AC6AA /* MetadataServiceTests.swift */,
+				F2C423164DCAAC13E22C3C7D /* PostgresServiceTests.swift */,
+				EF91E702B30215FF5541A5FF /* PrivilegeProbeTests.swift */,
+				017B542F5D87E4E079990123 /* ResultExporterTests.swift */,
+				5E37A705BAE93EF0FCF40577 /* ResultViewTests.swift */,
+				753341E62F5CE1BAABFD943E /* SavedQueryStoreTests.swift */,
+				227D6DEAAD12199057ABB061 /* SessionMonitorTests.swift */,
+				DE761441E016E1647CA1398B /* SQLFormatterTests.swift */,
+				60872A8615708BBC5C514D20 /* SQLGeneratorTests.swift */,
+				D489E85A8C697E91CB8A9EF0 /* SQLLinterTests.swift */,
+				6F79F3D842E457E3F39F8DD2 /* StatementSplitterTests.swift */,
+				4DACB96E5B9414F7EF1A942B /* TabNumberGeneratorTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		E074E0E2EA595DE72630043D /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				7EC91E156DB9309EFED9A7DF /* ErrorPresenter.swift */,
+				F7359577E004A412372A0A9B /* SecureASCIIField.swift */,
+				7D3EC5923CC92F78BE31CDFD /* SQLCompleter.swift */,
+				D2896CB2B7076B2F3625DDA9 /* SQLHighlighter.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		E1BB4012B76E8C88C54CD3DA = {
+			isa = PBXGroup;
+			children = (
+				EFBC26BC045B436D15780ECC /* App */,
+				14E944935968790E31D78F03 /* Core */,
+				1C45C63C123D400DF5B1781F /* Packages */,
+				AA779237D138AD4E5EBC84A7 /* Tests */,
+				EC97AE7EE6B8F98399AB49F7 /* Frameworks */,
+				86A84067C5B10C100227CD92 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EC97AE7EE6B8F98399AB49F7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A838B481DD4F8470B63B88D9 /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		EFBC26BC045B436D15780ECC /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E074E0E2EA595DE72630043D /* Utilities */,
+				1BEFC42DA7A8BA0DBE07156C /* Views */,
+				A95032B9D1BEABE0EC51F6FF /* AppState.swift */,
+				451A474C178DC8B282AF4B79 /* EditorCommandCenter.swift */,
+				89474F5A1A8B41222A2F6109 /* LocalizationManager.swift */,
+				1BA86921CC190D3C34464059 /* PostgresClientApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		814EEA159BE6A01C935B82E9 /* PostgresClientCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "PostgresClientCore" */;
+			buildPhases = (
+				DCAE1E200C574F2CA635607D /* Sources */,
+				3911B76AEA6C1D9B9A2FA13A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PostgresClientCore;
+			packageProductDependencies = (
+				B728A1E7F03E926C61B3488C /* PostgresNIO */,
+			);
+			productName = PostgresClientCore;
+			productReference = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		A21FB6710A7F4557B2974425 /* PostgresClientTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "PostgresClientTests" */;
+			buildPhases = (
+				75673D9AA67A907AF8461EA0 /* Sources */,
+				30A712CFF99752B4A5505065 /* Frameworks */,
+				764CA94AB214580CFF8442D5 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				17274383FEAE38DC99C53A30 /* PBXTargetDependency */,
+			);
+			name = PostgresClientTests;
+			packageProductDependencies = (
+			);
+			productName = PostgresClientTests;
+			productReference = F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F9E82AFFB44017733F50966F /* PostgresClient */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "PostgresClient" */;
+			buildPhases = (
+				3851A09845017370FE24C3C4 /* Sources */,
+				E82FB90EE041D0BC13854C45 /* Frameworks */,
+				88A4A2A6AC8A3DC723A0EC90 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F57A6ABAFF4F6637BEE7AA9E /* PBXTargetDependency */,
+			);
+			name = PostgresClient;
+			packageProductDependencies = (
+			);
+			productName = PostgresClient;
+			productReference = 98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1503A7B795E103E81B82B4E2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					814EEA159BE6A01C935B82E9 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					A21FB6710A7F4557B2974425 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					F9E82AFFB44017733F50966F = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "PostgresClient" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E1BB4012B76E8C88C54CD3DA;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C74EA80BE878093ED94C627B /* XCLocalSwiftPackageReference "Vendor/postgres-nio" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 86A84067C5B10C100227CD92 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				814EEA159BE6A01C935B82E9 /* PostgresClientCore */,
+				F9E82AFFB44017733F50966F /* PostgresClient */,
+				A21FB6710A7F4557B2974425 /* PostgresClientTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3851A09845017370FE24C3C4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A79CA3E3FEC2F7085DD87D6B /* AppState.swift in Sources */,
+				195768308A13A681C63CDC7F /* ConnectionFormView.swift in Sources */,
+				2C04FF0D1D08BF4F2FE5E6F2 /* ConnectionListView.swift in Sources */,
+				1E8D7BB22617A3E9D226FE13 /* CreateDatabaseSheet.swift in Sources */,
+				46914107AC84691233FEBAB6 /* EditorCommandCenter.swift in Sources */,
+				6A66B47BC218AF3304827E69 /* ErrorPresenter.swift in Sources */,
+				2DE4CFA0BD8DB20317B5E341 /* LocalizationManager.swift in Sources */,
+				C6A56ADF38E6A62AB8E522F5 /* MainWindow.swift in Sources */,
+				C7147F764E90887288C84E4F /* ObjectTreeView.swift in Sources */,
+				504A69DFDBCAA6630AB7FE86 /* PostgresClientApp.swift in Sources */,
+				FC0C42F097D79F1A1C65B713 /* QueryContextBar.swift in Sources */,
+				482DC7BEF2896D633E51EF14 /* QueryToolbar.swift in Sources */,
+				FEA65E0AF1E82FC489DC5C45 /* QueryWorkspaceView.swift in Sources */,
+				366C04D8FC5C10B94E4A9DE7 /* ResultGrid.swift in Sources */,
+				E3A393F91941C515E59F3665 /* ResultTableView.swift in Sources */,
+				587C897F893190D1CE655E8E /* SQLCompleter.swift in Sources */,
+				44403FCDD5AE2EB3FD7D241C /* SQLEditorView.swift in Sources */,
+				F159B5636C6BCCAEF919E377 /* SQLHighlighter.swift in Sources */,
+				E084EC1E5DB06E3738CE7F7C /* SaveQuerySheet.swift in Sources */,
+				7FC784D03A5A7537153C567D /* SecureASCIIField.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		75673D9AA67A907AF8461EA0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				372A6EB84EDD233918133010 /* ConnectionConfigTests.swift in Sources */,
+				32469759A022AD5E1ED23D32 /* DialectTests.swift in Sources */,
+				328B0CD2C7FB4C81C91D1BBA /* EditorTextSyncTests.swift in Sources */,
+				362EA6C69015B6F1AE800C02 /* ExplainPlanTests.swift in Sources */,
+				87BDEBCCB0A4B5602F02FD51 /* LocalizationTests.swift in Sources */,
+				55605FDEEE0BA191C4BCB023 /* MetadataServiceTests.swift in Sources */,
+				94F99DA05E7D67AF8DE69C6B /* PostgresServiceTests.swift in Sources */,
+				72288EC7D272FE8F2ED3D1E9 /* PrivilegeProbeTests.swift in Sources */,
+				49A4F6F1C1BD79518EAF961B /* ResultExporterTests.swift in Sources */,
+				C56D7B39CFEB887B9B050BC8 /* ResultViewTests.swift in Sources */,
+				553783B91B91440AE1454046 /* SQLFormatterTests.swift in Sources */,
+				EE18C3EB54B9E6A6462C9B91 /* SQLGeneratorTests.swift in Sources */,
+				C19081BED1A685BF1DC718E1 /* SQLLinterTests.swift in Sources */,
+				232960B77202537D2E8DBC0F /* SavedQueryStoreTests.swift in Sources */,
+				82F0C1D9DCFD68F3D88F92AD /* SessionMonitorTests.swift in Sources */,
+				9F7304FC4BF5A9386E18FB92 /* StatementSplitterTests.swift in Sources */,
+				94113F965CB13A32C9E27F12 /* TabNumberGeneratorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DCAE1E200C574F2CA635607D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F9733C3A70231E52AFADDE65 /* AppError.swift in Sources */,
+				F8A7357DFB2EE577BC2A44D1 /* ConnectionConfig.swift in Sources */,
+				2AB5B960575951F2E7DC16C1 /* ConnectionStore.swift in Sources */,
+				EBF76DEBEA54B3168FB17BDA /* DatabaseService.swift in Sources */,
+				93A6FB40095277A3600377C3 /* DatabaseType.swift in Sources */,
+				F7C894E5878BA67DCF84DEA4 /* Dialects.swift in Sources */,
+				9AB95365B58520F933FAF7B6 /* EditorTextSync.swift in Sources */,
+				C94FD10B2AD2794B30F4E119 /* ExplainPlan.swift in Sources */,
+				451D5DA7935AA536AA602A5F /* KeychainHelper.swift in Sources */,
+				CB1006508AE965DBBCD1EB49 /* Localization.swift in Sources */,
+				7B4FABAB6A090AABBE9233FE /* MetadataService.swift in Sources */,
+				6785A020E7765476F8C023DF /* PostgresCellFormatter.swift in Sources */,
+				AC34B9D27166E23867320F04 /* PostgresService.swift in Sources */,
+				916CCFF2979ED159891AD5E7 /* PrivilegeProbe.swift in Sources */,
+				064451130DA0A384EC98A529 /* QueryModels.swift in Sources */,
+				C2B85170B0F35E408552F598 /* ResultExporter.swift in Sources */,
+				5422A0FD22EC47849FE33089 /* ResultView.swift in Sources */,
+				4BD0F85BE373538A78AF1F3B /* SQLFormatter.swift in Sources */,
+				F40A35BEE559B78F02F592A1 /* SQLGenerator.swift in Sources */,
+				1EF615501D41FA055F483938 /* SQLLinter.swift in Sources */,
+				7B8DCC4F3C2687BAD6F392ED /* SQLTokenizer.swift in Sources */,
+				D186CD72EB9F1EB4AEEF667A /* SavedQueryStore.swift in Sources */,
+				430AD7767BE16A07FE0DD354 /* SessionMonitor.swift in Sources */,
+				E0079B6F1613C5EFA08365C3 /* StatementSplitter.swift in Sources */,
+				0A0F3EC651C2877261A8F0D3 /* TabNumberGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		17274383FEAE38DC99C53A30 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 814EEA159BE6A01C935B82E9 /* PostgresClientCore */;
+			targetProxy = CAE39761C5719C3560EAFE41 /* PBXContainerItemProxy */;
+		};
+		F57A6ABAFF4F6637BEE7AA9E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 814EEA159BE6A01C935B82E9 /* PostgresClientCore */;
+			targetProxy = 3EA133F5DED83E386BCD44D5 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3E73819FA35943B528E2DC81 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClientCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		418637B3F2C61C49DAB32960 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xfrontend -disable-sandbox";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		5CC0AD5120FE55F4C1109571 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClientTests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8BCBD7735505BDB2F527D93E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PostgresClient.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PostgresClient;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClient;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		BFB3DC0814F1E96A65323016 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/PostgresClient.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = PostgresClient;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClient;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		DD46DBA37647971622CDBD88 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xfrontend -disable-sandbox";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+		DE6F0799BDDAF270CF578250 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClientTests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		ED6234653299FE3A82FC2A85 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vnull.PostgresClientCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "PostgresClientCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3E73819FA35943B528E2DC81 /* Debug */,
+				ED6234653299FE3A82FC2A85 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "PostgresClient" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD46DBA37647971622CDBD88 /* Debug */,
+				418637B3F2C61C49DAB32960 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "PostgresClient" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8BCBD7735505BDB2F527D93E /* Debug */,
+				BFB3DC0814F1E96A65323016 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "PostgresClientTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5CC0AD5120FE55F4C1109571 /* Debug */,
+				DE6F0799BDDAF270CF578250 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C74EA80BE878093ED94C627B /* XCLocalSwiftPackageReference "Vendor/postgres-nio" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Vendor/postgres-nio";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B728A1E7F03E926C61B3488C /* PostgresNIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C74EA80BE878093ED94C627B /* XCLocalSwiftPackageReference "Vendor/postgres-nio" */;
+			productName = PostgresNIO;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1503A7B795E103E81B82B4E2 /* Project object */;
+}

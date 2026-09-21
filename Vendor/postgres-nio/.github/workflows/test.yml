@@ -1,0 +1,174 @@
+name: CI
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+on: 
+  push:
+    branches: 
+      - "main"
+  pull_request:
+    branches: 
+      - "*"
+env:
+  LOG_LEVEL: info
+permissions:
+  contents: read
+
+jobs:
+  linux-unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        swift-image:
+          - swift:6.1-jammy
+          - swift:6.2-noble
+          - swift:6.3-noble
+          - swiftlang/swift:nightly-main-noble
+    container: ${{ matrix.swift-image }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display OS and Swift versions
+        shell: bash
+        run: |
+          [[ -z "${SWIFT_PLATFORM}" ]] && SWIFT_PLATFORM="$(. /etc/os-release && echo "${ID}${VERSION_ID}")"
+          [[ -z "${SWIFT_VERSION}" ]] && SWIFT_VERSION="$(cat /.swift_tag 2>/dev/null || true)"
+          printf 'OS:  %s\nTag: %s\nVersion:\n' "${SWIFT_PLATFORM}-${RUNNER_ARCH}" "${SWIFT_VERSION}"
+          swift --version
+      - name: Install curl for Codecov
+        run: apt-get update -y -q && apt-get install -y curl
+      - name: Check out package
+        uses: actions/checkout@v7
+      - name: Run unit tests with Thread Sanitizer
+        run: |
+          swift test --filter='^(PostgresNIOTests|ConnectionPoolModuleTests)' --sanitize=thread --enable-code-coverage
+      - name: Submit code coverage
+        uses: vapor/swift-codecov-action@2f478f2fd22e06ca363967d0fb6c6593a8548cee # v0.3.5
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  linux-integration-and-dependencies:
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-image:
+          - postgres:18
+          - postgres:16
+          - postgres:14
+        include:
+          - postgres-image: postgres:18
+            postgres-auth: scram-sha-256
+          - postgres-image: postgres:16
+            postgres-auth: md5
+          - postgres-image: postgres:14
+            postgres-auth: trust
+    container:
+      image: swift:6.3-noble
+      volumes: [ 'pgrunshare:/var/run/postgresql' ]
+    runs-on: ubuntu-latest
+    env:
+      # Unfortunately, fluent-postgres-driver details leak through here
+      POSTGRES_DB: 'test_database'
+      POSTGRES_USER: 'test_username'
+      POSTGRES_PASSWORD: 'test_password'
+      POSTGRES_HOSTNAME: 'psql-a'
+      POSTGRES_HOSTNAME_B: 'psql-b'
+      POSTGRES_SOCKET: '/var/run/postgresql/.s.PGSQL.5432'
+      POSTGRES_HOST_AUTH_METHOD: ${{ matrix.postgres-auth }}
+    services:
+      psql-a: &psql_service_spec
+        image: ${{ matrix.postgres-image }}
+        volumes: [ 'pgrunshare:/var/run/postgresql' ]
+        env:
+          POSTGRES_USER: 'test_username'
+          POSTGRES_DB: 'test_database'
+          POSTGRES_PASSWORD: 'test_password'
+          POSTGRES_HOST_AUTH_METHOD: ${{ matrix.postgres-auth }}
+          POSTGRES_INITDB_ARGS: --auth-host=${{ matrix.postgres-auth }}
+      psql-b: *psql_service_spec
+    steps:
+      - name: Display OS and Swift versions
+        run: |
+          [[ -z "${SWIFT_PLATFORM}" ]] && SWIFT_PLATFORM="$(. /etc/os-release && echo "${ID}${VERSION_ID}")"
+          [[ -z "${SWIFT_VERSION}" ]] && SWIFT_VERSION="$(cat /.swift_tag 2>/dev/null || true)"
+          printf 'OS:  %s\nTag: %s\nVersion:\n' "${SWIFT_PLATFORM}-${RUNNER_ARCH}" "${SWIFT_VERSION}" && swift --version
+      - name: Check out package
+        uses: actions/checkout@v7
+        with: { path: 'postgres-nio' }
+      - name: Run integration tests
+        run: swift test --package-path postgres-nio --filter=^IntegrationTests
+      - name: Check out postgres-kit dependent
+        uses: actions/checkout@v7
+        with: { repository: 'vapor/postgres-kit', path: 'postgres-kit' }
+      - name: Check out fluent-postgres-driver dependent
+        uses: actions/checkout@v7
+        with: { repository: 'vapor/fluent-postgres-driver', path: 'fluent-postgres-driver' }
+      - name: Use local package in dependents
+        run: |
+          swift package --package-path postgres-kit edit postgres-nio --path postgres-nio
+          swift package --package-path fluent-postgres-driver edit postgres-nio --path postgres-nio
+      - name: Run postgres-kit tests
+        run: swift test --package-path postgres-kit
+      - name: Run fluent-postgres-driver tests
+        run: swift test --package-path fluent-postgres-driver
+
+  macos-all:
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-formula:
+          # Only test one version on macOS, let Linux do the rest
+          - postgresql@17
+        postgres-auth:
+          # Only test one auth method on macOS, Linux tests will cover the others
+          - scram-sha-256
+        macos-version:
+          - macos-15
+          - macos-26
+        include:
+          - macos-version: macos-15
+            xcode-version: latest-stable
+          - macos-version: macos-26
+            xcode-version: latest-stable
+    runs-on: ${{ matrix.macos-version }}
+    env:
+      POSTGRES_HOSTNAME: 127.0.0.1
+      POSTGRES_USER: 'test_username'
+      POSTGRES_PASSWORD: 'test_password'
+      POSTGRES_DB: 'postgres'
+      POSTGRES_AUTH_METHOD: ${{ matrix.postgres-auth }}
+      POSTGRES_FORMULA: ${{ matrix.postgres-formula }}
+    steps:
+      - name: Select latest available Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ matrix.xcode-version }}
+      - name: Install Postgres, setup DB and auth, and wait for server start
+        run: |
+          export PGDATA=/tmp/vapor-postgres-test
+          brew install --overwrite "${POSTGRES_FORMULA}" && brew link --overwrite --force "${POSTGRES_FORMULA}"
+          initdb --locale=C --auth-host "${POSTGRES_AUTH_METHOD}" -U "${POSTGRES_USER}" --pwfile=<(echo "${POSTGRES_PASSWORD}")
+          pg_ctl start --wait
+        timeout-minutes: 15
+      - name: Checkout code
+        uses: actions/checkout@v7
+      - name: Run all tests
+        run: swift test --enable-code-coverage
+      - name: Submit code coverage
+        uses: vapor/swift-codecov-action@2f478f2fd22e06ca363967d0fb6c6593a8548cee # v0.3.5
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+          
+  api-breakage:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    container: swift:noble
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # https://github.com/actions/checkout/issues/766
+      - name: API breaking changes
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          swift package diagnose-api-breaking-changes origin/main

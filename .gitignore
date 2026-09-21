@@ -1,0 +1,17 @@
+# 构建产物
+.build/
+.build-cache/
+DerivedData/
+dist/
+.swiftpm/
+
+# 本地备份与系统文件
+.backups/
+.DS_Store
+
+# 跨项目转移稿（属于灵感收集器，不属于本仓库）
+_transfer_*.md
+
+# Xcode 个人状态（不应入库：含用户名与本地路径）
+xcuserdata/
+*.xcuserstate
