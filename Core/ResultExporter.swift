@@ -203,11 +203,17 @@ public enum ResultExporter {
     public static func insertStatements(
         for result: QueryResult,
         tableName: String,
+        schema: String? = nil,
         dialect: (any SQLDialect)? = nil
     ) -> String {
         guard !result.columns.isEmpty, !result.rows.isEmpty else { return "" }
 
-        let prefix = insertPrefix(tableName: tableName, columns: result.columns, dialect: dialect)
+        let prefix = insertPrefix(
+            tableName: tableName,
+            schema: schema,
+            columns: result.columns,
+            dialect: dialect
+        )
         var statements: [String] = []
         statements.reserveCapacity(result.rows.count)
 
@@ -221,8 +227,12 @@ public enum ResultExporter {
     }
 
     /// INSERT 语句的「表名 + 列清单」前缀（流式导出与一次性导出共用）。
+    ///
+    /// - Parameter schema: 非空且方言支持 schema 时，表名写成 `schema.表名`——
+    ///   少了这一层，导出的 INSERT 会落到 `search_path` 里第一个同名表上，属于静默写错地方。
     static func insertPrefix(
         tableName: String,
+        schema: String? = nil,
         columns: [ColumnMeta],
         dialect: (any SQLDialect)?
     ) -> (table: String, columnList: String) {
@@ -232,7 +242,12 @@ public enum ResultExporter {
         } else {
             quote = { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         }
-        return (quote(tableName), columns.map { quote($0.name) }.joined(separator: ", "))
+
+        var table = quote(tableName)
+        if let schema, !schema.isEmpty, dialect?.featureSet.contains(.supportsSchemas) ?? true {
+            table = quote(schema) + "." + table
+        }
+        return (table, columns.map { quote($0.name) }.joined(separator: ", "))
     }
 
     /// 单行 INSERT 语句。
@@ -252,11 +267,13 @@ public enum ResultExporter {
     /// 按格式取文本。
     /// - Parameters:
     ///   - tableName: 生成 INSERT 时使用的表名，默认 `table_name`（由界面传入页签标题等）。
+    ///   - schema: 生成 INSERT 时使用的 schema；非空且方言支持 schema 时会限定表名。
     ///   - dialect: 生成 INSERT 时用于引用标识符的方言；缺省用 SQL 标准的双引号。
     public static func text(
         for result: QueryResult,
         format: ResultExportFormat,
         tableName: String = "table_name",
+        schema: String? = nil,
         dialect: (any SQLDialect)? = nil
     ) -> String {
         switch format {
@@ -264,7 +281,8 @@ public enum ResultExporter {
         case .json: return json(for: result)
         case .tsv: return tsv(for: result)
         case .markdown: return markdown(for: result)
-        case .sqlInsert: return insertStatements(for: result, tableName: tableName, dialect: dialect)
+        case .sqlInsert:
+            return insertStatements(for: result, tableName: tableName, schema: schema, dialect: dialect)
         }
     }
 
