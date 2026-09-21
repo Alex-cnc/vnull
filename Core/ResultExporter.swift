@@ -64,19 +64,11 @@ public enum ResultExporter {
         var lines: [String] = []
 
         if !result.columns.isEmpty {
-            lines.append(
-                result.columns
-                    .map { escapeCSVField($0.name) }
-                    .joined(separator: ",")
-            )
+            lines.append(csvHeader(for: result.columns))
         }
 
         for row in result.rows {
-            let fields = (0..<result.columns.count).map { index -> String in
-                guard index < row.count, let value = row[index] else { return "" }
-                return escapeCSVField(value)
-            }
-            lines.append(fields.joined(separator: ","))
+            lines.append(csvLine(row, columns: result.columns))
         }
 
         let body = lines.joined(separator: "\r\n")
@@ -84,22 +76,26 @@ public enum ResultExporter {
         return includeByteOrderMark ? "\u{FEFF}" + text : text
     }
 
+    /// CSV 表头行（流式导出与一次性导出共用，保证两者逐字节一致）。
+    static func csvHeader(for columns: [ColumnMeta]) -> String {
+        columns.map { escapeCSVField($0.name) }.joined(separator: ",")
+    }
+
+    /// CSV 数据行：按列数取值，缺列 / NULL 输出空字段。
+    static func csvLine(_ row: [String?], columns: [ColumnMeta]) -> String {
+        (0..<columns.count).map { index -> String in
+            guard index < row.count, let value = row[index] else { return "" }
+            return escapeCSVField(value)
+        }.joined(separator: ",")
+    }
+
     /// JSON 文本（UTF-8 字符串形式）。
     public static func json(for result: QueryResult) -> String {
         let keys = uniqueKeys(for: result.columns)
+        let columnObjects = jsonColumnObjects(for: result.columns, keys: keys)
 
-        let columnObjects = zip(result.columns, keys).map { column, key in
-            "    { \"name\": \(quote(key)), \"type\": \(quote(column.typeName)) }"
-        }
-
-        let rowObjects = result.rows.map { row -> String in
-            let pairs = keys.enumerated().map { index, key -> String in
-                guard index < row.count, let value = row[index] else {
-                    return "\(quote(key)): null"
-                }
-                return "\(quote(key)): \(quote(value))"
-            }
-            return "    { " + pairs.joined(separator: ", ") + " }"
+        let rowObjects = result.rows.map { row in
+            "    " + jsonRowObject(row, keys: keys)
         }
 
         var parts: [String] = []
@@ -111,6 +107,24 @@ public enum ResultExporter {
         return "{\n" + parts.joined(separator: ",\n") + "\n}\n"
     }
 
+    /// JSON 的列描述对象（已缩进）。
+    static func jsonColumnObjects(for columns: [ColumnMeta], keys: [String]) -> [String] {
+        zip(columns, keys).map { column, key in
+            "    { \"name\": \(quote(key)), \"type\": \(quote(column.typeName)) }"
+        }
+    }
+
+    /// JSON 的单行对象（不含缩进，便于流式导出按需缩进）。
+    static func jsonRowObject(_ row: [String?], keys: [String]) -> String {
+        let pairs = keys.enumerated().map { index, key -> String in
+            guard index < row.count, let value = row[index] else {
+                return "\(quote(key)): null"
+            }
+            return "\(quote(key)): \(quote(value))"
+        }
+        return "{ " + pairs.joined(separator: ", ") + " }"
+    }
+
     /// TSV 文本（制表符分隔，无 BOM，`\n` 换行）。
     ///
     /// 字段内的制表符 / 回车 / 换行替换为空格：TSV 没有通用的转义约定，
@@ -120,19 +134,28 @@ public enum ResultExporter {
         var lines: [String] = []
 
         if !result.columns.isEmpty {
-            lines.append(result.columns.map { sanitizeTSVField($0.name) }.joined(separator: "\t"))
+            lines.append(tsvHeader(for: result.columns))
         }
 
         for row in result.rows {
-            let fields = (0..<result.columns.count).map { index -> String in
-                guard index < row.count, let value = row[index] else { return "" }
-                return sanitizeTSVField(value)
-            }
-            lines.append(fields.joined(separator: "\t"))
+            lines.append(tsvLine(row, columns: result.columns))
         }
 
         guard !lines.isEmpty else { return "" }
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// TSV 表头行。
+    static func tsvHeader(for columns: [ColumnMeta]) -> String {
+        columns.map { sanitizeTSVField($0.name) }.joined(separator: "\t")
+    }
+
+    /// TSV 数据行：NULL 与空字符串都输出为空（表格软件里两者无法区分）。
+    static func tsvLine(_ row: [String?], columns: [ColumnMeta]) -> String {
+        (0..<columns.count).map { index -> String in
+            guard index < row.count, let value = row[index] else { return "" }
+            return sanitizeTSVField(value)
+        }.joined(separator: "\t")
     }
 
     /// Markdown（GitHub 风格）表格。
@@ -142,19 +165,33 @@ public enum ResultExporter {
         guard !result.columns.isEmpty else { return "" }
 
         var lines: [String] = []
-        let header = result.columns.map { escapeMarkdownCell($0.name) }
-        lines.append("| " + header.joined(separator: " | ") + " |")
-        lines.append("| " + result.columns.map { _ in "---" }.joined(separator: " | ") + " |")
+        lines.append(markdownHeader(for: result.columns))
+        lines.append(markdownSeparator(for: result.columns))
 
         for row in result.rows {
-            let cells = (0..<result.columns.count).map { index -> String in
-                guard index < row.count, let value = row[index] else { return "NULL" }
-                return value.isEmpty ? "" : escapeMarkdownCell(value)
-            }
-            lines.append("| " + cells.joined(separator: " | ") + " |")
+            lines.append(markdownLine(row, columns: result.columns))
         }
 
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Markdown 表头行。
+    static func markdownHeader(for columns: [ColumnMeta]) -> String {
+        "| " + columns.map { escapeMarkdownCell($0.name) }.joined(separator: " | ") + " |"
+    }
+
+    /// Markdown 分隔行。
+    static func markdownSeparator(for columns: [ColumnMeta]) -> String {
+        "| " + columns.map { _ in "---" }.joined(separator: " | ") + " |"
+    }
+
+    /// Markdown 数据行：NULL 显示 `NULL`，空字符串显示空白单元格。
+    static func markdownLine(_ row: [String?], columns: [ColumnMeta]) -> String {
+        let cells = (0..<columns.count).map { index -> String in
+            guard index < row.count, let value = row[index] else { return "NULL" }
+            return value.isEmpty ? "" : escapeMarkdownCell(value)
+        }
+        return "| " + cells.joined(separator: " | ") + " |"
     }
 
     /// 逐行 `INSERT INTO <表> (<列...>) VALUES (...);`
@@ -170,28 +207,46 @@ public enum ResultExporter {
     ) -> String {
         guard !result.columns.isEmpty, !result.rows.isEmpty else { return "" }
 
+        let prefix = insertPrefix(tableName: tableName, columns: result.columns, dialect: dialect)
+        var statements: [String] = []
+        statements.reserveCapacity(result.rows.count)
+
+        for row in result.rows {
+            statements.append(
+                insertStatement(row, columns: result.columns, table: prefix.table, columnList: prefix.columnList)
+            )
+        }
+
+        return statements.joined(separator: "\n") + "\n"
+    }
+
+    /// INSERT 语句的「表名 + 列清单」前缀（流式导出与一次性导出共用）。
+    static func insertPrefix(
+        tableName: String,
+        columns: [ColumnMeta],
+        dialect: (any SQLDialect)?
+    ) -> (table: String, columnList: String) {
         let quote: (String) -> String
         if let dialect {
             quote = { dialect.quoteIdentifier($0) }
         } else {
             quote = { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         }
+        return (quote(tableName), columns.map { quote($0.name) }.joined(separator: ", "))
+    }
 
-        let table = quote(tableName)
-        let columnList = result.columns.map { quote($0.name) }.joined(separator: ", ")
-
-        var statements: [String] = []
-        statements.reserveCapacity(result.rows.count)
-
-        for row in result.rows {
-            let values = result.columns.enumerated().map { index, column -> String in
-                let value: String? = index < row.count ? row[index] : nil
-                return sqlLiteral(value, typeName: column.typeName)
-            }
-            statements.append("INSERT INTO \(table) (\(columnList)) VALUES (\(values.joined(separator: ", ")));")
+    /// 单行 INSERT 语句。
+    static func insertStatement(
+        _ row: [String?],
+        columns: [ColumnMeta],
+        table: String,
+        columnList: String
+    ) -> String {
+        let values = columns.enumerated().map { index, column -> String in
+            let value: String? = index < row.count ? row[index] : nil
+            return sqlLiteral(value, typeName: column.typeName)
         }
-
-        return statements.joined(separator: "\n") + "\n"
+        return "INSERT INTO \(table) (\(columnList)) VALUES (\(values.joined(separator: ", ")));"
     }
 
     /// 按格式取文本。
