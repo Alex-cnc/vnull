@@ -3,7 +3,7 @@ import Foundation
 // MARK: - 语句分类与风险
 
 /// 智能体产出的语句类别（FR-AI-12）。
-public enum AgentStatementKind: String, Equatable, Sendable, CaseIterable {
+public enum AgentStatementKind: String, Codable, Equatable, Sendable, CaseIterable {
     /// 只读查询：`SELECT` / `TABLE` / `VALUES` / `SHOW` / `DESC` / 不带 `ANALYZE` 的 `EXPLAIN`。
     case readQuery
     /// 改数据：`INSERT` / `UPDATE` / `DELETE` / `MERGE` / `COPY FROM` / `REPLACE` / `LOAD`。
@@ -41,7 +41,7 @@ public enum AgentStatementKind: String, Equatable, Sendable, CaseIterable {
 }
 
 /// 风险等级。
-public enum AgentRiskLevel: String, Comparable, Sendable {
+public enum AgentRiskLevel: String, Codable, Comparable, Sendable {
     case low
     case elevated
     case destructive
@@ -64,7 +64,7 @@ public enum AgentRiskLevel: String, Comparable, Sendable {
 }
 
 /// 护栏发现的风险点（FR-AI-12）。
-public enum AgentGuardFinding: String, Equatable, Sendable, CaseIterable {
+public enum AgentGuardFinding: String, Codable, Equatable, Sendable, CaseIterable {
     case updateWithoutWhere
     case deleteWithoutWhere
     case dropStatement
