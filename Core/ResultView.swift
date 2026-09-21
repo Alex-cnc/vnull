@@ -111,8 +111,11 @@ public struct ResultFilter: Hashable, Sendable {
             guard let cell else { return false }
             return !cell.isEmpty
         default:
-            guard let cell else { return false }
+            break
         }
+
+        // NULL 只在 isEmpty 下匹配，其余运算符一律不匹配（见上方文档注释）。
+        guard let cell else { return false }
 
         switch op {
         case .equals, .notEquals:
