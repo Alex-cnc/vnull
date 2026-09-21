@@ -140,7 +140,8 @@ final class ExplainPlanTests: XCTestCase {
         let plan = ExplainPlanParser.parse(jsonPlan)
 
         XCTAssertEqual(plan.nodes.count, 2)
-        XCTAssertFalse(plan.isAnalyzed)
+        // jsonPlan 里带 "Actual …" 字段，说明它是 ANALYZE 出来的，两种格式判定一致。
+        XCTAssertTrue(plan.isAnalyzed)
     }
 
     func testParseAutoDetectsText() {
