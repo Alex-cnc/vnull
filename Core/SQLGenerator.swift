@@ -267,6 +267,186 @@ public enum SQLGenerator {
         return "DROP DATABASE \(ifExists ? "IF EXISTS " : "")\(dialect.quoteIdentifier(trimmed));"
     }
 
+    // MARK: - 索引与约束（FR-DDL-03 扩写）
+
+    /// 参照动作（外键的 `ON DELETE` / `ON UPDATE`）。
+    public enum ReferentialAction: String, Sendable, CaseIterable {
+        case cascade = "CASCADE"
+        case restrict = "RESTRICT"
+        case setNull = "SET NULL"
+        case setDefault = "SET DEFAULT"
+        case noAction = "NO ACTION"
+    }
+
+    /// 索引定义。
+    public struct IndexDefinition: Equatable, Sendable {
+        public var name: String
+        public var table: String
+        public var schema: String?
+        /// 索引列（按顺序）。
+        public var columns: [String]
+        public var isUnique: Bool
+        /// 索引方法：btree / hash / gist / gin / brin / spgist；nil = 用默认 btree。
+        public var method: String?
+        /// 部分索引的 `WHERE` 条件（原样拼入，拒绝含 `;` 以免堆叠语句）。
+        public var whereClause: String?
+        /// `CONCURRENTLY`：不锁表建索引（不能在事务块中执行）。
+        public var concurrently: Bool
+
+        public init(
+            name: String,
+            table: String,
+            schema: String? = nil,
+            columns: [String],
+            isUnique: Bool = false,
+            method: String? = nil,
+            whereClause: String? = nil,
+            concurrently: Bool = false
+        ) {
+            self.name = name
+            self.table = table
+            self.schema = schema
+            self.columns = columns
+            self.isUnique = isUnique
+            self.method = method
+            self.whereClause = whereClause
+            self.concurrently = concurrently
+        }
+    }
+
+    /// 允许的索引方法白名单。
+    static let allowedIndexMethods: Set<String> = ["btree", "hash", "gist", "gin", "brin", "spgist"]
+
+    /// 生成 `CREATE INDEX`（FR-DDL-03 扩写）；输入非法返回 `nil`。
+    public static func createIndex(_ index: IndexDefinition, dialect: any SQLDialect) -> String? {
+        guard PrivilegeProbe.isValidIdentifier(index.name),
+              let table = qualifiedNameChecked(table: index.table, schema: index.schema, dialect: dialect),
+              !index.columns.isEmpty,
+              index.columns.allSatisfy({ PrivilegeProbe.isValidIdentifier($0) })
+        else { return nil }
+
+        var method = ""
+        if let raw = index.method {
+            let normalized = raw.trimmingCharacters(in: .whitespaces).lowercased()
+            guard allowedIndexMethods.contains(normalized) else { return nil }
+            method = " USING \(normalized)"
+        }
+
+        var wherePart = ""
+        if let raw = index.whereClause {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                guard !trimmed.contains(";") else { return nil }
+                wherePart = " WHERE \(trimmed)"
+            }
+        }
+
+        let unique = index.isUnique ? "UNIQUE " : ""
+        let concurrently = index.concurrently ? "CONCURRENTLY " : ""
+        let name = dialect.quoteIdentifier(trimmedSQLIdentifier(index.name))
+        let columns = index.columns.map { dialect.quoteIdentifier($0) }.joined(separator: ", ")
+        return "CREATE \(unique)INDEX \(concurrently)\(name) ON \(table)\(method) (\(columns))\(wherePart);"
+    }
+
+    /// 生成 `DROP INDEX`；输入非法返回 `nil`。
+    public static func dropIndex(
+        name: String,
+        schema: String? = nil,
+        ifExists: Bool = true,
+        concurrently: Bool = false,
+        dialect: any SQLDialect
+    ) -> String? {
+        guard let target = qualifiedNameChecked(table: name, schema: schema, dialect: dialect) else { return nil }
+        let concurrentlyPart = concurrently ? "CONCURRENTLY " : ""
+        let ifExistsPart = ifExists ? "IF EXISTS " : ""
+        return "DROP INDEX \(concurrentlyPart)\(ifExistsPart)\(target);"
+    }
+
+    /// 外键定义。
+    public struct ForeignKeyDefinition: Equatable, Sendable {
+        /// 约束名；nil = 交给数据库自动命名。
+        public var name: String?
+        public var table: String
+        public var schema: String?
+        public var columns: [String]
+        public var referencedTable: String
+        public var referencedSchema: String?
+        public var referencedColumns: [String]
+        public var onDelete: ReferentialAction?
+        public var onUpdate: ReferentialAction?
+
+        public init(
+            name: String? = nil,
+            table: String,
+            schema: String? = nil,
+            columns: [String],
+            referencedTable: String,
+            referencedSchema: String? = nil,
+            referencedColumns: [String],
+            onDelete: ReferentialAction? = nil,
+            onUpdate: ReferentialAction? = nil
+        ) {
+            self.name = name
+            self.table = table
+            self.schema = schema
+            self.columns = columns
+            self.referencedTable = referencedTable
+            self.referencedSchema = referencedSchema
+            self.referencedColumns = referencedColumns
+            self.onDelete = onDelete
+            self.onUpdate = onUpdate
+        }
+    }
+
+    /// 生成 `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY`（FR-DDL-03 扩写）；输入非法返回 `nil`。
+    ///
+    /// 两侧列数必须一致——列数不匹配的语句服务端一定报错，本地先拦掉更省事。
+    public static func addForeignKey(_ definition: ForeignKeyDefinition, dialect: any SQLDialect) -> String? {
+        guard let table = qualifiedNameChecked(table: definition.table, schema: definition.schema, dialect: dialect),
+              let referenced = qualifiedNameChecked(
+                  table: definition.referencedTable,
+                  schema: definition.referencedSchema,
+                  dialect: dialect
+              ),
+              !definition.columns.isEmpty,
+              definition.columns.count == definition.referencedColumns.count,
+              definition.columns.allSatisfy({ PrivilegeProbe.isValidIdentifier($0) }),
+              definition.referencedColumns.allSatisfy({ PrivilegeProbe.isValidIdentifier($0) })
+        else { return nil }
+
+        var constraintName = ""
+        if let name = definition.name {
+            guard PrivilegeProbe.isValidIdentifier(name) else { return nil }
+            constraintName = "CONSTRAINT \(dialect.quoteIdentifier(trimmedSQLIdentifier(name))) "
+        }
+
+        let columns = definition.columns.map { dialect.quoteIdentifier($0) }.joined(separator: ", ")
+        let referencedColumns = definition.referencedColumns.map { dialect.quoteIdentifier($0) }.joined(separator: ", ")
+        var actions = ""
+        if let onDelete = definition.onDelete { actions += " ON DELETE \(onDelete.rawValue)" }
+        if let onUpdate = definition.onUpdate { actions += " ON UPDATE \(onUpdate.rawValue)" }
+
+        return "ALTER TABLE \(table) ADD \(constraintName)FOREIGN KEY (\(columns)) "
+            + "REFERENCES \(referenced) (\(referencedColumns))\(actions);"
+    }
+
+    /// 生成 `ALTER TABLE … DROP CONSTRAINT`；输入非法返回 `nil`。
+    public static func dropConstraint(
+        name: String,
+        table: String,
+        schema: String? = nil,
+        ifExists: Bool = true,
+        cascade: Bool = false,
+        dialect: any SQLDialect
+    ) -> String? {
+        guard PrivilegeProbe.isValidIdentifier(name),
+              let target = qualifiedNameChecked(table: table, schema: schema, dialect: dialect)
+        else { return nil }
+        let ifExistsPart = ifExists ? "IF EXISTS " : ""
+        let cascadePart = cascade ? " CASCADE" : ""
+        return "ALTER TABLE \(target) DROP CONSTRAINT \(ifExistsPart)\(dialect.quoteIdentifier(trimmedSQLIdentifier(name)))\(cascadePart);"
+    }
+
     // MARK: - 权限管理（FR-SESS-04）
 
     /// `GRANT` / `REVOKE` 的作用对象。

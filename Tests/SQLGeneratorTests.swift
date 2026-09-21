@@ -373,4 +373,147 @@ final class SQLGeneratorTests: XCTestCase {
         // GBase（MySQL 系）的权限模型与 PostgreSQL 不同，本期不接入（FR-SESS-04 已注明）。
         XCTAssertNil(gbase.objectPrivilegeQuery(role: "root"))
     }
+
+    // MARK: - 索引与约束（FR-DDL-03 扩写）
+
+    func testCreateIndexBasic() {
+        let sql = SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "users_email_idx", table: "users", schema: "public", columns: ["email"]),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "CREATE INDEX \"users_email_idx\" ON \"public\".\"users\" (\"email\");")
+    }
+
+    func testCreateIndexUniqueWithMethodAndMultipleColumns() {
+        let sql = SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(
+                name: "orders_lookup_idx",
+                table: "orders",
+                columns: ["user_id", "created_at"],
+                isUnique: true,
+                method: "gin"
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "CREATE UNIQUE INDEX \"orders_lookup_idx\" ON \"orders\" USING gin (\"user_id\", \"created_at\");")
+    }
+
+    func testCreateIndexConcurrentlyWithPartialWhere() {
+        let sql = SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(
+                name: "active_users_idx",
+                table: "users",
+                columns: ["id"],
+                whereClause: "deleted_at IS NULL",
+                concurrently: true
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "CREATE INDEX CONCURRENTLY \"active_users_idx\" ON \"users\" (\"id\") WHERE deleted_at IS NULL;")
+    }
+
+    func testCreateIndexRejectsUnknownMethod() {
+        XCTAssertNil(SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "i", table: "t", columns: ["c"], method: "magic"),
+            dialect: pg
+        ))
+    }
+
+    func testCreateIndexRejectsInvalidInputs() {
+        // 空列
+        XCTAssertNil(SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "i", table: "t", columns: []), dialect: pg))
+        // 非法索引名
+        XCTAssertNil(SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "1bad", table: "t", columns: ["c"]), dialect: pg))
+        // 非法列名
+        XCTAssertNil(SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "i", table: "t", columns: ["c; DROP TABLE x"]), dialect: pg))
+    }
+
+    func testCreateIndexRejectsStatementStackingInWhereClause() {
+        XCTAssertNil(SQLGenerator.createIndex(
+            SQLGenerator.IndexDefinition(name: "i", table: "t", columns: ["c"], whereClause: "true; DROP TABLE users"),
+            dialect: pg
+        ))
+    }
+
+    func testDropIndexDefaults() {
+        XCTAssertEqual(
+            SQLGenerator.dropIndex(name: "users_email_idx", schema: "public", dialect: pg),
+            "DROP INDEX IF EXISTS \"public\".\"users_email_idx\";"
+        )
+        XCTAssertEqual(
+            SQLGenerator.dropIndex(name: "i", ifExists: false, concurrently: true, dialect: pg),
+            "DROP INDEX CONCURRENTLY \"i\";"
+        )
+        XCTAssertNil(SQLGenerator.dropIndex(name: "1bad", dialect: pg))
+    }
+
+    func testAddForeignKeyBasic() {
+        let sql = SQLGenerator.addForeignKey(
+            SQLGenerator.ForeignKeyDefinition(
+                name: "orders_user_fk",
+                table: "orders",
+                schema: "public",
+                columns: ["user_id"],
+                referencedTable: "users",
+                referencedSchema: "public",
+                referencedColumns: ["id"]
+            ),
+            dialect: pg
+        )
+        XCTAssertEqual(sql, "ALTER TABLE \"public\".\"orders\" ADD CONSTRAINT \"orders_user_fk\" "
+                       + "FOREIGN KEY (\"user_id\") REFERENCES \"public\".\"users\" (\"id\");")
+    }
+
+    func testAddForeignKeyWithReferentialActions() {
+        let sql = SQLGenerator.addForeignKey(
+            SQLGenerator.ForeignKeyDefinition(
+                table: "orders",
+                columns: ["user_id"],
+                referencedTable: "users",
+                referencedColumns: ["id"],
+                onDelete: .cascade,
+                onUpdate: .setNull
+            ),
+            dialect: pg
+        )
+        // 未指定约束名 → 交给数据库自动命名。
+        XCTAssertEqual(sql, "ALTER TABLE \"orders\" ADD FOREIGN KEY (\"user_id\") "
+                       + "REFERENCES \"users\" (\"id\") ON DELETE CASCADE ON UPDATE SET NULL;")
+    }
+
+    func testAddForeignKeyRejectsColumnCountMismatch() {
+        XCTAssertNil(SQLGenerator.addForeignKey(
+            SQLGenerator.ForeignKeyDefinition(
+                table: "orders",
+                columns: ["user_id", "tenant_id"],
+                referencedTable: "users",
+                referencedColumns: ["id"]
+            ),
+            dialect: pg
+        ))
+    }
+
+    func testAddForeignKeyRejectsInvalidConstraintName() {
+        XCTAssertNil(SQLGenerator.addForeignKey(
+            SQLGenerator.ForeignKeyDefinition(
+                name: "bad name",
+                table: "orders",
+                columns: ["user_id"],
+                referencedTable: "users",
+                referencedColumns: ["id"]
+            ),
+            dialect: pg
+        ))
+    }
+
+    func testDropConstraint() {
+        XCTAssertEqual(
+            SQLGenerator.dropConstraint(name: "orders_user_fk", table: "orders", schema: "public", cascade: true, dialect: pg),
+            "ALTER TABLE \"public\".\"orders\" DROP CONSTRAINT IF EXISTS \"orders_user_fk\" CASCADE;"
+        )
+        XCTAssertNil(SQLGenerator.dropConstraint(name: "fk", table: "1bad", dialect: pg))
+    }
 }
