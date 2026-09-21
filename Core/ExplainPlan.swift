@@ -137,10 +137,10 @@ public struct ExplainPlan: Sendable {
 
     /// 是否包含实际耗时（即用了 `ANALYZE`）。
     ///
-    /// 只认文本形态里的 `actual time=`：JSON 形态虽然也可能带 `Actual …` 字段，
-    /// 但「是否 ANALYZE」在当前实现里只对文本计划判定（见 `testParseAutoDetectsJSON`）。
+    /// 两种输入形态一视同仁：只要任一节点带实际总耗时，就认为该计划来自 `ANALYZE`
+    /// （JSON 形态的 `Actual Total Time` 同样计入，不因格式不同而改变含义）。
     public var isAnalyzed: Bool {
-        rawText.contains("actual time=")
+        nodes.contains { $0.actualTotalTime != nil }
     }
 
     /// 全表扫描节点数。
