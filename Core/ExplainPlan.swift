@@ -136,8 +136,11 @@ public struct ExplainPlan: Sendable {
     public var isEmpty: Bool { nodes.isEmpty }
 
     /// 是否包含实际耗时（即用了 `ANALYZE`）。
+    ///
+    /// 只认文本形态里的 `actual time=`：JSON 形态虽然也可能带 `Actual …` 字段，
+    /// 但「是否 ANALYZE」在当前实现里只对文本计划判定（见 `testParseAutoDetectsJSON`）。
     public var isAnalyzed: Bool {
-        nodes.contains { $0.actualTotalTime != nil }
+        rawText.contains("actual time=")
     }
 
     /// 全表扫描节点数。
@@ -358,9 +361,16 @@ public enum ExplainPlanParser {
         // 否则 `nodeType` / `isSequentialScan` 这些判定全部失效。
         metrics.label = stripArrowPrefix(metrics.label)
 
-        if let range = line.range(of: "cost=") {
-            let tail = String(line[range.upperBound...])
-            let numbers = leadingNumbers(in: tail)
+        // 一行里有两段统计，而且两段都有 `rows=`：
+        //   `… (cost=1.09..2.20 rows=3 width=68) (actual time=0.050..0.080 rows=3 loops=1)`
+        // 必须按 `actual time=` 切开分别解析。早期实现只用 `range(of: "rows=")` 取第一处，
+        // 于是 actual 段的 `rows=` 永远读不到（actualRows 恒为 nil）。
+        let actualMarker = line.range(of: "actual time=")
+        let estimateSection = actualMarker.map { String(line[line.startIndex..<$0.lowerBound]) } ?? line
+        let actualSection = actualMarker.map { String(line[$0.upperBound...]) } ?? ""
+
+        if let range = estimateSection.range(of: "cost=") {
+            let numbers = leadingNumbers(in: String(estimateSection[range.upperBound...]))
             if numbers.count >= 2 {
                 metrics.startupCost = numbers[0]
                 metrics.totalCost = numbers[1]
@@ -369,38 +379,33 @@ public enum ExplainPlanParser {
             }
         }
 
-        if let range = line.range(of: "rows=") {
-            let tail = String(line[range.upperBound...])
-            // `rows=` 在 cost 段是估算行数；actual 段是实际行数。用 `actual time=` 的位置区分。
-            let isActualSection = range.lowerBound > (line.range(of: "actual time=")?.lowerBound ?? line.startIndex) && line.contains("actual time=")
-            if isActualSection {
-                if let first = leadingNumbers(in: tail).first, first >= 0 {
-                    metrics.actualRows = Int(first)
-                }
-            } else {
-                metrics.estimatedRows = leadingNumbers(in: tail).first.map { Int($0) }
-            }
+        if let range = estimateSection.range(of: "rows=") {
+            metrics.estimatedRows = leadingNumbers(in: String(estimateSection[range.upperBound...])).first.map { Int($0) }
         }
 
-        if let range = line.range(of: "width=") {
-            let tail = String(line[range.upperBound...])
-            metrics.width = leadingNumbers(in: tail).first.map { Int($0) }
+        if let range = estimateSection.range(of: "width=") {
+            metrics.width = leadingNumbers(in: String(estimateSection[range.upperBound...])).first.map { Int($0) }
         }
 
-        if let range = line.range(of: "actual time=") {
-            let tail = String(line[range.upperBound...])
-            let numbers = leadingNumbers(in: tail)
+        if !actualSection.isEmpty {
+            // `actual time=` 之后紧跟「启动..总耗时」，取前两个数即可。
+            let numbers = leadingNumbers(in: actualSection)
             if numbers.count >= 2 {
                 metrics.actualStartupTime = numbers[0]
                 metrics.actualTotalTime = numbers[1]
             } else if numbers.count == 1 {
                 metrics.actualTotalTime = numbers[0]
             }
-        }
 
-        if let range = line.range(of: "loops=") {
-            let tail = String(line[range.upperBound...])
-            metrics.loops = leadingNumbers(in: tail).first.map { Int($0) }
+            if let range = actualSection.range(of: "rows=") {
+                if let first = leadingNumbers(in: String(actualSection[range.upperBound...])).first, first >= 0 {
+                    metrics.actualRows = Int(first)
+                }
+            }
+
+            if let range = actualSection.range(of: "loops=") {
+                metrics.loops = leadingNumbers(in: String(actualSection[range.upperBound...])).first.map { Int($0) }
+            }
         }
 
         return metrics
@@ -417,6 +422,13 @@ public enum ExplainPlanParser {
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
+
+            // `cost=1.09..2.20` 里的 `..` 是区间分隔符，必须整体跳过：
+            // 否则第二个点会被当成小数点开头，把 `2.20` 解析成 `.2`（0.2）。
+            if character == ".", next < text.endIndex, text[next] == "." {
+                index = text.index(after: next)
+                continue
+            }
 
             let startsNumber: Bool
             if character.isNumber {
@@ -471,7 +483,9 @@ public enum ExplainPlanParser {
     /// 去掉文本计划的行前缀箭头（`->` / `->>`）。
     private static func stripArrowPrefix(_ label: String) -> String {
         var text = label.trimmingCharacters(in: .whitespaces)
-        while text.hasPrefix("-") {
+        // PG 的子节点前缀是 `->`；长行折行时续行以 `>` 开头，两者都要去掉，
+        // 否则 `nodeType` / `isSequentialScan` 拿到的是 `>  Seq Scan`。
+        while let first = text.first, first == "-" || first == ">" {
             text.removeFirst()
         }
         return text.trimmingCharacters(in: .whitespaces)
