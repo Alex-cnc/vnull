@@ -359,7 +359,7 @@ public enum ExplainPlanParser {
         metrics.label = stripArrowPrefix(metrics.label)
 
         if let range = line.range(of: "cost=") {
-            let tail = line[range.upperBound...]
+            let tail = String(line[range.upperBound...])
             let numbers = leadingNumbers(in: tail)
             if numbers.count >= 2 {
                 metrics.startupCost = numbers[0]
@@ -370,7 +370,7 @@ public enum ExplainPlanParser {
         }
 
         if let range = line.range(of: "rows=") {
-            let tail = line[range.upperBound...]
+            let tail = String(line[range.upperBound...])
             // `rows=` 在 cost 段是估算行数；actual 段是实际行数。用 `actual time=` 的位置区分。
             let isActualSection = range.lowerBound > (line.range(of: "actual time=")?.lowerBound ?? line.startIndex) && line.contains("actual time=")
             if isActualSection {
@@ -383,12 +383,12 @@ public enum ExplainPlanParser {
         }
 
         if let range = line.range(of: "width=") {
-            let tail = line[range.upperBound...]
+            let tail = String(line[range.upperBound...])
             metrics.width = leadingNumbers(in: tail).first.map { Int($0) }
         }
 
         if let range = line.range(of: "actual time=") {
-            let tail = line[range.upperBound...]
+            let tail = String(line[range.upperBound...])
             let numbers = leadingNumbers(in: tail)
             if numbers.count >= 2 {
                 metrics.actualStartupTime = numbers[0]
@@ -399,7 +399,7 @@ public enum ExplainPlanParser {
         }
 
         if let range = line.range(of: "loops=") {
-            let tail = line[range.upperBound...]
+            let tail = String(line[range.upperBound...])
             metrics.loops = leadingNumbers(in: tail).first.map { Int($0) }
         }
 
