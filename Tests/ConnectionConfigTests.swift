@@ -47,14 +47,14 @@ final class ConnectionConfigTests: XCTestCase {
 
     func testDisplayTitleIncludesLoginUser() {
         let configuration = ConnectionConfig(
-            name: "PGConn",
+            name: "DemoPG",
             dbType: .postgresql,
             host: "192.0.2.10",
             database: "postgres",
             username: "postgres"
         )
 
-        XCTAssertEqual(configuration.displayTitle(untitled: "未命名"), "PGConn (postgres)")
+        XCTAssertEqual(configuration.displayTitle(untitled: "未命名"), "DemoPG (postgres)")
     }
 
     func testDisplayTitleUsesPlaceholderWhenNameEmpty() {
@@ -71,13 +71,13 @@ final class ConnectionConfigTests: XCTestCase {
 
     func testDisplayTitleWithoutUserHasNoEmptyParentheses() {
         let configuration = ConnectionConfig(
-            name: "PGConn",
+            name: "DemoPG",
             dbType: .postgresql,
             host: "127.0.0.1",
             database: "postgres",
             username: ""
         )
 
-        XCTAssertEqual(configuration.displayTitle(untitled: "未命名"), "PGConn")
+        XCTAssertEqual(configuration.displayTitle(untitled: "未命名"), "DemoPG")
     }
 }
