@@ -29,6 +29,13 @@ struct PostgresClientApp: App {
                     appState.isAgentSettingsPresented = true
                 }
                 .keyboardShortcut(",", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button(L(.menuAgentGenerateSQL)) {
+                    appState.isAgentSQLPresented = true
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
             }
 
             CommandMenu(L(.menuLanguage)) {

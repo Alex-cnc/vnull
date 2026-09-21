@@ -101,6 +101,8 @@ final class AppState: ObservableObject {
     @Published var hasAgentAPIKey = false
     /// 「智能体设置…」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSettingsPresented = false
+    /// 「自然语言 → SQL」面板的呈现开关（菜单命令驱动）。
+    @Published var isAgentSQLPresented = false
 
     @Published var errorMessage: String?
     @Published var statusMessage: String = L(.stateNotConnected)
@@ -682,6 +684,77 @@ final class AppState: ObservableObject {
 
         statusMessage = L(.agentSaved)
         return true
+    }
+
+    /// 供模型参考的 schema 摘要（NFR-AI-01：只有结构，没有行数据）。
+    ///
+    /// 取表清单走**一条**查询（方言的 `listTablesQuery`），并把数量封顶 ——
+    /// 「最小外发」不只是不发结果集，也包括别把上千张表一股脑倒出去。
+    func agentSchemaSummary(includeTableList: Bool) async throws -> AgentSQLGenerator.SchemaSummary {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let database = currentDatabaseName(for: configuration)
+        guard includeTableList else {
+            return AgentSQLGenerator.SchemaSummary(database: database, tables: [])
+        }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(dialect.listTablesQuery(database: database, schema: nil), on: service)
+        // 列名兼容两套命名（PG 的 information_schema 用 table_name，GBase 的 SHOW TABLES 用第一列）；
+        // 这里只认表名这一列，避免把整行原样外发。
+        let nameIndex = result.columns.firstIndex { column in
+            ["table_name", "name", "tables_in_" + database.lowercased()].contains(
+                column.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            )
+        } ?? (result.columns.isEmpty ? nil : 0)
+
+        guard let nameIndex else {
+            return AgentSQLGenerator.SchemaSummary(database: database, tables: [])
+        }
+
+        let tables = result.rows.prefix(Self.agentTableListLimit).compactMap { row -> AgentSQLGenerator.SchemaSummary.Table? in
+            guard nameIndex < row.count,
+                  let raw = row[nameIndex],
+                  case let name = raw.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty
+            else { return nil }
+            return AgentSQLGenerator.SchemaSummary.Table(name: name)
+        }
+
+        return AgentSQLGenerator.SchemaSummary(database: database, tables: tables)
+    }
+
+    /// 表清单外发上限（防止把上千张表发出去）。
+    static let agentTableListLimit = 60
+
+    /// 走完整条「自然语言 → SQL」通道；产物是文本，**不会被自动执行**（FR-AI-02）。
+    func generateAgentSQL(
+        instruction: String,
+        schema: AgentSQLGenerator.SchemaSummary,
+        currentStatement: String?
+    ) async throws -> AgentSQLGenerator.Result {
+        try await AgentSQLGenerator.generate(
+            request: AgentSQLGenerator.Request(
+                instruction: instruction,
+                schema: schema,
+                currentStatement: currentStatement
+            ),
+            configuration: agentConfiguration,
+            apiKey: agentAPIKey,
+            policy: .readOnlyDefault,
+            ledger: .empty,
+            client: OpenAICompatibleClient()
+        )
+    }
+
+    /// 把生成结果放进**新页签**的编辑器里（不覆盖用户正在写的内容，也不执行）。
+    func openGeneratedSQLInNewTab(_ sql: String) {
+        newQueryTab()
+        guard let tabID = selectedTabID else { return }
+        updateSQL(sql, for: tabID)
+        statusMessage = L(.agentSQLNotExecuted)
     }
 
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。

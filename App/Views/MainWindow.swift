@@ -68,6 +68,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentSettingsPresented) {
             AgentSettingsSheet()
         }
+        .sheet(isPresented: $appState.isAgentSQLPresented) {
+            AgentSQLPanel()
+        }
         .task {
             await appState.loadAgentConfiguration()
         }

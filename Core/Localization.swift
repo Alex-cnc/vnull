@@ -226,6 +226,27 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentSaveFailed
     case agentInvalidHint
 
+    // 自然语言 → SQL（FR-AI-02）
+    case menuAgentGenerateSQL
+    case agentSQLTitle
+    case agentSQLInstruction
+    case agentSQLInstructionPlaceholder
+    case agentSQLIncludeTables
+    case agentSQLIncludeStatement
+    case agentSQLPayload
+    case agentSQLPayloadNote
+    case agentSQLGenerate
+    case agentSQLResult
+    case agentSQLExplanation
+    case agentSQLGuard
+    case agentSQLNotExecuted
+    case agentSQLInsertNewTab
+    case agentSQLCopy
+    case agentSQLCopied
+    case agentSQLFailed
+    case agentSQLNoInstruction
+    case agentSQLNoTables
+
     // 执行状态
     case stateNotConnected
     case stateNotExecuted
@@ -524,6 +545,25 @@ public enum LocalizedStrings {
         .agentSaved: [.simplifiedChinese: "已保存智能体设置。", .english: "Agent settings saved."],
         .agentSaveFailed: [.simplifiedChinese: "保存智能体设置失败：%@", .english: "Saving agent settings failed: %@"],
         .agentInvalidHint: [.simplifiedChinese: "配置尚不完整，即使打开总开关也不会外发。", .english: "Configuration is incomplete; nothing will be sent even with the switch on."],
+        .menuAgentGenerateSQL: [.simplifiedChinese: "用自然语言生成 SQL…", .english: "Generate SQL from plain language…"],
+        .agentSQLTitle: [.simplifiedChinese: "自然语言 → SQL", .english: "Plain language → SQL"],
+        .agentSQLInstruction: [.simplifiedChinese: "你想要什么？", .english: "What do you want?"],
+        .agentSQLInstructionPlaceholder: [.simplifiedChinese: "例如：统计每个客户近 30 天的下单总额，按金额倒序", .english: "e.g. total order amount per customer over the last 30 days, highest first"],
+        .agentSQLIncludeTables: [.simplifiedChinese: "把当前库的表清单发给模型", .english: "Send the current database's table list"],
+        .agentSQLIncludeStatement: [.simplifiedChinese: "把编辑器里的当前语句发给模型", .english: "Send the statement currently in the editor"],
+        .agentSQLPayload: [.simplifiedChinese: "将要外发的内容", .english: "What will be sent"],
+        .agentSQLPayloadNote: [.simplifiedChinese: "只发下面这些内容；结果集行数据永不外发（NFR-AI-01）。数据库对象注释会被标记为不可信资料。", .english: "Only the content below is sent; result rows are never sent (NFR-AI-01). Object comments are marked as untrusted data."],
+        .agentSQLGenerate: [.simplifiedChinese: "生成", .english: "Generate"],
+        .agentSQLResult: [.simplifiedChinese: "生成结果（可编辑）", .english: "Result (editable)"],
+        .agentSQLExplanation: [.simplifiedChinese: "模型说明", .english: "Model explanation"],
+        .agentSQLGuard: [.simplifiedChinese: "护栏判定", .english: "Guardrail verdict"],
+        .agentSQLNotExecuted: [.simplifiedChinese: "生成结果不会自动执行；请核对后再自行运行。", .english: "Generated SQL is never executed automatically — review it first."],
+        .agentSQLInsertNewTab: [.simplifiedChinese: "在新页签中打开", .english: "Open in a new tab"],
+        .agentSQLCopy: [.simplifiedChinese: "复制 SQL", .english: "Copy SQL"],
+        .agentSQLCopied: [.simplifiedChinese: "已复制生成的 SQL。", .english: "Generated SQL copied."],
+        .agentSQLFailed: [.simplifiedChinese: "生成失败：%@", .english: "Generation failed: %@"],
+        .agentSQLNoInstruction: [.simplifiedChinese: "请先填写需求描述。", .english: "Please describe what you need first."],
+        .agentSQLNoTables: [.simplifiedChinese: "未能取得表清单（可关闭该项后重试）。", .english: "Could not load the table list (turn that option off and retry)."],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],
