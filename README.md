@@ -1,4 +1,6 @@
-# PostgreSQL / GBase 8a 客户端（macOS）
+# 智能数据库客户端（macOS）
+
+> 工程名 `PostgresClient`、包标识 `com.vnull.PostgresClient` 保持不变；产品自 v3.3 起更名为「智能数据库客户端」。
 
 Xcode + SwiftUI 工程骨架，按需求分析与概要设计 v1.2 搭建。
 

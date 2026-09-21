@@ -69,9 +69,9 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>PostgresClient</string>
+    <string>智能数据库客户端</string>
     <key>CFBundleDisplayName</key>
-    <string>PostgreSQL 客户端</string>
+    <string>智能数据库客户端</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

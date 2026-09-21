@@ -53,7 +53,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClient
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: PostgresClient
+        INFOPLIST_KEY_CFBundleDisplayName: 智能数据库客户端
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         CODE_SIGN_ENTITLEMENTS: App/PostgresClient.entitlements
         ENABLE_HARDENED_RUNTIME: YES
