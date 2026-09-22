@@ -141,6 +141,12 @@ final class AppState: ObservableObject {
     /// 被拦下、等待确认的执行请求；`nil` 表示没有待确认项。
     @Published var pendingExecution: PendingExecution?
 
+    /// 运行范围（FR-EXEC-14）：整篇 / 光标所在语句 / 选中片段。用 `UserDefaults` 记住。
+    @Published var executionScope: ExecutionScope.Mode =
+        ExecutionScope.Mode(rawValue: UserDefaults.standard.string(forKey: "execution.scope") ?? "") ?? .all {
+        didSet { UserDefaults.standard.set(executionScope.rawValue, forKey: "execution.scope") }
+    }
+
     /// 当前生效的执行安全策略。
     var executionSafetyPolicy: ExecutionSafetyPolicy {
         ExecutionSafetyPolicy(
@@ -159,6 +165,15 @@ final class AppState: ObservableObject {
     /// 用户点了「取消」。
     func cancelPendingExecution() {
         pendingExecution = nil
+    }
+
+    /// 运行范围无法满足时的可读提示（不静默改成跑整篇）。
+    private func message(forRunScopeIssue issue: ExecutionScope.Resolution.Issue) -> String {
+        switch issue {
+        case .emptySelection: return L(.runScopeEmptySelection)
+        case .noStatementAtCursor: return L(.runScopeNoStatement)
+        case .emptyText: return L(.runScopeEmptyText)
+        }
     }
 
     @Published var errorMessage: String?
@@ -1128,6 +1143,7 @@ final class AppState: ObservableObject {
     func closeTab(_ tabID: UUID) {
         guard tabs.count > 1 else { return }
         guard !(tabs.first(where: { $0.id == tabID })?.isExecuting ?? false) else { return }
+        EditorCommandCenter.shared.forgetSelection(tabID: tabID)
         tabs.removeAll { $0.id == tabID }
         if selectedTabID == tabID {
             selectedTabID = tabs.last?.id
@@ -1252,7 +1268,23 @@ final class AppState: ObservableObject {
             return
         }
 
-        let sql = tabs[tabIndex].sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 运行范围控制（FR-EXEC-14）：先按当前模式抠出**真正要跑的那一段**，
+        // 后续的连接、Safe Mode 判定、执行全都基于这一段。
+        let resolution = ExecutionScope.resolve(
+            text: tabs[tabIndex].sql,
+            mode: executionScope,
+            selection: EditorCommandCenter.shared.selection(for: tabID),
+            databaseType: configuration.dbType
+        )
+        if let issue = resolution.issue {
+            updateTab(tabID) {
+                $0.errorMessage = message(forRunScopeIssue: issue)
+                $0.statusMessage = L(.stateNotExecuted)
+            }
+            return
+        }
+
+        let sql = resolution.sql.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sql.isEmpty else {
             updateTab(tabID) {
                 $0.errorMessage = L(.stateSQLEmpty)

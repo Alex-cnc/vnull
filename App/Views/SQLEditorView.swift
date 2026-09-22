@@ -114,6 +114,15 @@ struct SQLEditorView: NSViewRepresentable {
             self.parent = parent
         }
 
+        /// 光标 / 选区变化时上报给命令通道（FR-EXEC-14「只跑光标所在语句」要用）。
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView else { return }
+            EditorCommandCenter.shared.reportSelection(
+                tabID: parent.tabID,
+                range: textView.selectedRange()
+            )
+        }
+
         func textDidChange(_ notification: Notification) {
             guard let textView, !isUpdatingFromSwiftUI, !textView.isApplyingAttributes else { return }
 

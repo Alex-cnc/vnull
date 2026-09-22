@@ -50,6 +50,7 @@ struct QueryToolbar: View {
                 .frame(height: 16)
 
             editMenu
+            runScopeMenu
             safetyMenu
             helpButton
 
@@ -124,6 +125,45 @@ struct QueryToolbar: View {
         let preview = singleLine.count > 48 ? String(singleLine.prefix(48)) + "…" : singleLine
         let mark = entry.succeeded ? "✓" : "✗"
         return "\(mark) \(preview)"
+    }
+
+    /// 运行范围菜单（FR-EXEC-14）：整篇 / 光标所在语句 / 选中片段。
+    private var runScopeMenu: some View {
+        Menu {
+            Picker(L(.toolbarRunScope), selection: $appState.executionScope) {
+                Text(L(.runScopeAll)).tag(ExecutionScope.Mode.all)
+                Text(L(.runScopeCurrentStatement)).tag(ExecutionScope.Mode.currentStatement)
+                Text(L(.runScopeSelection)).tag(ExecutionScope.Mode.selection)
+            }
+            .pickerStyle(.inline)
+
+            Divider()
+
+            Text(L(.runScopeHint))
+                .font(.caption)
+        } label: {
+            Label(runScopeTitle, systemImage: runScopeSymbol)
+                .labelStyle(.titleAndIcon)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(L(.toolbarRunScope))
+    }
+
+    private var runScopeTitle: String {
+        switch appState.executionScope {
+        case .all: return L(.runScopeAll)
+        case .currentStatement: return L(.runScopeCurrentStatement)
+        case .selection: return L(.runScopeSelection)
+        }
+    }
+
+    private var runScopeSymbol: String {
+        switch appState.executionScope {
+        case .all: return "doc.text"
+        case .currentStatement: return "text.cursor"
+        case .selection: return "selection.pin.in.out"
+        }
     }
 
     /// 高危语句保护开关（FR-EXEC-16）。

@@ -257,6 +257,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case safetyConfirmRun
     case safetyConfirmCancel
 
+    // 运行范围控制（FR-EXEC-14）
+    case toolbarRunScope
+    case runScopeAll
+    case runScopeCurrentStatement
+    case runScopeSelection
+    case runScopeHint
+    case runScopeEmptySelection
+    case runScopeNoStatement
+    case runScopeEmptyText
+
     // 执行状态
     case stateNotConnected
     case stateNotExecuted
@@ -582,6 +592,14 @@ public enum LocalizedStrings {
         .safetyConfirmMessage: [.simplifiedChinese: "以下是检测到的风险点：", .english: "Detected risks:"],
         .safetyConfirmRun: [.simplifiedChinese: "仍然执行", .english: "Run anyway"],
         .safetyConfirmCancel: [.simplifiedChinese: "取消", .english: "Cancel"],
+        .toolbarRunScope: [.simplifiedChinese: "运行范围", .english: "Run scope"],
+        .runScopeAll: [.simplifiedChinese: "整篇", .english: "Entire script"],
+        .runScopeCurrentStatement: [.simplifiedChinese: "光标所在语句", .english: "Statement at cursor"],
+        .runScopeSelection: [.simplifiedChinese: "选中片段", .english: "Selection only"],
+        .runScopeHint: [.simplifiedChinese: "选择执行时只跑哪一段；被 Safe Mode 拦下时也只检查这一段。", .english: "Which part to run; Safe mode only checks this part too."],
+        .runScopeEmptySelection: [.simplifiedChinese: "没有选中任何内容，请先选中要执行的片段。", .english: "Nothing is selected — select the fragment you want to run first."],
+        .runScopeNoStatement: [.simplifiedChinese: "光标不在任何语句上。", .english: "The cursor is not on any statement."],
+        .runScopeEmptyText: [.simplifiedChinese: "编辑器里还没有内容。", .english: "The editor is empty."],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],
