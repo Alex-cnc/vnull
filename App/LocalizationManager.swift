@@ -26,6 +26,14 @@ final class LocalizationManager: ObservableObject {
         guard newLanguage != language else { return }
         language = newLanguage
         UserDefaults.standard.set(newLanguage.rawValue, forKey: Self.storageKey)
+
+        // 菜单栏要走两条路才能全变（详见 `Core/MenuLocalization.swift` 的实测记录）：
+        // 标题由 SwiftUI 重建命令图时刷新；叶子项 SwiftUI 不管，得自己改 NSMenuItem.title。
+        // 先立刻改一次（用户马上拉开菜单也不会看到旧文案），再等 SwiftUI 重建落定后兜一次。
+        MainMenuLocalizer.refresh(to: newLanguage)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            MainMenuLocalizer.refresh(to: newLanguage)
+        }
     }
 
     func text(_ key: LKey, arguments: [CVarArg]) -> String {

@@ -16,52 +16,10 @@ struct DoyahStudioApp: App {
                 .id(localization.language)
         }
         .windowStyle(.titleBar)
+        // 菜单栏命令放进 `DoyahStudioCommands`：`.commands {}` 闭包只在场景建立时求值一次，
+        // 直接写在这里会让语言切换后**菜单栏不刷新**（见该文件注释与 NFR-I18N-03）。
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button(L(.menuNewQuery)) {
-                    appState.newQueryTab()
-                }
-                .keyboardShortcut("t", modifiers: [.command])
-            }
-
-            CommandMenu(L(.menuAgent)) {
-                Button(L(.menuAgentSettings)) {
-                    appState.isAgentSettingsPresented = true
-                }
-                .keyboardShortcut(",", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button(L(.menuAgentGenerateSQL)) {
-                    appState.isAgentSQLPresented = true
-                }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button(L(.menuDataTask)) {
-                    appState.isDataTaskPresented = true
-                }
-                .keyboardShortcut(AppShortcut.dataTask.key, modifiers: AppShortcut.dataTask.modifiers)
-
-                Divider()
-
-                Button(L(.menuAgentAudit)) {
-                    appState.isAgentAuditPresented = true
-                }
-                .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
-            }
-
-            CommandMenu(L(.menuLanguage)) {
-                Picker(L(.menuLanguage), selection: Binding(
-                    get: { localization.language },
-                    set: { localization.setLanguage($0) }
-                )) {
-                    ForEach(AppLanguage.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(language)
-                    }
-                }
-            }
+            DoyahStudioCommands(appState: appState)
         }
     }
 }
