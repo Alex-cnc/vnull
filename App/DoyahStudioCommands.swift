@@ -63,10 +63,10 @@ struct DoyahStudioCommands: Commands {
             .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
         }
 
-        // 「显示」菜单：底部终端面板（与系统自带的「显示边栏」并列）。
+        // 「显示」菜单：下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）。
         CommandGroup(after: .sidebar) {
-            Button(L(.bottomPanelToggle)) {
-                appState.isBottomPanelVisible.toggle()
+            Button(L(.lowerPaneToggle)) {
+                appState.isLowerPaneVisible.toggle()
             }
             .keyboardShortcut(AppShortcut.terminal.key, modifiers: AppShortcut.terminal.modifiers)
         }

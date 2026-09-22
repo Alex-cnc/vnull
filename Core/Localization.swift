@@ -41,13 +41,20 @@ public enum LKey: String, CaseIterable, Sendable {
     case menuNewQuery
     case menuLanguage
 
-    // 底部栏 / 终端
-    case bottomPanelTerminal
-    case bottomPanelToggle
-    case bottomPanelHide
-    case bottomPanelMaximize
-    case bottomPanelRestore
-    case bottomPanelPending
+    // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）
+    case lowerPaneResult
+    case lowerPaneProblem
+    case lowerPaneOutput
+    case lowerPaneTerminal
+    case lowerPaneDebugConsole
+    case lowerPaneToggle
+    case lowerPaneHide
+    case lowerPaneMaximize
+    case lowerPaneRestore
+    case lowerPaneProblemEmpty
+    case lowerPaneOutputEmpty
+    case lowerPaneDebugPlaceholder
+    case lowerPaneClear
     case terminalRestart
     case terminalStopped
 
@@ -664,12 +671,19 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
-        .bottomPanelTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],
-        .bottomPanelToggle: [.simplifiedChinese: "显示 / 隐藏终端", .english: "Show/Hide Terminal"],
-        .bottomPanelMaximize: [.simplifiedChinese: "最大化终端", .english: "Maximize terminal"],
-        .bottomPanelRestore: [.simplifiedChinese: "恢复终端", .english: "Restore terminal"],
-        .bottomPanelHide: [.simplifiedChinese: "隐藏终端", .english: "Hide terminal"],
-        .bottomPanelPending: [.simplifiedChinese: "终端内容尚未接入。（受 App 沙箱限制，外部命令方案确认后再接。）", .english: "Terminal content is not wired up yet. (External commands are constrained by the App Sandbox; to be wired up once that decision is made.)"],
+        .lowerPaneResult: [.simplifiedChinese: "结果", .english: "Result"],
+        .lowerPaneProblem: [.simplifiedChinese: "问题", .english: "Problems"],
+        .lowerPaneOutput: [.simplifiedChinese: "输出", .english: "Output"],
+        .lowerPaneTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],
+        .lowerPaneDebugConsole: [.simplifiedChinese: "调试控制台", .english: "Debug Console"],
+        .lowerPaneToggle: [.simplifiedChinese: "显示 / 隐藏下方面板", .english: "Show/Hide Bottom Pane"],
+        .lowerPaneHide: [.simplifiedChinese: "收起面板", .english: "Collapse pane"],
+        .lowerPaneMaximize: [.simplifiedChinese: "最大化面板", .english: "Maximize pane"],
+        .lowerPaneRestore: [.simplifiedChinese: "恢复面板", .english: "Restore pane"],
+        .lowerPaneProblemEmpty: [.simplifiedChinese: "还没有问题。执行 SQL 的错误与语法诊断会出现在这里。", .english: "No problems. SQL errors and syntax diagnostics will show up here."],
+        .lowerPaneOutputEmpty: [.simplifiedChinese: "还没有输出。执行 SQL 的状态、影响行数与耗时摘要会出现在这里。", .english: "No output yet. Execution status, affected rows and timings will show up here."],
+        .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
+        .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],
         .terminalStopped: [.simplifiedChinese: "已停止", .english: "Stopped"],
         .relaunchTitle: [.simplifiedChinese: "系统菜单需要重启才能跟随", .english: "Restart to switch the system menus"],

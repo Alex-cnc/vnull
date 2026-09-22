@@ -49,18 +49,9 @@ struct MainWindow: View {
             )
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            // 三种布局：最大化（只留面板）/ 分栏（分隔条可拖拽调高度）/ 隐藏（只留工作区）。
-            // 注意 BottomPanelView 里的终端会话挂在 App 层，所以这些切换都不会重启 shell。
-            if appState.isBottomPanelVisible, appState.isBottomPanelMaximized {
-                BottomPanelView()
-            } else if appState.isBottomPanelVisible {
-                VSplitView {
-                    QueryWorkspaceView()
-                    BottomPanelView()
-                }
-            } else {
-                QueryWorkspaceView()
-            }
+            // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）已经并进工作区本身，
+            // 所以这里不再另开一块区域。
+            QueryWorkspaceView()
         }
         .sheet(item: $formMode) { mode in
             ConnectionFormView(configuration: mode.configuration) { configuration, password in

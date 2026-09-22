@@ -12,10 +12,40 @@ struct QueryTab: Identifiable {
     var results: [QueryResult]
     var selectedResultIndex: Int
     var isExecuting: Bool
-    var statusMessage: String
-    var errorMessage: String?
-    /// 「检查」按钮的结果（服务器端 EXPLAIN 校验）。
-    var syntaxCheckMessage: String?
+
+    /// 执行输出日志（下方面板 Output 页签）。
+    ///
+    /// 用 `didSet` 在**模型层**拦截，而不是去改那 70 多处赋值点：
+    /// 那些地方遍布 AppState（执行 / 导出 / 建库 / 权限 / 数据任务…），逐个改必漏。
+    /// 追加规则本身在 `Core/TabLog.swift` 里，是可单测的纯函数。
+    var outputLog: [TabLogEntry] = []
+
+    /// 问题日志（下方面板 Problem 页签）：执行错误与语法检查失败、告警。
+    var problemLog: [TabLogEntry] = []
+
+    var statusMessage: String {
+        didSet { outputLog = TabLog.appended(outputLog, message: statusMessage, severity: .info) }
+    }
+
+    var errorMessage: String? {
+        didSet {
+            guard let errorMessage else { return }
+            problemLog = TabLog.appended(problemLog, message: errorMessage, severity: .error)
+        }
+    }
+
+    /// 「检查」按钮的结果（服务器端 EXPLAIN 校验）。赋值顺序上 `syntaxCheckFailed` 先于本字段。
+    var syntaxCheckMessage: String? {
+        didSet {
+            guard let syntaxCheckMessage else { return }
+            problemLog = TabLog.appended(
+                problemLog,
+                message: syntaxCheckMessage,
+                severity: syntaxCheckFailed ? .error : .info
+            )
+        }
+    }
+
     var syntaxCheckFailed: Bool
     /// 最近一次执行使用的连接；切换左侧连接后仍可正确取消本页签的查询。
     var connectionID: ConnectionConfig.ID?
@@ -231,18 +261,34 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(executionScope.rawValue, forKey: "execution.scope") }
     }
 
-    // MARK: 底部栏（终端）
+    // MARK: 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）
 
-    /// 底部栏是否显示。用 `UserDefaults` 记住，与 Safe Mode / 运行范围同一套做法。
-    @Published var isBottomPanelVisible: Bool =
-        UserDefaults.standard.object(forKey: "ui.bottomPanelVisible") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(isBottomPanelVisible, forKey: "ui.bottomPanelVisible") }
+    /// 下方面板是否显示。用 `UserDefaults` 记住，与 Safe Mode / 运行范围同一套做法。
+    @Published var isLowerPaneVisible: Bool =
+        UserDefaults.standard.object(forKey: "ui.lowerPaneVisible") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isLowerPaneVisible, forKey: "ui.lowerPaneVisible") }
     }
 
-    /// 底部栏是否最大化（占满整个详情区）。同样用 `UserDefaults` 记住。
-    @Published var isBottomPanelMaximized: Bool =
-        UserDefaults.standard.object(forKey: "ui.bottomPanelMaximized") as? Bool ?? false {
-        didSet { UserDefaults.standard.set(isBottomPanelMaximized, forKey: "ui.bottomPanelMaximized") }
+    /// 下方面板是否最大化（占满编辑区，编辑器让位）。同样用 `UserDefaults` 记住。
+    @Published var isLowerPaneMaximized: Bool =
+        UserDefaults.standard.object(forKey: "ui.lowerPaneMaximized") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(isLowerPaneMaximized, forKey: "ui.lowerPaneMaximized") }
+    }
+
+    /// 当前选中的下方面板页签。
+    @Published var lowerPaneTab: LowerPaneTab =
+        LowerPaneTab(rawValue: UserDefaults.standard.string(forKey: "ui.lowerPaneTab") ?? "") ?? .result {
+        didSet { UserDefaults.standard.set(lowerPaneTab.rawValue, forKey: "ui.lowerPaneTab") }
+    }
+
+    /// 清空当前下方面板页签对应的日志（Problem / Output 页签上的「清空」）。
+    func clearLowerPaneLog(for tabID: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        switch lowerPaneTab {
+        case .problem: tabs[index].problemLog = TabLog.cleared()
+        case .output: tabs[index].outputLog = TabLog.cleared()
+        case .result, .terminal, .debugConsole: break
+        }
     }
 
     /// 当前生效的执行安全策略。

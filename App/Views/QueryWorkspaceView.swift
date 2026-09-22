@@ -104,44 +104,21 @@ struct QueryEditorView: View {
             )
             Divider()
 
-            // 编辑区与结果区之间可拖拽调整高度（VSplitView 自带分隔条）。
-            VSplitView {
-                VStack(spacing: 0) {
-                    SQLEditorView(
-                        text: Binding(
-                            get: { tab.sql },
-                            set: { appState.updateSQL($0, for: tab.id) }
-                        ),
-                        databaseType: tabConnection?.dbType ?? .postgresql,
-                        diagnostics: diagnostics,
-                        tabID: tab.id
-                    )
-
-                    if !diagnostics.isEmpty {
-                        Divider()
-                        diagnosticsBar(diagnostics)
+            // 编辑区在上、下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）在下，
+            // 分隔条可拖拽调整高度；最大化时面板占满，收起时只剩编辑区。
+            Group {
+                if appState.isLowerPaneMaximized {
+                    LowerPaneView(tab: tab, diagnostics: diagnostics)
+                } else if appState.isLowerPaneVisible {
+                    VSplitView {
+                        editorArea(diagnostics)
+                            .frame(minHeight: 120, idealHeight: 260)
+                        LowerPaneView(tab: tab, diagnostics: diagnostics)
+                            .frame(minHeight: 120, idealHeight: 260)
                     }
+                } else {
+                    editorArea(diagnostics)
                 }
-                .frame(minHeight: 120, idealHeight: 260)
-
-                VStack(spacing: 0) {
-                    statusBar
-                    Divider()
-
-                    ResultTableView(
-                        result: tab.result,
-                        resultCount: tab.results.count,
-                        selectedIndex: tab.selectedResultIndex,
-                        onSelectResult: { index in
-                            appState.selectResult(index, for: tab.id)
-                        },
-                        isExecuting: tab.isExecuting,
-                        onExport: { format in
-                            Task { await appState.exportResult(for: tab.id, format: format) }
-                        }
-                    )
-                }
-                .frame(minHeight: 120, idealHeight: 260)
             }
         }
         .sheet(isPresented: $isSaveQueryPresented) {
@@ -164,6 +141,27 @@ struct QueryEditorView: View {
 
     private var defaultQueryName: String {
         appState.suggestedQueryName(for: tab)
+    }
+
+    // MARK: - 编辑区
+
+    private func editorArea(_ diagnostics: [SQLDiagnostic]) -> some View {
+        VStack(spacing: 0) {
+            SQLEditorView(
+                text: Binding(
+                    get: { tab.sql },
+                    set: { appState.updateSQL($0, for: tab.id) }
+                ),
+                databaseType: tabConnection?.dbType ?? .postgresql,
+                diagnostics: diagnostics,
+                tabID: tab.id
+            )
+
+            if !diagnostics.isEmpty {
+                Divider()
+                diagnosticsBar(diagnostics)
+            }
+        }
     }
 
     // MARK: - 语法检查
@@ -206,7 +204,7 @@ struct QueryEditorView: View {
         .background(Color.red.opacity(0.06))
     }
 
-    // MARK: - 状态栏
+    // MARK: - 连接
 
     private var tabConnection: ConnectionConfig? {
         if let connectionID = tab.connectionID,
@@ -214,51 +212,5 @@ struct QueryEditorView: View {
             return connection
         }
         return appState.selectedConnection
-    }
-
-    private var statusBar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let message = tab.errorMessage {
-                statusRow(
-                    icon: "exclamationmark.triangle.fill",
-                    color: .red,
-                    text: message,
-                    lineLimit: 8
-                )
-            }
-
-            if let syntaxMessage = tab.syntaxCheckMessage {
-                statusRow(
-                    icon: tab.syntaxCheckFailed ? "xmark.circle.fill" : "checkmark.circle.fill",
-                    color: tab.syntaxCheckFailed ? .red : .green,
-                    text: syntaxMessage,
-                    lineLimit: 6
-                )
-            }
-
-            if !tab.statusMessage.isEmpty {
-                statusRow(
-                    icon: tab.isExecuting ? "hourglass" : "info.circle",
-                    color: .secondary,
-                    text: tab.statusMessage,
-                    lineLimit: 4
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
-
-    private func statusRow(icon: String, color: Color, text: String, lineLimit: Int) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(color)
-                .textSelection(.enabled)
-                .lineLimit(lineLimit)
-        }
     }
 }

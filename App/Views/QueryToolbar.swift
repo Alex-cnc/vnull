@@ -266,7 +266,7 @@ struct QueryToolbar: View {
             (.safetyConfirmAllWrites, .confirmAllWrites),
             (.menuAgentAudit, .agentAudit),
             (.menuDataTask, .dataTask),
-            (.bottomPanelToggle, .terminal),
+            (.lowerPaneToggle, .terminal),
             (.toolbarHelpHelp, .help)
         ]
     }
