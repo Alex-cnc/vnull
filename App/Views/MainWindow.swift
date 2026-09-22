@@ -49,7 +49,16 @@ struct MainWindow: View {
             )
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            QueryWorkspaceView()
+            // 底部栏：显示时用 VSplitView 让分隔条可拖拽调节高度；隐藏时整块移除，
+            // 不留一条空的分隔条。
+            if appState.isBottomPanelVisible {
+                VSplitView {
+                    QueryWorkspaceView()
+                    BottomPanelView()
+                }
+            } else {
+                QueryWorkspaceView()
+            }
         }
         .sheet(item: $formMode) { mode in
             ConnectionFormView(configuration: mode.configuration) { configuration, password in

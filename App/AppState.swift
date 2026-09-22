@@ -231,6 +231,14 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(executionScope.rawValue, forKey: "execution.scope") }
     }
 
+    // MARK: 底部栏（终端）
+
+    /// 底部栏是否显示。用 `UserDefaults` 记住，与 Safe Mode / 运行范围同一套做法。
+    @Published var isBottomPanelVisible: Bool =
+        UserDefaults.standard.object(forKey: "ui.bottomPanelVisible") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isBottomPanelVisible, forKey: "ui.bottomPanelVisible") }
+    }
+
     /// 当前生效的执行安全策略。
     var executionSafetyPolicy: ExecutionSafetyPolicy {
         ExecutionSafetyPolicy(

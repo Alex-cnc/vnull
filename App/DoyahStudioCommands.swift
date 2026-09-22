@@ -63,6 +63,14 @@ struct DoyahStudioCommands: Commands {
             .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
         }
 
+        // 「显示」菜单：底部终端面板（与系统自带的「显示边栏」并列）。
+        CommandGroup(after: .sidebar) {
+            Button(L(.bottomPanelToggle)) {
+                appState.isBottomPanelVisible.toggle()
+            }
+            .keyboardShortcut(AppShortcut.terminal.key, modifiers: AppShortcut.terminal.modifiers)
+        }
+
         CommandMenu(L(.menuLanguage)) {
             // 用 `Toggle` 而不是 `Picker`：在 macOS 菜单里 `Toggle` 就是标准的「勾选项」，
             // 勾选状态由观察根驱动重建，不依赖 `Picker` 在命令菜单里的选择态刷新。
