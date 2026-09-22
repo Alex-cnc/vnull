@@ -149,7 +149,7 @@ final class AppState: ObservableObject {
         didSet {
             rememberSelectedConnection()
             // 换连接后建库权限结论作废，等对象树加载时重新探测（FR-META-11）。
-            canCreateDatabase = nil
+            setIfChanged(\.canCreateDatabase, nil)
         }
     }
     /// 本次运行的查询历史。按 DR-02 只放在内存里，退出应用即清空。
@@ -444,6 +444,18 @@ final class AppState: ObservableObject {
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
         }
+    }
+
+    /// 只在值真的变了才写 `@Published`。
+    ///
+    /// 给 `@Published` 赋一个**相同的值**同样会触发一次重绘；删除连接时这类白刷会叠加成
+    /// 肉眼可见的抖动，所以状态重置类赋值统一走这里。
+    private func setIfChanged<T: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<AppState, T>,
+        _ value: T
+    ) {
+        guard self[keyPath: keyPath] != value else { return }
+        self[keyPath: keyPath] = value
     }
 
     // MARK: - 上次选中的连接
@@ -2057,15 +2069,15 @@ final class AppState: ObservableObject {
     /// 枚举当前服务器上当前登录用户可连接的数据库（方言层按权限过滤）。
     func loadDatabases() async {
         guard let configuration = selectedConnection else {
-            availableDatabases = []
-            selectedDatabase = nil
-            databaseError = nil
+            setIfChanged(\.availableDatabases, [])
+            setIfChanged(\.selectedDatabase, nil)
+            setIfChanged(\.databaseError, nil)
             return
         }
 
-        isLoadingDatabases = true
-        databaseError = nil
-        defer { isLoadingDatabases = false }
+        setIfChanged(\.isLoadingDatabases, true)
+        setIfChanged(\.databaseError, nil)
+        defer { setIfChanged(\.isLoadingDatabases, false) }
 
         do {
             let service = try await ensureService(for: configuration)
@@ -2076,22 +2088,22 @@ final class AppState: ObservableObject {
                 guard let value = row.first ?? nil, !value.isEmpty else { return nil }
                 return value
             }
-            availableDatabases = names
+            setIfChanged(\.availableDatabases, names)
 
             let preferred = selectedDatabase
                 ?? serverInfos[configuration.id]?.database
                 ?? configuration.database
 
             if names.isEmpty {
-                selectedDatabase = configuration.database
+                setIfChanged(\.selectedDatabase, configuration.database)
             } else if names.contains(preferred) {
-                selectedDatabase = preferred
+                setIfChanged(\.selectedDatabase, preferred)
             } else {
-                selectedDatabase = serverInfos[configuration.id]?.database ?? names.first
+                setIfChanged(\.selectedDatabase, serverInfos[configuration.id]?.database ?? names.first)
             }
         } catch {
-            availableDatabases = []
-            databaseError = ErrorPresenter.message(for: error)
+            setIfChanged(\.availableDatabases, [])
+            setIfChanged(\.databaseError, ErrorPresenter.message(for: error))
         }
     }
 

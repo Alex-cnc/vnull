@@ -500,8 +500,8 @@ struct ObjectTreeView: View {
             return
         }
 
-        isLoadingRoot = true
-        rootError = nil
+        if !isLoadingRoot { isLoadingRoot = true }
+        if rootError != nil { rootError = nil }
 
         do {
             // 先把新数据取回来，**再**清缓存与展开状态：否则请求往返期间树会先空掉一次，
@@ -518,7 +518,7 @@ struct ObjectTreeView: View {
             errors = [:]
             rootError = ErrorPresenter.message(for: error)
         }
-        isLoadingRoot = false
+        if isLoadingRoot { isLoadingRoot = false }
     }
 
     // MARK: - 文案与配色
