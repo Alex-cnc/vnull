@@ -123,6 +123,19 @@ final class AppState: ObservableObject {
     @Published var hasAgentAPIKey = false
     /// 「智能体设置…」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSettingsPresented = false
+    // MARK: 执行计划（FR-DIAG-01）
+
+    /// 执行计划面板的呈现开关。
+    @Published var isExecutionPlanPresented = false
+    /// 最近一次解析出的计划树；`nil` = 还没跑过或解析失败。
+    @Published var executionPlan: ExplainPlan?
+    @Published var executionPlanError: String?
+    @Published var executionPlanIsLoading = false
+    /// `ANALYZE` 会**真正执行**语句，因此默认关闭；BUFFERS / JSON 只是多要些信息。
+    @Published var planRunAnalyze = false
+    @Published var planIncludeBuffers = false
+    @Published var planUseJSON = true
+
     /// 「自然语言 → SQL」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSQLPresented = false
 
@@ -837,6 +850,74 @@ final class AppState: ObservableObject {
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
     var agentOutboundDecision: AgentOutboundDecision {
         AgentGate.decide(configuration: agentConfiguration, apiKey: agentAPIKey)
+    }
+
+    // MARK: - 执行计划（FR-DIAG-01）
+
+    /// 对当前页签的语句跑 `EXPLAIN` 并解析成计划树。
+    ///
+    /// 只分析**第一条**语句（多条时给出提示）；`ANALYZE` 打开时会真正执行该语句 ——
+    /// 界面必须显著提示，这里不做额外确认，因为用户是显式打开的开关。
+    func runExecutionPlan(for tabID: UUID) async {
+        guard let tabIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+        guard let configuration = selectedConnection else {
+            executionPlan = nil
+            executionPlanError = L(.stateSelectConnectionFirst)
+            return
+        }
+
+        let sql = tabs[tabIndex].sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sql.isEmpty else {
+            executionPlan = nil
+            executionPlanError = L(.stateSQLEmpty)
+            return
+        }
+
+        let statements = StatementSplitter(databaseType: configuration.dbType)
+            .split(sql)
+            .map { $0.sql.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let first = statements.first else {
+            executionPlan = nil
+            executionPlanError = L(.stateSQLEmpty)
+            return
+        }
+
+        let firstKeyword = firstKeyword(in: first)
+        let explainable = ["SELECT", "INSERT", "UPDATE", "DELETE", "WITH", "VALUES", "TABLE"]
+        guard explainable.contains(firstKeyword) else {
+            executionPlan = nil
+            executionPlanError = L(.planUnsupported)
+            return
+        }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let explainSQL = SQLGenerator.explain(
+            sql: first,
+            analyze: planRunAnalyze,
+            buffers: planIncludeBuffers,
+            formatJSON: planUseJSON,
+            dialect: dialect
+        )
+
+        executionPlanIsLoading = true
+        executionPlanError = statements.count > 1 ? L(.planMultipleStatements, statements.count) : nil
+        defer { executionPlanIsLoading = false }
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: queryDatabase(for: configuration)
+            )
+            let result = try await runSingleQuery(explainSQL, on: service)
+            // 文本格式是多行、每行一列；JSON 格式是一行一列，两种都按「逐行首列拼接」处理。
+            let raw = result.rows.compactMap { $0.first ?? nil }.joined(separator: "\n")
+            executionPlan = ExplainPlanParser.parse(raw)
+        } catch {
+            executionPlan = nil
+            executionPlanError = L(.planFailed, ErrorPresenter.message(for: error))
+        }
     }
 
     // MARK: - 对象树节点动作（FR-META-14 / FR-DATA-01 / FR-META-13）

@@ -16,6 +16,8 @@ enum AppShortcut: CaseIterable {
     case execute
     case stop
     case check
+    /// 执行计划面板（FR-DIAG-01）。
+    case executionPlan
 
     case openFile
     case saveFile
@@ -46,6 +48,7 @@ enum AppShortcut: CaseIterable {
         case .execute: return .return
         case .stop: return "."
         case .check: return "e"
+        case .executionPlan: return "p"
         case .openFile: return "o"
         case .saveFile: return "s"
         case .saveFileAs: return "s"
@@ -74,7 +77,7 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .stop:
             return [.command]
-        case .check, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .help:
+        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .help:
             return [.command, .shift]
         case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
             return [.command, .option]

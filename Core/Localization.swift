@@ -348,6 +348,23 @@ public enum LKey: String, CaseIterable, Sendable {
     case objectTreeCopied
     case objectTreeOpenedInNewTab
 
+    // 执行计划面板（FR-DIAG-01）
+    case planTitle
+    case planRun
+    case planAnalyze
+    case planAnalyzeWarning
+    case planBuffers
+    case planFormatJSON
+    case planSummary
+    case planTree
+    case planRaw
+    case planEmpty
+    case planUnsupported
+    case planMultipleStatements
+    case planFailed
+    case toolbarPlanHelp
+    case planSequentialScan
+
     // 删除确认 / 结果导出 / 查询历史 / 编辑器补全
     case connectionDeleteConfirmTitle
     case connectionDeleteConfirmMessage
@@ -690,6 +707,21 @@ public enum LocalizedStrings {
         .treeActionUnavailable: [.simplifiedChinese: "该操作需要先加载表结构，或对该节点不可用。", .english: "This action needs the table structure to be loaded, or does not apply to this node."],
         .objectTreeCopied: [.simplifiedChinese: "已复制：%@", .english: "Copied: %@"],
         .objectTreeOpenedInNewTab: [.simplifiedChinese: "已在新页签中生成语句（未执行）。", .english: "Statement generated in a new tab (not executed)."],
+        .planTitle: [.simplifiedChinese: "执行计划", .english: "Execution plan"],
+        .planRun: [.simplifiedChinese: "分析", .english: "Analyze"],
+        .planAnalyze: [.simplifiedChinese: "执行 ANALYZE", .english: "Run ANALYZE"],
+        .planAnalyzeWarning: [.simplifiedChinese: "⚠️ ANALYZE 会**真正执行**这条语句（含写操作），不只是查看计划。", .english: "⚠️ ANALYZE actually executes the statement (including writes), it does not just show the plan."],
+        .planBuffers: [.simplifiedChinese: "含缓冲区统计 BUFFERS", .english: "Include BUFFERS"],
+        .planFormatJSON: [.simplifiedChinese: "使用 JSON 格式", .english: "Use JSON format"],
+        .planSummary: [.simplifiedChinese: "摘要", .english: "Summary"],
+        .planTree: [.simplifiedChinese: "计划树", .english: "Plan tree"],
+        .planRaw: [.simplifiedChinese: "原始输出", .english: "Raw output"],
+        .planEmpty: [.simplifiedChinese: "还没有计划。点「分析」查看当前语句的执行计划。", .english: "No plan yet. Press Analyze to inspect the current statement."],
+        .planUnsupported: [.simplifiedChinese: "当前语句不适合做执行计划（只支持 SELECT / INSERT / UPDATE / DELETE / WITH / VALUES / TABLE）。", .english: "This statement cannot be explained (only SELECT / INSERT / UPDATE / DELETE / WITH / VALUES / TABLE)."],
+        .planMultipleStatements: [.simplifiedChinese: "编辑器里有 %d 条语句，只分析了第一条。", .english: "The editor has %d statements; only the first was analyzed."],
+        .planFailed: [.simplifiedChinese: "获取执行计划失败：%@", .english: "Failed to get the execution plan: %@"],
+        .toolbarPlanHelp: [.simplifiedChinese: "执行计划（EXPLAIN）", .english: "Execution plan (EXPLAIN)"],
+        .planSequentialScan: [.simplifiedChinese: "全表扫描", .english: "Sequential scan"],
         .connectionDeleteConfirmTitle: [.simplifiedChinese: "删除连接？", .english: "Delete connection?"],
         .connectionDeleteConfirmMessage: [.simplifiedChinese: "将删除连接「%@」以及保存在钥匙串中的密码，该操作不可撤销。", .english: "This permanently deletes “%@” and its Keychain password."],
         .resultExport: [.simplifiedChinese: "导出结果", .english: "Export Result"],

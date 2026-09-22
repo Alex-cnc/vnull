@@ -64,6 +64,7 @@ struct QueryToolbar: View {
                 .frame(height: 16)
 
             checkButton
+            planButton
 
             if tab.isExecuting {
                 ProgressView()
@@ -244,6 +245,7 @@ struct QueryToolbar: View {
             (.toolbarExecuteHelp, .execute),
             (.toolbarStopHelp, .stop),
             (.toolbarCheckHelp, .check),
+            (.toolbarPlanHelp, .executionPlan),
             (.toolbarOpenFileHelp, .openFile),
             (.toolbarSaveFileHelp, .saveFile),
             (.toolbarSaveAs, .saveFileAs),
@@ -454,6 +456,20 @@ struct QueryToolbar: View {
         .buttonStyle(.plain)
         .help(AppShortcut.check.help(L(.toolbarCheckHelp)))
         .keyboardShortcut(AppShortcut.check.key, modifiers: AppShortcut.check.modifiers)
+        .disabled(tab.isExecuting)
+    }
+
+    /// 执行计划按钮（FR-DIAG-01）。
+    private var planButton: some View {
+        Button {
+            appState.isExecutionPlanPresented = true
+            Task { await appState.runExecutionPlan(for: tab.id) }
+        } label: {
+            toolbarIcon("list.bullet.indent")
+        }
+        .buttonStyle(.plain)
+        .help(AppShortcut.executionPlan.help(L(.toolbarPlanHelp)))
+        .keyboardShortcut(AppShortcut.executionPlan.key, modifiers: AppShortcut.executionPlan.modifiers)
         .disabled(tab.isExecuting)
     }
 

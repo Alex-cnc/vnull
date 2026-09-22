@@ -71,6 +71,11 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentSQLPresented) {
             AgentSQLPanel()
         }
+        .sheet(isPresented: $appState.isExecutionPlanPresented) {
+            if let tab = appState.selectedTab {
+                ExecutionPlanPanel(tabID: tab.id)
+            }
+        }
         .sheet(item: $appState.pendingExecution) { pending in
             SafeModeConfirmSheet(pending: pending)
         }
