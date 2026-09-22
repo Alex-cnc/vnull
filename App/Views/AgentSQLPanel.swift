@@ -21,6 +21,8 @@ struct AgentSQLPanel: View {
     @State private var editableSQL = ""
     @State private var payloadPreview = ""
     @State private var payloadNote: String?
+    /// 已经提交过的语句：同一条不重复入队（改了内容就能再提交）。
+    @State private var submittedSQL: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -50,6 +52,12 @@ struct AgentSQLPanel: View {
                         appState.openGeneratedSQLInNewTab(editableSQL)
                         dismiss()
                     }
+                    // 提交审批（FR-AI-09）：写操作 / DDL 必须逐次批准；只读查询无需审批，
+                    // 但也**不会被自动执行** —— 依旧只放进新页签。
+                    Button(L(.agentSQLSubmit)) {
+                        Task { await submitForApproval() }
+                    }
+                    .disabled(submittedSQL == editableSQL)
                 }
 
                 Button(L(.agentSQLGenerate)) {
@@ -64,6 +72,11 @@ struct AgentSQLPanel: View {
         .task { await refreshPayload() }
         .onChange(of: includeTables) { _, _ in Task { await refreshPayload() } }
         .onChange(of: includeStatement) { _, _ in Task { await refreshPayload() } }
+        // 审批单作为本面板的子 sheet 弹出：面板**不关闭**，用户决定后再自己关，
+        // 免得「父面板一关，子审批单被一起撕掉」。
+        .sheet(item: $appState.agentApprovalRequest) { approval in
+            AgentApprovalSheet(approval: approval)
+        }
     }
 
     // MARK: - 需求输入
@@ -219,6 +232,34 @@ struct AgentSQLPanel: View {
             editableSQL = generated.sql
         } catch {
             errorText = L(.agentSQLFailed, ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 把生成结果提交给审批闸门（FR-AI-09）。
+    ///
+    /// 三种去向都由 `AppState` 的判定决定，面板不做二次判断：
+    /// - 被护栏拒绝（只读模式下的写操作）：留在面板上给出可读原因，不入队、不执行；
+    /// - 需要审批：入待审批队列并弹出审批单，**批准之前不会执行**；
+    /// - 无需审批（只读查询 / 白名单类别）：放进新页签，**不自动执行**。
+    private func submitForApproval() async {
+        let sql = editableSQL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sql.isEmpty else { return }
+
+        let submission = await appState.submitAgentAction(sql)
+        switch submission {
+        case .denied:
+            errorText = L(.agentSQLDenied, submission.message)
+        case .awaitingApproval:
+            // 面板保持打开，审批单会叠在上面弹出（见 body 上的 `.sheet(item:)`）。
+            submittedSQL = sql
+            errorText = nil
+            appState.statusMessage = L(.agentSQLSubmittedPending)
+        case .approved:
+            submittedSQL = sql
+            errorText = nil
+            appState.openGeneratedSQLInNewTab(sql)
+            appState.statusMessage = L(.agentSQLSubmittedAuto)
+            dismiss()
         }
     }
 

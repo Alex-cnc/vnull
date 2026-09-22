@@ -360,6 +360,125 @@ final class AgentConfigurationTests: XCTestCase {
         XCTAssertTrue(text.contains("gpt-4o-mini"))
     }
 
+    // MARK: - 只读模式与白名单的持久化（FR-AI-09）
+
+    /// 默认即只读，且「写操作逐次批准」默认开启（FR-AI-09）。
+    func testDefaultGuardPolicyIsReadOnly() {
+        let policy = AgentConfiguration.default.guardPolicy
+
+        XCTAssertTrue(policy.readOnly)
+        XCTAssertTrue(policy.requireApprovalForHighRisk)
+        XCTAssertTrue(policy.requireApprovalForWrites)
+        XCTAssertTrue(policy.allowedKinds.isEmpty)
+        XCTAssertFalse(policy.allowedKinds.contains(.unknown))
+        XCTAssertEqual(AgentConfiguration.default.effectiveGuardPolicy, policy)
+    }
+
+    /// 只读模式与白名单随 `agent.json` 一起落盘、一起读回（配置持久化复用同一处）。
+    func testGuardPolicyRoundTrip() async throws {
+        let directory = try makeDirectory()
+        let store = AgentConfigurationStore(directoryURL: directory)
+
+        var configuration = localConfiguration()
+        configuration.guardPolicy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            requireApprovalForWrites: true,
+            allowedKinds: [.dataChange, .sessionControl]
+        )
+
+        try await store.save(configuration)
+        let loaded = try await store.load()
+
+        XCTAssertEqual(loaded, configuration)
+        XCTAssertFalse(loaded.guardPolicy.readOnly)
+        XCTAssertEqual(loaded.guardPolicy.effectiveAllowedKinds, [.dataChange, .sessionControl])
+    }
+
+    /// 老版本的 `agent.json` 里没有 `guardPolicy`：缺字段退回只读默认，
+    /// 而不是让整份配置读不出来（用户配好的端点 / 模型不能被静默丢掉）。
+    func testOlderConfigurationWithoutGuardPolicyStillLoads() async throws {
+        let directory = try makeDirectory()
+        let store = AgentConfigurationStore(directoryURL: directory)
+        let legacy = """
+        {
+          "endpoint" : "http://127.0.0.1:11434/v1",
+          "isEnabled" : true,
+          "model" : "qwen2.5:7b",
+          "timeoutSeconds" : 30
+        }
+        """
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(legacy.utf8).write(to: directory.appendingPathComponent("agent.json"))
+
+        let loaded = try await store.load()
+
+        XCTAssertTrue(loaded.isEnabled)
+        XCTAssertEqual(loaded.model, "qwen2.5:7b")
+        XCTAssertEqual(loaded.timeoutSeconds, 30)
+        XCTAssertTrue(loaded.quota.isUnlimited, "缺 quota 字段退回不限")
+        XCTAssertEqual(loaded.guardPolicy, .readOnlyDefault, "缺 guardPolicy 字段退回只读默认")
+    }
+
+    /// 手改配置文件把 `unknown` 塞进白名单：读回时被剔除（`unknown` 永远要审批）。
+    func testUnknownAllowlistIsStrippedWhenLoading() async throws {
+        let directory = try makeDirectory()
+        let store = AgentConfigurationStore(directoryURL: directory)
+        let tampered = """
+        {
+          "endpoint" : "http://127.0.0.1:11434/v1",
+          "isEnabled" : true,
+          "model" : "qwen2.5:7b",
+          "timeoutSeconds" : 60,
+          "guardPolicy" : {
+            "readOnly" : false,
+            "requireApprovalForHighRisk" : true,
+            "requireApprovalForWrites" : true,
+            "allowedKinds" : ["unknown", "dataChange"]
+          }
+        }
+        """
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(tampered.utf8).write(to: directory.appendingPathComponent("agent.json"))
+
+        let loaded = try await store.load()
+
+        XCTAssertEqual(loaded.guardPolicy.effectiveAllowedKinds, [.dataChange])
+        XCTAssertFalse(loaded.guardPolicy.allowedKinds.contains(.unknown))
+    }
+
+    /// 策略落盘，但配置文件里依然**没有密钥字段**（NFR-AI-03 的配套性质）。
+    func testGuardPolicyIsPersistedWithoutSecrets() async throws {
+        let directory = try makeDirectory()
+        let store = AgentConfigurationStore(directoryURL: directory)
+        let secret = "sk-super-secret-value-12345"
+        let keyStore = InMemoryAgentKeyStore()
+        try keyStore.setAPIKey(secret)
+
+        var configuration = remoteConfiguration()
+        configuration.guardPolicy = AgentGuardPolicy(readOnly: false, allowedKinds: [.dataChange])
+        try await store.save(configuration)
+
+        let text = try String(contentsOf: await store.fileLocation(), encoding: .utf8)
+
+        XCTAssertTrue(text.contains("guardPolicy"))
+        XCTAssertTrue(text.contains("dataChange"))
+        XCTAssertFalse(text.contains(secret))
+        XCTAssertFalse(text.lowercased().contains("apikey"))
+    }
+
+    /// 只读模式关掉时给一条警告（界面要能说出来「写操作已放开」）。
+    func testWritesAllowedWarningSurfacesOnlyWhenReadOnlyIsOff() {
+        let readOnly = localConfiguration()
+        XCTAssertFalse(readOnly.warnings.contains(.agentWritesAllowed))
+
+        var writable = readOnly
+        writable.guardPolicy = AgentGuardPolicy(readOnly: false)
+        XCTAssertTrue(writable.warnings.contains(.agentWritesAllowed))
+        XCTAssertTrue(writable.warnings.contains(where: { $0.message.contains("只读模式") }))
+        XCTAssertTrue(writable.isComplete, "关掉只读模式是合法配置，只是要提示")
+    }
+
     func testKeyStoreRoundTrip() throws {
         let keyStore = InMemoryAgentKeyStore()
 

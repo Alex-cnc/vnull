@@ -264,6 +264,7 @@ struct QueryToolbar: View {
             (.runScopeSelection, .scopeSelection),
             (.safetySafeMode, .safeMode),
             (.safetyConfirmAllWrites, .confirmAllWrites),
+            (.menuAgentAudit, .agentAudit),
             (.toolbarHelpHelp, .help)
         ]
     }

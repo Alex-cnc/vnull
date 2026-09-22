@@ -139,6 +139,22 @@ final class AppState: ObservableObject {
     /// 「自然语言 → SQL」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSQLPresented = false
 
+    // MARK: 执行审批与审计（FR-AI-09 / NFR-AI-03）
+
+    /// 「审批与审计…」面板的呈现开关（菜单命令驱动）。
+    @Published var isAgentAuditPresented = false
+    /// 审计记录（读自本地 JSONL，顺序 = 写入顺序 = 时间顺序）。
+    @Published var agentAuditRecords: [AgentActionRecord] = []
+    @Published var isAgentAuditLoading = false
+    /// 已提交、等待人工决策的智能体动作（FR-AI-09 逐次审批）。
+    @Published var pendingAgentApprovals: [AgentApproval] = []
+    /// 需要弹出审批单的那个动作；`nil` = 不弹。
+    @Published var agentApprovalRequest: AgentApproval?
+    /// 面板内的一行提示（导出成功 / 已清空 / 已批准…）。
+    @Published var agentAuditMessage: String?
+    /// 面板内的错误（读取 / 导出失败、执行失败…）。
+    @Published var agentAuditError: String?
+
     // MARK: 高危语句保护（FR-EXEC-16）
 
     /// Safe Mode 开关；默认开启（安全默认）。用 `UserDefaults` 记住，与语言偏好同一套做法。
@@ -197,6 +213,8 @@ final class AppState: ObservableObject {
     private let savedQueryStore = SavedQueryStore.shared
     private let agentConfigurationStore = AgentConfigurationStore.shared
     private let agentKeyStore: AgentKeyStore = KeychainAgentKeyStore()
+    /// 审计日志（追加式 JSONL）；导出前脱敏在 Core 里完成（NFR-AI-03）。
+    private let agentAuditLog = AgentAuditLog.shared
 
 
     /// 连接缓存键：同一个「已保存连接」可以在多个数据库上各持有一条连接。
@@ -771,6 +789,210 @@ final class AppState: ObservableObject {
         return true
     }
 
+    // MARK: - 审批与审计（FR-AI-09 / NFR-AI-03）
+
+    /// 当前生效的护栏 / 审批策略：只读模式与白名单来自配置（FR-AI-09）。
+    var agentGuardPolicy: AgentGuardPolicy { agentConfiguration.effectiveGuardPolicy }
+
+    /// 保存只读模式与白名单（复用配置持久化，不另开一份存储）。
+    @discardableResult
+    func saveAgentGuardPolicy(_ policy: AgentGuardPolicy) async -> Bool {
+        var configuration = agentConfiguration
+        configuration.guardPolicy = policy.sanitized
+        let succeeded = await saveAgentConfiguration(configuration, apiKey: nil)
+        if succeeded {
+            agentAuditMessage = L(.agentGuardSaved)
+        }
+        return succeeded
+    }
+
+    /// 读取本地审计日志（打开面板 / 刷新 / 清空后调用）。
+    ///
+    /// 顺带用日志重建待审批队列：审计是追加式的，重启后内存队列会空，
+    /// 但日志里「待批准」那条还挂着 —— 按「同一动作取最后一条」恢复，
+    /// 界面上才不会出现「日志说待批准、列表却说没有」。
+    func refreshAgentAudit() async {
+        isAgentAuditLoading = true
+        defer { isAgentAuditLoading = false }
+        do {
+            agentAuditRecords = try await agentAuditLog.entries()
+            pendingAgentApprovals = AgentApproval.pending(from: agentAuditRecords)
+            agentAuditError = nil
+        } catch {
+            agentAuditError = L(.agentAuditLoadFailed, ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 清空本地审计记录（界面必须二次确认后才会调用）。
+    func clearAgentAudit() async {
+        do {
+            try await agentAuditLog.removeAll()
+            agentAuditRecords = []
+            agentAuditError = nil
+            agentAuditMessage = L(.agentAuditCleared)
+        } catch {
+            agentAuditError = L(.agentAuditLoadFailed, ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 导出审计记录（JSON / CSV）。
+    ///
+    /// **导出内容完全由 Core 生成**（`AgentAuditLog.export(_:)` → 已过
+    /// `AgentAudit.redacted`），界面只负责选路径与写文件 —— 不在这里另拼一份导出，
+    /// 否则「导出前脱敏」就成了看遵守不遵守的君子协定。
+    @discardableResult
+    func exportAgentAudit(format: AgentAuditExportFormat) async -> Bool {
+        guard !agentAuditRecords.isEmpty else {
+            agentAuditError = L(.agentAuditExportEmpty)
+            return false
+        }
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "\(format.defaultBaseName).\(format.fileExtension)"
+        if let type = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [type]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+
+        do {
+            let data = try await agentAuditLog.export(format)
+            try data.write(to: url, options: [.atomic])
+            agentAuditError = nil
+            agentAuditMessage = L(.agentAuditExported, agentAuditRecords.count, url.lastPathComponent)
+            return true
+        } catch {
+            agentAuditError = L(.agentAuditExportFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    /// 智能体发起一次动作：过护栏 → 建审批单 / 直接拒绝 → **留痕**（FR-AI-09）。
+    ///
+    /// 行为边界值得写清楚：本方法**只判定与留痕，不执行**。
+    /// - 只读模式下被拒的写操作 / DDL：连审批单都建不出来（`AgentActionGate` 返回 `.denied`），
+    ///   只留一条 `denied` 记录并给出可读原因（AC-AI-02）；
+    /// - 需要审批的：进待审批队列并弹出审批单，**批准之前不会执行**；
+    /// - 无需审批的（只读查询 / 白名单类别）：返回 `.approved`，由调用方决定怎么处理，
+    ///   `AgentSQLPanel` 仍走「放进新页签」——不自动执行（FR-AI-02）。
+    @discardableResult
+    func submitAgentAction(_ sql: String) async -> AgentActionSubmission {
+        let submission = AgentActionGate.submit(
+            sql: sql,
+            databaseType: selectedConnection?.dbType ?? .postgresql,
+            policy: agentGuardPolicy,
+            context: agentActionContext
+        )
+
+        await appendAgentAudit(submission.record)
+
+        switch submission {
+        case .denied:
+            agentAuditError = submission.message
+        case .approved:
+            agentAuditError = nil
+        case .awaitingApproval(let approval):
+            agentAuditError = nil
+            pendingAgentApprovals.append(approval)
+            agentApprovalRequest = approval
+        }
+        return submission
+    }
+
+    /// 批准并执行一条待审批动作（审批单上的「批准并执行」）。
+    func approveAgentAction(id: UUID, note: String? = nil) async {
+        await decideAgentAction(id: id, approve: true, note: note)
+    }
+
+    /// 拒绝一条待审批动作：**不执行**，留痕。
+    func rejectAgentAction(id: UUID, note: String? = nil) async {
+        await decideAgentAction(id: id, approve: false, note: note)
+    }
+
+    /// 重新弹出某条待审批动作的审批单（面板里点「查看…」）。
+    func presentAgentApproval(_ approval: AgentApproval) {
+        guard approval.awaitsHumanDecision else { return }
+        agentApprovalRequest = approval
+    }
+
+    /// 关掉审批单但不做决定：动作**留在待审批队列里**，关窗不等于批准。
+    func dismissAgentApprovalSheet() {
+        agentApprovalRequest = nil
+    }
+
+    /// 审计记录的上下文：连接名 / 库 / 模型（**不含口令，也不含完整连接串**）。
+    private var agentActionContext: AgentActionRecord.Context {
+        AgentActionRecord.Context(
+            connectionName: selectedConnection?.name,
+            database: selectedConnection.map { queryDatabase(for: $0) },
+            model: agentConfiguration.normalizedModel
+        )
+    }
+
+    /// 追加一条审计记录：先落到内存（面板立刻看得见），再追加到 JSONL。
+    /// 写盘失败必须说出来 —— 审计写不进去是安全问题，不能静默吞掉。
+    private func appendAgentAudit(_ record: AgentActionRecord) async {
+        agentAuditRecords.append(record)
+        do {
+            try await agentAuditLog.append(record)
+        } catch {
+            agentAuditError = L(.agentAuditLoadFailed, ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 审批决策：状态机流转 → （批准时）执行 → 追加终态记录。
+    private func decideAgentAction(id: UUID, approve: Bool, note: String?) async {
+        guard let index = pendingAgentApprovals.firstIndex(where: { $0.id == id }) else { return }
+        var approval = pendingAgentApprovals[index]
+
+        let trimmedNote = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let noteValue = (trimmedNote?.isEmpty ?? true) ? nil : trimmedNote
+
+        do {
+            if approve {
+                try approval.approve(by: NSUserName(), note: noteValue)
+            } else {
+                try approval.reject(by: NSUserName(), note: noteValue)
+            }
+        } catch {
+            // 非法流转（例如已被处理过）不猜、不硬改，照实报错。
+            agentAuditError = ErrorPresenter.message(for: error)
+            return
+        }
+
+        pendingAgentApprovals.remove(at: index)
+        if agentApprovalRequest?.id == id { agentApprovalRequest = nil }
+
+        if approve {
+            do {
+                try await executeApprovedAgentAction(approval.record.sql)
+                try approval.markExecuted()
+                agentAuditError = nil
+                agentAuditMessage = L(.agentApprovalApproved)
+            } catch {
+                // 批准了但执行失败：记为 `failed`，失败原因进审计（不是静默失败）。
+                let message = ErrorPresenter.message(for: error)
+                try? approval.markFailed(detail: message)
+                agentAuditError = L(.errorQueryFailed, message)
+            }
+        } else {
+            agentAuditError = nil
+            agentAuditMessage = L(.agentApprovalRejected)
+        }
+
+        await appendAgentAudit(approval.record)
+    }
+
+    /// 执行一条**已获批准**的智能体语句，复用既有的连接与逐条下发路径。
+    private func executeApprovedAgentAction(_ sql: String) async throws {
+        guard let configuration = selectedConnection else { throw AppError.notConnected }
+        let service = try await ensureService(
+            for: configuration,
+            database: queryDatabase(for: configuration)
+        )
+        try await runStatements(sql, databaseType: configuration.dbType, on: service)
+    }
+
     /// 供模型参考的 schema 摘要（NFR-AI-01：只有结构，没有行数据）。
     ///
     /// 取表清单走**一条**查询（方言的 `listTablesQuery`），并把数量封顶 ——
@@ -885,7 +1107,8 @@ final class AppState: ObservableObject {
             ),
             configuration: agentConfiguration,
             apiKey: agentAPIKey,
-            policy: .readOnlyDefault,
+            // 只读模式 / 白名单来自配置（FR-AI-09），不再写死默认策略。
+            policy: agentGuardPolicy,
             ledger: .empty,
             client: OpenAICompatibleClient()
         )

@@ -73,12 +73,18 @@ public enum AgentGuardFinding: String, Codable, Equatable, Sendable, CaseIterabl
     case explainAnalyze
     case multipleStatements
     case unknownStatement
+    /// 写操作（数据 / 结构 / 权限变更）本身。
+    ///
+    /// 这不是词法风险点，而是**策略**触发项：FR-AI-09 要求智能体发起的写操作 / DDL
+    /// 逐次审批，所以即使语句本身「干净」（例如带条件的 `INSERT`）也不自动放行。
+    /// 只有 `AgentGuardPolicy.requireApprovalForWrites` 打开时才会出现。
+    case writeStatement
 
     public var risk: AgentRiskLevel {
         switch self {
         case .updateWithoutWhere, .deleteWithoutWhere, .dropStatement, .truncateStatement:
             return .destructive
-        case .privilegeChange, .explainAnalyze, .multipleStatements, .unknownStatement:
+        case .privilegeChange, .explainAnalyze, .multipleStatements, .unknownStatement, .writeStatement:
             return .elevated
         }
     }
@@ -101,6 +107,8 @@ public enum AgentGuardFinding: String, Codable, Equatable, Sendable, CaseIterabl
             return "一次提交包含多条语句，无法逐条确认。"
         case .unknownStatement:
             return "无法识别语句类型，无法判断其影响。"
+        case .writeStatement:
+            return "这是写操作 / DDL，需要逐次批准后才执行。"
         }
     }
 }
@@ -108,29 +116,95 @@ public enum AgentGuardFinding: String, Codable, Equatable, Sendable, CaseIterabl
 // MARK: - 策略与判定
 
 /// 护栏策略（FR-AI-09 的「只读模式与白名单」在这里落地）。
-public struct AgentGuardPolicy: Equatable, Sendable {
+///
+/// `Codable` 是为了让策略随 `AgentConfiguration` 落到 `agent.json`（FR-AI-09 的
+/// 「可配置只读模式与白名单」需要持久化，否则每次启动都退回默认，配置等于没做）。
+public struct AgentGuardPolicy: Codable, Equatable, Sendable {
     /// 只读模式：只放行只读查询，其余一律拒绝（AC-AI-02）。
     public var readOnly: Bool
     /// 高危语句必须逐次批准（FR-AI-12 默认拦截）。
     public var requireApprovalForHighRisk: Bool
+    /// 写操作（数据 / 结构 / 权限变更）**一律**逐次批准（FR-AI-09）。
+    ///
+    /// 与 `requireApprovalForHighRisk` 是两道独立的闸门：前者按**语句类别**触发
+    /// （写操作都要批），后者按**风险点**触发（无 `WHERE` 的 `UPDATE`、`DROP` 等）。
+    /// 默认开启，否则一条带条件的 `INSERT` 会被当成「无风险」自动放行，
+    /// 与 FR-AI-09「写操作逐次审批」不符。要放行某一类，用白名单。
+    public var requireApprovalForWrites: Bool
     /// 白名单：这些**语句类别**即使带风险点也直接放行（只免除审批，不能突破只读模式）。
     public var allowedKinds: Set<AgentStatementKind>
 
     public init(
         readOnly: Bool = true,
         requireApprovalForHighRisk: Bool = true,
+        requireApprovalForWrites: Bool = true,
         allowedKinds: Set<AgentStatementKind> = []
     ) {
         self.readOnly = readOnly
         self.requireApprovalForHighRisk = requireApprovalForHighRisk
+        self.requireApprovalForWrites = requireApprovalForWrites
         self.allowedKinds = allowedKinds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case readOnly
+        case requireApprovalForHighRisk
+        case requireApprovalForWrites
+        case allowedKinds
+    }
+
+    /// 手写解码：缺字段时各退回默认（`unknown` 白名单在 `AgentConfiguration` 解码时还会再过一遍
+    /// `sanitized`），避免一份手写 / 老版本的 JSON 让整份配置读不出来。
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.readOnly = try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? true
+        self.requireApprovalForHighRisk =
+            try container.decodeIfPresent(Bool.self, forKey: .requireApprovalForHighRisk) ?? true
+        self.requireApprovalForWrites =
+            try container.decodeIfPresent(Bool.self, forKey: .requireApprovalForWrites) ?? true
+        self.allowedKinds =
+            try container.decodeIfPresent(Set<AgentStatementKind>.self, forKey: .allowedKinds) ?? []
+    }
+
+    /// 可以进白名单的语句类别：**`unknown` 不在其中**。
+    ///
+    /// 无法归类的语句本来就该「宁可多批一次」（见 `AgentGuardrail` 的取向），
+    /// 把它放进白名单等于给未知语句开一条免审批通道，方向正好相反；
+    /// 因此这里不给这个选项，界面也只列这几项。
+    public static let allowlistableKinds: [AgentStatementKind] =
+        AgentStatementKind.allCases.filter { $0 != .unknown }
+
+    /// 实际生效的白名单：`unknown` 一律剔除。
+    ///
+    /// 兜底对象是**手改配置文件**：即使有人把 `"unknown"` 写进 `allowedKinds`，
+    /// 判定时也不认，避免「白名单」变成绕过审批的后门。
+    public var effectiveAllowedKinds: Set<AgentStatementKind> {
+        allowedKinds.subtracting([.unknown])
+    }
+
+    /// 归一化后的策略（白名单剔除 `unknown`，其余原样）。
+    public var sanitized: AgentGuardPolicy {
+        AgentGuardPolicy(
+            readOnly: readOnly,
+            requireApprovalForHighRisk: requireApprovalForHighRisk,
+            requireApprovalForWrites: requireApprovalForWrites,
+            allowedKinds: effectiveAllowedKinds
+        )
     }
 
     /// v1.0 默认：智能体只读（M-AI-1「只读、零信任外发」）。
     public static let readOnlyDefault = AgentGuardPolicy()
 
-    /// 允许写操作，但高危语句仍需逐次批准。
-    public static let approvalRequired = AgentGuardPolicy(readOnly: false, requireApprovalForHighRisk: true)
+    /// **仅**高危语句需要批准，写操作本身不额外触发审批。
+    ///
+    /// 这是 FR-AI-12 的下限（Core 既有语义，供 `AgentGuardrail` 的判定与
+    /// `SyntheticDataGenerator.writeApproval` 使用）。要让「写操作逐次批准」
+    /// （FR-AI-09）生效，用 `AgentGuardPolicy()` 或配置里的策略 —— App 侧走的是后者。
+    public static let approvalRequired = AgentGuardPolicy(
+        readOnly: false,
+        requireApprovalForHighRisk: true,
+        requireApprovalForWrites: false
+    )
 }
 
 /// 拒绝原因。
@@ -282,18 +356,31 @@ public enum AgentGuardrail {
             }
         }
 
-        if !policy.requireApprovalForHighRisk { return .allow }
+        if !policy.requireApprovalForHighRisk && !policy.requireApprovalForWrites { return .allow }
 
+        // 白名单用**生效集合**：`unknown` 永远不会被免除审批。
+        let allowlisted = policy.effectiveAllowedKinds
         var pending: [AgentGuardFinding] = []
         for assessment in assessments {
-            guard !assessment.findings.isEmpty else { continue }
-            if policy.allowedKinds.contains(assessment.kind) { continue }
-            pending.append(contentsOf: assessment.findings)
+            // 白名单是唯一的免审批出口（且它不能突破只读模式，只读在上一步已判完）。
+            if allowlisted.contains(assessment.kind) { continue }
+
+            if policy.requireApprovalForHighRisk {
+                pending.append(contentsOf: assessment.findings)
+            }
+
+            // FR-AI-09：写操作 / DDL **一律**逐次批准 —— 即使没有命中风险点。
+            // 已经有风险点的语句不必再补一条，免得同一条语句给出两个理由。
+            if policy.requireApprovalForWrites,
+               assessment.kind.changesDataOrSchema,
+               assessment.findings.isEmpty {
+                pending.append(.writeStatement)
+            }
         }
 
         // 整段提交级发现（如「多条语句一起提交」）：只要不是所有语句类别都在白名单里，就纳入。
         let allKindsAllowlisted = !assessments.isEmpty
-            && assessments.allSatisfy { policy.allowedKinds.contains($0.kind) }
+            && assessments.allSatisfy { allowlisted.contains($0.kind) }
         if !allKindsAllowlisted {
             pending.append(contentsOf: documentFindings)
         }

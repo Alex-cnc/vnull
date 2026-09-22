@@ -20,19 +20,52 @@ public struct AgentConfiguration: Codable, Equatable, Sendable {
     public var timeoutSeconds: TimeInterval
     /// 成本与配额（NFR-AI-04）。
     public var quota: AgentQuota
+    /// 审批 / 护栏策略（FR-AI-09、FR-AI-12）：只读模式与白名单。
+    ///
+    /// v1.0 默认**只读**（`AgentGuardPolicy.readOnlyDefault`）：智能体发起的写操作 /
+    /// DDL 一律被拒（AC-AI-02）。要放开必须显式关闭只读模式，且放开后写操作仍需逐次审批。
+    public var guardPolicy: AgentGuardPolicy
 
     public init(
         isEnabled: Bool = false,
         endpoint: String = "",
         model: String = "",
         timeoutSeconds: TimeInterval = AgentConfiguration.defaultTimeoutSeconds,
-        quota: AgentQuota = AgentQuota()
+        quota: AgentQuota = AgentQuota(),
+        guardPolicy: AgentGuardPolicy = .readOnlyDefault
     ) {
         self.isEnabled = isEnabled
         self.endpoint = endpoint
         self.model = model
         self.timeoutSeconds = timeoutSeconds
         self.quota = quota
+        self.guardPolicy = guardPolicy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case endpoint
+        case model
+        case timeoutSeconds
+        case quota
+        case guardPolicy
+    }
+
+    /// 手写解码只为一件小事：**向后兼容**。
+    ///
+    /// 老版本的 `agent.json` 里没有 `guardPolicy` 字段，用合成解码会整份配置读不出来，
+    /// 用户明明配好的端点 / 模型会被静默丢掉。缺字段时退回只读默认（也就是安全默认）。
+    /// 顺带把白名单归一化（剔除 `unknown`，见 `AgentGuardPolicy.sanitized`）。
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        self.endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        self.model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        self.timeoutSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .timeoutSeconds)
+            ?? AgentConfiguration.defaultTimeoutSeconds
+        self.quota = try container.decodeIfPresent(AgentQuota.self, forKey: .quota) ?? AgentQuota()
+        self.guardPolicy = (try container.decodeIfPresent(AgentGuardPolicy.self, forKey: .guardPolicy)
+            ?? .readOnlyDefault).sanitized
     }
 
     /// 默认超时（秒）。
@@ -70,11 +103,15 @@ public enum AgentConfigurationIssue: String, Equatable, Sendable, CaseIterable {
 public enum AgentConfigurationWarning: String, Equatable, Sendable, CaseIterable {
     /// 远端明文 http 端点：密钥会以明文上网。
     case insecureRemoteEndpoint
+    /// 只读模式已关闭：智能体可以发起写操作 / DDL（仍须逐次审批）。
+    case agentWritesAllowed
 
     public var message: String {
         switch self {
         case .insecureRemoteEndpoint:
             return "该端点是远端 http 地址，API Key 会以明文传输；建议改用 https。"
+        case .agentWritesAllowed:
+            return "只读模式已关闭：智能体可以发起写操作 / DDL（每次仍需逐次批准）。"
         }
     }
 }
@@ -128,12 +165,21 @@ public extension AgentConfiguration {
 
     /// 警告清单。
     var warnings: [AgentConfigurationWarning] {
-        guard let url = endpointURL,
-              url.scheme?.lowercased() == "http",
-              !isLocalEndpoint
-        else { return [] }
-        return [.insecureRemoteEndpoint]
+        var warnings: [AgentConfigurationWarning] = []
+        if let url = endpointURL,
+           url.scheme?.lowercased() == "http",
+           !isLocalEndpoint {
+            warnings.append(.insecureRemoteEndpoint)
+        }
+        // 只读模式是 v1.0 的安全默认；关掉它值得在界面上说出来（FR-AI-09）。
+        if !guardPolicy.readOnly {
+            warnings.append(.agentWritesAllowed)
+        }
+        return warnings
     }
+
+    /// 实际生效的护栏 / 审批策略（白名单已归一化，`unknown` 不在其中）。
+    var effectiveGuardPolicy: AgentGuardPolicy { guardPolicy.sanitized }
 
     /// 端点是否指向本机 / 局域网（NFR-AI-06 本地模型优先）。
     ///

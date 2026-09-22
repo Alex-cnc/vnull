@@ -174,6 +174,10 @@ public enum AgentApprovalError: Error, Equatable, LocalizedError {
 /// 状态机刻意做得严格：`pending → approved/rejected/expired`，
 /// `approved → executed/failed`，其余一律拒绝。写操作**只能**沿这条路走，
 /// 「黑箱自动执行」在状态机上就不成立（AC-AI-03）。
+///
+/// **id 即它那条留痕记录的 id**：审计是追加式的，同一个动作会写多条记录
+/// （待批准 → 已执行），靠这个 id 才能把「审批单」与「日志里的多条记录」对上，
+/// 也才能在重启后按日志重建待审批队列（`pending(from:)`）。
 public struct AgentApproval: Equatable, Sendable, Identifiable {
     public let id: UUID
     public var record: AgentActionRecord
@@ -208,6 +212,29 @@ public struct AgentApproval: Equatable, Sendable, Identifiable {
     /// 是否需要人工确认。
     public var awaitsHumanDecision: Bool { state == .pending }
 
+    // MARK: 从审计日志恢复
+
+    /// 从审计记录里恢复「仍然待审批」的动作（FR-AI-09）。
+    ///
+    /// 为什么需要这条路径：审计是**追加式**的，同一个动作 id 会有多条记录
+    /// （待批准 → 已执行 / 已拒绝），**最后一条**才是它的当前状态。
+    /// 重启之后内存里的待审批队列是空的，但日志里那条 `pendingApproval` 还挂着 ——
+    /// 按「最后一条」重建，界面才不会出现「日志说待批准、列表却说没有」的矛盾，
+    /// 已决策的动作也不会被重新摆回审批队列。
+    public static func pending(from records: [AgentActionRecord]) -> [AgentApproval] {
+        var latest: [UUID: AgentActionRecord] = [:]
+        var order: [UUID] = []
+        for record in records {
+            if latest[record.id] == nil { order.append(record.id) }
+            latest[record.id] = record
+        }
+        return order.compactMap { id in
+            guard let record = latest[id], record.outcome == .pendingApproval else { return nil }
+            // 记录里没有决策时刻，用记录时间当创建时间；状态一律回到 `pending`。
+            return AgentApproval(id: record.id, record: record, state: .pending, createdAt: record.timestamp)
+        }
+    }
+
     // MARK: 工厂
 
     /// 依护栏判定创建审批单（FR-AI-09、AC-AI-02）。
@@ -234,7 +261,7 @@ public struct AgentApproval: Equatable, Sendable, Identifiable {
                 detail: detail,
                 at: date
             )
-            return AgentApproval(record: record, state: .pending, createdAt: date)
+            return AgentApproval(id: record.id, record: record, state: .pending, createdAt: date)
         case .allow:
             let record = AgentActionRecord.make(
                 sql: sql,
@@ -245,6 +272,7 @@ public struct AgentApproval: Equatable, Sendable, Identifiable {
                 at: date
             )
             return AgentApproval(
+                id: record.id,
                 record: record,
                 state: .approved,
                 createdAt: date,
@@ -423,12 +451,15 @@ public actor AgentAuditLog {
         return Data(AgentAudit.redacted(text).utf8)
     }
 
+    /// CSV 的列顺序（导出、预览与单测共用同一份定义，避免「导出顺序变了没人发现」）。
+    public static let csvColumns: [String] = [
+        "timestamp", "connection", "database", "model",
+        "statement_kind", "risk", "findings", "outcome", "sql", "detail"
+    ]
+
     /// 导出为 CSV（**已脱敏**）。
     public func exportCSV() throws -> String {
-        let header = [
-            "timestamp", "connection", "database", "model",
-            "statement_kind", "risk", "findings", "outcome", "sql", "detail"
-        ].joined(separator: ",")
+        let header = Self.csvColumns.joined(separator: ",")
 
         let formatter = ISO8601DateFormatter()
         var lines = [header]
@@ -448,6 +479,106 @@ public actor AgentAuditLog {
             lines.append(fields.map { ResultExporter.escapeCSVField($0) }.joined(separator: ","))
         }
         return AgentAudit.redacted(lines.joined(separator: "\n") + "\n")
+    }
+}
+
+// MARK: - 动作提交（FR-AI-09）
+
+/// 一次「智能体想做的事」提交后的去向。
+public enum AgentActionSubmission: Equatable, Sendable {
+    /// 被护栏拒绝（只读模式 / 策略拒绝）：**没有审批单**，只留痕（AC-AI-02）。
+    case denied(AgentActionRecord)
+    /// 无需审批（只读查询或白名单类别）：已标记为批准，仍留痕。
+    case approved(AgentApproval)
+    /// 需要人工逐次批准：进待审批队列。
+    case awaitingApproval(AgentApproval)
+
+    /// 需要写进审计日志的那条记录（**拒绝同样留痕**）。
+    public var record: AgentActionRecord {
+        switch self {
+        case .denied(let record):
+            return record
+        case .approved(let approval), .awaitingApproval(let approval):
+            return approval.record
+        }
+    }
+
+    /// 审批单；被拒绝时为 `nil`（护栏拒绝的语句连审批单都建不出来）。
+    public var approval: AgentApproval? {
+        switch self {
+        case .denied:
+            return nil
+        case .approved(let approval), .awaitingApproval(let approval):
+            return approval
+        }
+    }
+
+    /// 是否被护栏拒绝。
+    public var isDenied: Bool {
+        if case .denied = self { return true }
+        return false
+    }
+
+    /// 是否需要人工批准。
+    public var awaitsApproval: Bool {
+        if case .awaitingApproval = self { return true }
+        return false
+    }
+
+    /// 可读原因（被拒时的拒绝说明 / 需要批准时的风险点说明）。
+    public var message: String {
+        switch self {
+        case .denied(let record):
+            return record.detail ?? "该动作被安全护栏拒绝。"
+        case .approved:
+            return "无需审批（只读或已在白名单内）。"
+        case .awaitingApproval(let approval):
+            return approval.record.detail ?? "需要人工批准。"
+        }
+    }
+}
+
+/// 智能体动作的**提交闸门**（FR-AI-09）。
+///
+/// 把「智能体想做一件事」到「能不能做」的判定集中在一处，界面只负责展示结论：
+/// 1. 过 `AgentGuardrail`（只读模式优先，白名单不能突破它）；
+/// 2. 由 `AgentApproval.request` 建审批单 —— `.deny` 不建单，`.requireApproval` 待批，
+///    `.allow` 直接放行但**同样留痕**；
+/// 3. 返回的 `record` 由调用方追加进 `AgentAuditLog`（本函数不碰 IO，便于单测）。
+public enum AgentActionGate {
+
+    public static func submit(
+        sql: String,
+        databaseType: DatabaseType = .postgresql,
+        policy: AgentGuardPolicy,
+        context: AgentActionRecord.Context = .none,
+        at date: Date = Date()
+    ) -> AgentActionSubmission {
+        // 判定与建单都走归一化后的策略：手改配置文件塞进来的 `unknown` 白名单也不生效。
+        let assessment = AgentGuardrail.evaluate(
+            sql: sql,
+            databaseType: databaseType,
+            policy: policy.sanitized
+        )
+
+        guard let approval = AgentApproval.request(
+            sql: sql,
+            assessment: assessment,
+            context: context,
+            at: date
+        ) else {
+            let record = AgentActionRecord.make(
+                sql: sql,
+                assessment: assessment,
+                context: context,
+                outcome: .denied,
+                detail: assessment.message,
+                at: date
+            )
+            return .denied(record)
+        }
+
+        return approval.awaitsHumanDecision ? .awaitingApproval(approval) : .approved(approval)
     }
 }
 

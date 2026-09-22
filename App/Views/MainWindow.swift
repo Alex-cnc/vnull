@@ -71,6 +71,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentSQLPresented) {
             AgentSQLPanel()
         }
+        .sheet(isPresented: $appState.isAgentAuditPresented) {
+            AgentAuditPanel()
+        }
         .sheet(isPresented: $appState.isExecutionPlanPresented) {
             if let tab = appState.selectedTab {
                 ExecutionPlanPanel(tabID: tab.id)

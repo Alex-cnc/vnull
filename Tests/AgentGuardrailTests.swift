@@ -232,12 +232,92 @@ final class AgentGuardrailTests: XCTestCase {
     }
 
     func testApprovalCanBeDisabledEntirely() {
-        let policy = AgentGuardPolicy(readOnly: false, requireApprovalForHighRisk: false)
+        // 两道闸门都关掉才算「完全免审批」：写操作闸门默认是开的（FR-AI-09）。
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: false,
+            requireApprovalForWrites: false
+        )
 
         XCTAssertEqual(
             AgentGuardrail.evaluate(sql: "DROP TABLE t", databaseType: .postgresql, policy: policy).verdict,
             .allow
         )
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "UPDATE t SET a = 1 WHERE id = 1", databaseType: .postgresql, policy: policy).verdict,
+            .allow
+        )
+    }
+
+    /// FR-AI-09：写操作 / DDL **一律**逐次批准 —— 干净的 `INSERT` 也不能自动放行。
+    func testWritesAlwaysRequireApprovalEvenWithoutRiskFindings() {
+        let policy = AgentGuardPolicy(readOnly: false, requireApprovalForHighRisk: true)
+
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "INSERT INTO t (a) VALUES (1)", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.writeStatement])
+        )
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "UPDATE t SET a = 1 WHERE id = 1", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.writeStatement])
+        )
+        // 只读查询不受影响。
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "SELECT 1", databaseType: .postgresql, policy: policy).verdict,
+            .allow
+        )
+        // 已有风险点的语句不重复给理由。
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "DELETE FROM t", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.deleteWithoutWhere])
+        )
+    }
+
+    /// 白名单是唯一的免审批出口：它免除写操作审批，但仍不能突破只读模式。
+    func testAllowlistExemptsWriteApproval() {
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            allowedKinds: [.dataChange]
+        )
+
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "INSERT INTO t (a) VALUES (1)", databaseType: .postgresql, policy: policy).verdict,
+            .allow
+        )
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "CREATE TABLE t (a int)", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.writeStatement])
+        )
+    }
+
+    /// 白名单里的 `unknown` 不生效：无法归类的语句永远要批准。
+    func testUnknownIsNeverAllowlistable() {
+        XCTAssertFalse(AgentGuardPolicy.allowlistableKinds.contains(.unknown))
+        XCTAssertFalse(
+            AgentGuardPolicy(allowedKinds: [.unknown]).effectiveAllowedKinds.contains(.unknown)
+        )
+
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            allowedKinds: [.unknown]
+        )
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "FLUMMOX THE DATABASE", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.unknownStatement])
+        )
+    }
+
+    /// 会话 / 事务控制既不写数据也不是只读查询：既不自动放行也不因为「写操作闸门」被拦。
+    func testSessionControlIsNotTreatedAsWrite() {
+        let policy = AgentGuardPolicy(readOnly: false, requireApprovalForHighRisk: true)
+
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "SET search_path TO public", databaseType: .postgresql, policy: policy).verdict,
+            .allow
+        )
+        XCTAssertFalse(AgentStatementKind.sessionControl.changesDataOrSchema)
     }
 
     func testVerdictMessagesAreReadable() {

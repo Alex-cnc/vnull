@@ -363,4 +363,63 @@ final class AgentAuditTests: XCTestCase {
         }
         XCTAssertTrue(AgentApprovalError.notApproved(.pending).localizedDescription.contains("待批准"))
     }
+
+    // MARK: - 从审计日志恢复待审批（FR-AI-09）
+
+    /// 测试用的待审批单（走真实工厂：高危语句 → `.pending`）。
+    private func pendingApproval(sql: String) throws -> AgentApproval {
+        try XCTUnwrap(
+            AgentApproval.request(sql: sql, assessment: assessment(sql), context: context)
+        )
+    }
+
+    /// 重启后待审批队列为空，但日志里「待批准」那条还挂着：按它恢复。
+    func testPendingApprovalsAreRebuiltFromAuditRecords() throws {
+        let approval = try pendingApproval(sql: "DROP TABLE orders")
+
+        let restored = AgentApproval.pending(from: [approval.record])
+
+        XCTAssertEqual(restored.count, 1)
+        XCTAssertEqual(restored.first?.id, approval.id)
+        XCTAssertEqual(restored.first?.state, .pending)
+        XCTAssertTrue(restored.first?.awaitsHumanDecision ?? false)
+        XCTAssertEqual(restored.first?.record, approval.record)
+        XCTAssertEqual(restored.first?.createdAt, approval.record.timestamp)
+    }
+
+    /// 已决策的动作不能被重新摆回审批队列：同一 id 取**最后一条**记录。
+    func testDecidedApprovalIsNotRestored() throws {
+        var approved = try pendingApproval(sql: "DROP TABLE orders")
+        try approved.approve(by: "alex")
+        try approved.markExecuted()
+
+        let restored = AgentApproval.pending(from: [approved.record])
+
+        XCTAssertTrue(restored.isEmpty, "已执行的动作不该再要求审批")
+    }
+
+    /// 日志里同一条动作的「待批准 + 已拒绝」两条记录：取最后一条 = 已拒绝。
+    func testLastRecordWinsForTheSameAction() throws {
+        var rejected = try pendingApproval(sql: "TRUNCATE orders")
+        let pendingSnapshot = rejected.record
+        try rejected.reject(by: "alex", note: "生产库不允许")
+
+        let restored = AgentApproval.pending(from: [pendingSnapshot, rejected.record])
+
+        XCTAssertTrue(restored.isEmpty)
+    }
+
+    /// 恢复的顺序与出现的先后一致，互不干扰；非待审批的记录被跳过。
+    func testRestoreKeepsDistinctActionsInOrder() throws {
+        let first = try pendingApproval(sql: "DROP TABLE a")
+        let second = try pendingApproval(sql: "DROP TABLE b")
+        let executed = AgentActionRecord.make(
+            sql: "SELECT 1", assessment: assessment("SELECT 1"), context: context, outcome: .executed
+        )
+
+        let restored = AgentApproval.pending(from: [first.record, executed, second.record])
+
+        XCTAssertEqual(restored.map(\.id), [first.id, second.id])
+        XCTAssertTrue(AgentApproval.pending(from: []).isEmpty)
+    }
 }

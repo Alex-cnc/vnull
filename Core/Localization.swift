@@ -246,6 +246,86 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentSQLFailed
     case agentSQLNoInstruction
     case agentSQLNoTables
+    case agentSQLSubmit
+    case agentSQLSubmittedPending
+    case agentSQLSubmittedAuto
+    case agentSQLDenied
+
+    // 执行审批与审计（FR-AI-09 / NFR-AI-03）
+    case menuAgentAudit
+    case agentAuditTitle
+    case agentAuditRefresh
+    case agentAuditClear
+    case agentAuditClearConfirmTitle
+    case agentAuditClearConfirmMessage
+    case agentAuditCleared
+    case agentAuditExportJSON
+    case agentAuditExportCSV
+    case agentAuditExport
+    case agentAuditExported
+    case agentAuditExportFailed
+    case agentAuditExportEmpty
+    case agentAuditEmpty
+    case agentAuditFilteredEmpty
+    case agentAuditFilterOutcome
+    case agentAuditFilterAll
+    case agentAuditFilterConnection
+    case agentAuditFilterSearch
+    case agentAuditRecords
+    case agentAuditRecordsCount
+    case agentAuditColumnTime
+    case agentAuditColumnConnection
+    case agentAuditColumnStatement
+    case agentAuditColumnModel
+    case agentAuditColumnOutcome
+    case agentAuditColumnGuard
+    case agentAuditSelectHint
+    case agentAuditGuardNone
+    case agentAuditRedactedHint
+    case agentAuditLoadFailed
+
+    // 逐次审批（FR-AI-09）
+    case agentApprovalSection
+    case agentApprovalEmpty
+    case agentApprovalTitle
+    case agentApprovalMessage
+    case agentApprovalApprove
+    case agentApprovalReject
+    case agentApprovalNote
+    case agentApprovalReview
+    case agentApprovalPendingCount
+    case agentApprovalApproved
+    case agentApprovalRejected
+    case agentApprovalDismissHint
+
+    // 只读模式与白名单（FR-AI-09）
+    case agentGuardSection
+    case agentReadOnlyMode
+    case agentReadOnlyHint
+    case agentAllowlist
+    case agentAllowlistHint
+    case agentGuardSave
+    case agentGuardSaved
+    case agentGuardWritesWarning
+
+    // 智能体语句类别 / 结果状态 / 风险等级（界面展示用）
+    case agentKindReadQuery
+    case agentKindDataChange
+    case agentKindSchemaChange
+    case agentKindPrivilegeChange
+    case agentKindSessionControl
+    case agentKindUnknown
+    case agentOutcomeGenerated
+    case agentOutcomeDenied
+    case agentOutcomePendingApproval
+    case agentOutcomeApproved
+    case agentOutcomeRejected
+    case agentOutcomeExpired
+    case agentOutcomeExecuted
+    case agentOutcomeFailed
+    case agentRiskLow
+    case agentRiskElevated
+    case agentRiskDestructive
 
     // 高危语句保护（FR-EXEC-16）
     case toolbarSafety
@@ -615,6 +695,82 @@ public enum LocalizedStrings {
         .agentSQLFailed: [.simplifiedChinese: "生成失败：%@", .english: "Generation failed: %@"],
         .agentSQLNoInstruction: [.simplifiedChinese: "请先填写需求描述。", .english: "Please describe what you need first."],
         .agentSQLNoTables: [.simplifiedChinese: "未能取得表清单（可关闭该项后重试）。", .english: "Could not load the table list (turn that option off and retry)."],
+        .agentSQLSubmit: [.simplifiedChinese: "提交审批…", .english: "Submit for approval…"],
+        .agentSQLSubmittedPending: [.simplifiedChinese: "已提交审批：请在弹出的审批单里逐条批准或拒绝。", .english: "Submitted: approve or reject it in the approval sheet."],
+        .agentSQLSubmittedAuto: [.simplifiedChinese: "该语句无需审批（只读或已在白名单内），已放入新页签，未自动执行。", .english: "No approval needed (read-only or allowlisted). Opened in a new tab; not executed automatically."],
+        .agentSQLDenied: [.simplifiedChinese: "安全护栏已拒绝：%@", .english: "Refused by the guardrail: %@"],
+
+        .menuAgentAudit: [.simplifiedChinese: "审批与审计…", .english: "Approvals & Audit…"],
+        .agentAuditTitle: [.simplifiedChinese: "审批与审计", .english: "Approvals & Audit"],
+        .agentAuditRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .agentAuditClear: [.simplifiedChinese: "清空审计…", .english: "Clear audit…"],
+        .agentAuditClearConfirmTitle: [.simplifiedChinese: "清空审计记录？", .english: "Clear audit records?"],
+        .agentAuditClearConfirmMessage: [.simplifiedChinese: "将删除本地全部审计记录（agent-audit.jsonl），该操作不可撤销。", .english: "This permanently deletes all local audit records (agent-audit.jsonl)."],
+        .agentAuditCleared: [.simplifiedChinese: "已清空审计记录。", .english: "Audit records cleared."],
+        .agentAuditExportJSON: [.simplifiedChinese: "导出 JSON…", .english: "Export JSON…"],
+        .agentAuditExportCSV: [.simplifiedChinese: "导出 CSV…", .english: "Export CSV…"],
+        .agentAuditExport: [.simplifiedChinese: "导出审计记录", .english: "Export audit records"],
+        .agentAuditExported: [.simplifiedChinese: "已导出 %d 条审计记录到 %@", .english: "Exported %d audit record(s) to %@"],
+        .agentAuditExportFailed: [.simplifiedChinese: "导出审计记录失败：%@", .english: "Exporting audit records failed: %@"],
+        .agentAuditExportEmpty: [.simplifiedChinese: "还没有可导出的审计记录", .english: "No audit records to export yet"],
+        .agentAuditEmpty: [.simplifiedChinese: "还没有审计记录。智能体每次动作都会在这里留痕。", .english: "No audit records yet. Every agent action is recorded here."],
+        .agentAuditFilteredEmpty: [.simplifiedChinese: "没有符合筛选条件的记录。", .english: "No records match the filter."],
+        .agentAuditFilterOutcome: [.simplifiedChinese: "结果状态", .english: "Outcome"],
+        .agentAuditFilterAll: [.simplifiedChinese: "全部", .english: "All"],
+        .agentAuditFilterConnection: [.simplifiedChinese: "连接", .english: "Connection"],
+        .agentAuditFilterSearch: [.simplifiedChinese: "搜索语句 / 连接 / 模型", .english: "Search statement, connection, model"],
+        .agentAuditRecords: [.simplifiedChinese: "审计记录", .english: "Audit records"],
+        .agentAuditRecordsCount: [.simplifiedChinese: "共 %d 条", .english: "%d record(s)"],
+        .agentAuditColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
+        .agentAuditColumnConnection: [.simplifiedChinese: "连接", .english: "Connection"],
+        .agentAuditColumnStatement: [.simplifiedChinese: "语句 / 动作", .english: "Statement / action"],
+        .agentAuditColumnModel: [.simplifiedChinese: "模型", .english: "Model"],
+        .agentAuditColumnOutcome: [.simplifiedChinese: "结果状态", .english: "Outcome"],
+        .agentAuditColumnGuard: [.simplifiedChinese: "护栏判定", .english: "Guardrail"],
+        .agentAuditSelectHint: [.simplifiedChinese: "选中一条记录，查看完整语句与护栏判定。", .english: "Select a record to see the full statement and guardrail verdict."],
+        .agentAuditGuardNone: [.simplifiedChinese: "未发现高危操作", .english: "No high-risk finding"],
+        .agentAuditRedactedHint: [.simplifiedChinese: "导出前会抹掉形似密钥的片段（API Key / 口令永不进审计）。", .english: "Secret-like fragments are redacted before export (API keys and passwords never enter the audit)."],
+        .agentAuditLoadFailed: [.simplifiedChinese: "读取审计记录失败：%@", .english: "Loading audit records failed: %@"],
+
+        .agentApprovalSection: [.simplifiedChinese: "待审批", .english: "Pending approvals"],
+        .agentApprovalEmpty: [.simplifiedChinese: "没有待审批的动作。", .english: "No actions waiting for approval."],
+        .agentApprovalTitle: [.simplifiedChinese: "智能体动作需要批准", .english: "Agent action needs approval"],
+        .agentApprovalMessage: [.simplifiedChinese: "智能体发起的写操作 / DDL / 外部动作在执行前必须逐次批准，可以拒绝。", .english: "Agent-initiated writes, DDL and external actions must be approved one by one before running — and can be rejected."],
+        .agentApprovalApprove: [.simplifiedChinese: "批准并执行", .english: "Approve & Run"],
+        .agentApprovalReject: [.simplifiedChinese: "拒绝", .english: "Reject"],
+        .agentApprovalNote: [.simplifiedChinese: "备注（可选，会记入审计）", .english: "Note (optional, recorded in the audit)"],
+        .agentApprovalReview: [.simplifiedChinese: "查看…", .english: "Review…"],
+        .agentApprovalPendingCount: [.simplifiedChinese: "待审批 %d 条", .english: "%d pending"],
+        .agentApprovalApproved: [.simplifiedChinese: "已批准并执行。", .english: "Approved and run."],
+        .agentApprovalRejected: [.simplifiedChinese: "已拒绝，动作不会执行。", .english: "Rejected; the action will not run."],
+        .agentApprovalDismissHint: [.simplifiedChinese: "关闭本窗口不会批准，动作会留在「待审批」里。", .english: "Closing this sheet does not approve it; the action stays pending."],
+
+        .agentGuardSection: [.simplifiedChinese: "只读模式与白名单", .english: "Read-only mode & allowlist"],
+        .agentReadOnlyMode: [.simplifiedChinese: "只读模式（推荐）", .english: "Read-only mode (recommended)"],
+        .agentReadOnlyHint: [.simplifiedChinese: "开启后，智能体发起的写操作 / DDL 一律被拒绝并给出可读原因。", .english: "When on, agent-initiated writes and DDL are refused with a readable reason."],
+        .agentAllowlist: [.simplifiedChinese: "白名单（免审批的语句类别）", .english: "Allowlist (kinds exempt from approval)"],
+        .agentAllowlistHint: [.simplifiedChinese: "白名单只免除审批，不能突破只读模式；无法归类的语句永远需要审批。", .english: "The allowlist only exempts kinds from approval and never bypasses read-only mode; unclassified statements always need approval."],
+        .agentGuardSave: [.simplifiedChinese: "保存策略", .english: "Save policy"],
+        .agentGuardSaved: [.simplifiedChinese: "已保存只读模式与白名单。", .english: "Read-only mode and allowlist saved."],
+        .agentGuardWritesWarning: [.simplifiedChinese: "只读模式已关闭：智能体可以发起写操作 / DDL，每次仍需逐次批准。", .english: "Read-only mode is off: the agent may request writes/DDL, each still approved one by one."],
+
+        .agentKindReadQuery: [.simplifiedChinese: "只读查询", .english: "Read-only query"],
+        .agentKindDataChange: [.simplifiedChinese: "数据变更", .english: "Data change"],
+        .agentKindSchemaChange: [.simplifiedChinese: "结构变更", .english: "Schema change"],
+        .agentKindPrivilegeChange: [.simplifiedChinese: "权限变更", .english: "Privilege change"],
+        .agentKindSessionControl: [.simplifiedChinese: "会话 / 事务控制", .english: "Session/transaction control"],
+        .agentKindUnknown: [.simplifiedChinese: "无法识别的语句", .english: "Unrecognized statement"],
+        .agentOutcomeGenerated: [.simplifiedChinese: "已生成（未执行）", .english: "Generated (not run)"],
+        .agentOutcomeDenied: [.simplifiedChinese: "被护栏拒绝", .english: "Refused by guardrail"],
+        .agentOutcomePendingApproval: [.simplifiedChinese: "待批准", .english: "Pending approval"],
+        .agentOutcomeApproved: [.simplifiedChinese: "已批准", .english: "Approved"],
+        .agentOutcomeRejected: [.simplifiedChinese: "已拒绝", .english: "Rejected"],
+        .agentOutcomeExpired: [.simplifiedChinese: "已失效", .english: "Expired"],
+        .agentOutcomeExecuted: [.simplifiedChinese: "已执行", .english: "Executed"],
+        .agentOutcomeFailed: [.simplifiedChinese: "执行失败", .english: "Failed"],
+        .agentRiskLow: [.simplifiedChinese: "低", .english: "Low"],
+        .agentRiskElevated: [.simplifiedChinese: "较高", .english: "Elevated"],
+        .agentRiskDestructive: [.simplifiedChinese: "高危", .english: "Destructive"],
         .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
         .safetySafeMode: [.simplifiedChinese: "高危语句保护", .english: "Safe mode"],
         .safetySafeModeHint: [.simplifiedChinese: "对不带条件的批量更新 / 删除、删表、清空表等，执行前先确认一次。", .english: "Confirm once before running unqualified UPDATE/DELETE, DROP or TRUNCATE."],

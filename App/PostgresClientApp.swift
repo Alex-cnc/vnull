@@ -36,6 +36,13 @@ struct PostgresClientApp: App {
                     appState.isAgentSQLPresented = true
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button(L(.menuAgentAudit)) {
+                    appState.isAgentAuditPresented = true
+                }
+                .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
             }
 
             CommandMenu(L(.menuLanguage)) {

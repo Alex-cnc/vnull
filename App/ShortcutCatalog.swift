@@ -41,6 +41,9 @@ enum AppShortcut: CaseIterable {
     case safeMode
     case confirmAllWrites
 
+    /// 智能体审批与审计面板（FR-AI-09）。
+    case agentAudit
+
     case help
 
     var key: KeyEquivalent {
@@ -67,6 +70,7 @@ enum AppShortcut: CaseIterable {
         case .scopeSelection: return "3"
         case .safeMode: return "s"
         case .confirmAllWrites: return "w"
+        case .agentAudit: return "a"
         case .help: return "/"
         }
     }
@@ -77,7 +81,7 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .stop:
             return [.command]
-        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .help:
+        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .help:
             return [.command, .shift]
         case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
             return [.command, .option]
