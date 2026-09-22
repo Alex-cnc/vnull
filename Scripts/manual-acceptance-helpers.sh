@@ -59,10 +59,23 @@ cli() { "${CLI}" --cancel-after "${CANCEL_AFTER:-20}" "$@"; }
 # 密码：环境变量优先；否则按连接档的 UUID 去钥匙串取。
 resolve_password() {
   if [ -n "${PGPASSWORD:-}" ]; then return; fi
-  local bundle="${APP_BUNDLE_ID:-com.vnull.PostgresClient}"
-  local plist="$HOME/Library/Containers/${bundle}/Data/Library/Application Support/DoyahStudio/connections.json"
+  # 先找改名后的新容器，找不到再退回旧容器（迁移前后都能跑）。
+  local support="Library/Application Support"
+  local plist=""
+  local bundle=""
+  local candidate
+  for candidate in \
+    "$HOME/Library/Containers/studio.doyah.DoyahStudio/Data/${support}/DoyahStudio/connections.json" \
+    "$HOME/Library/Containers/com.vnull.PostgresClient/Data/${support}/PostgresClient/connections.json"
+  do
+    if [ -f "${candidate}" ]; then
+      plist="${candidate}"
+      bundle="$(basename "$(dirname "$(dirname "$(dirname "$(dirname "${candidate}")")")")")"
+      break
+    fi
+  done
   local account=""
-  if [ -f "${plist}" ]; then
+  if [ -n "${plist}" ]; then
     account="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d[0]['id'] if d else '')" "${plist}" 2>/dev/null || true)"
     if [ -z "${PGDATABASE:-}" ]; then
       PGDATABASE="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d[0].get('database','') if d else '')" "${plist}" 2>/dev/null || true)"

@@ -643,7 +643,7 @@ public actor DataTaskStore {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
             ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            baseURL = applicationSupport.appendingPathComponent("PostgresClient", isDirectory: true)
+            baseURL = applicationSupport.appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
         }
 
         self.tasksURL = baseURL.appendingPathComponent("data-tasks.json", isDirectory: false)

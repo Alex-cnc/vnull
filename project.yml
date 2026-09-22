@@ -29,7 +29,7 @@ targets:
       - path: Core
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClientCore
+        PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahCore
         DEFINES_MODULE: YES
         SKIP_INSTALL: YES
         GENERATE_INFOPLIST_FILE: YES
@@ -51,7 +51,7 @@ targets:
       - target: DoyahCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClient
+        PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahStudio
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Doyah Studio
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
@@ -67,7 +67,7 @@ targets:
       - target: DoyahCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClientTests
+        PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahStudioTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:

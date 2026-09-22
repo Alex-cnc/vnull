@@ -21,7 +21,7 @@ public struct KeychainAgentKeyStore: AgentKeyStore {
     private let account: String
 
     public init(
-        service: String = Bundle.main.bundleIdentifier ?? "com.vnull.PostgresClient",
+        service: String = DoyahIdentity.keychainServiceName,
         account: String = KeychainAgentKeyStore.defaultAccount
     ) {
         self.service = service
@@ -111,7 +111,7 @@ public actor AgentConfigurationStore {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
             ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            baseURL = applicationSupport.appendingPathComponent("PostgresClient", isDirectory: true)
+            baseURL = applicationSupport.appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
         }
 
         self.fileURL = baseURL.appendingPathComponent("agent.json", isDirectory: false)

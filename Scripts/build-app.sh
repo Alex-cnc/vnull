@@ -65,7 +65,7 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key>
     <string>DoyahStudio</string>
     <key>CFBundleIdentifier</key>
-    <string>com.vnull.PostgresClient</string>
+    <string>studio.doyah.DoyahStudio</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

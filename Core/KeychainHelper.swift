@@ -10,7 +10,7 @@ public protocol SecretStore: Sendable {
 public struct KeychainSecretStore: SecretStore {
     private let service: String
 
-    public init(service: String = Bundle.main.bundleIdentifier ?? "com.vnull.PostgresClient") {
+    public init(service: String = DoyahIdentity.keychainServiceName) {
         self.service = service
     }
 
