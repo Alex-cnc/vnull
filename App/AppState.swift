@@ -288,6 +288,17 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(lowerPaneTab.rawValue, forKey: "ui.lowerPaneTab") }
     }
 
+    /// 某个页签当前生效的连接：优先用它自己最近一次执行用的连接，否则退回左侧选中的连接。
+    ///
+    /// 编辑器与下方面板的问题页签都要用它算诊断，所以收成一处。
+    func connection(for tab: QueryTab) -> ConnectionConfig? {
+        if let connectionID = tab.connectionID,
+           let connection = connections.first(where: { $0.id == connectionID }) {
+            return connection
+        }
+        return selectedConnection
+    }
+
     /// 清空当前下方面板页签对应的日志（Problem / Output 页签上的「清空」）。
     func clearLowerPaneLog(for tabID: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }

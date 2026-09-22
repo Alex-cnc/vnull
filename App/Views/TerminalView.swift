@@ -95,6 +95,10 @@ final class TerminalHostView: NSView {
         return CGSize(width: max(1, width), height: max(1, height))
     }()
 
+    /// 输入法正在组字的「未上屏文本」（如拼音串）。非空时画在光标处。
+    private var markedText = ""
+    private var markedSelection = NSRange(location: 0, length: 0)
+
     init(model: TerminalModel) {
         self.model = model
         super.init(frame: .zero)
@@ -137,6 +141,18 @@ final class TerminalHostView: NSView {
             drawText(cells, at: origin)
         }
         drawCursor()
+        drawMarkedText()
+    }
+
+    /// 画输入法未上屏的组字（带下划线）—— 让用户看得到自己正在打的拼音 / 候选。
+    private func drawMarkedText() {
+        guard !markedText.isEmpty else { return }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.textColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
+        NSAttributedString(string: markedText, attributes: attributes).draw(at: cursorCellRect.origin)
     }
 
     private func drawBackgrounds(_ cells: [TerminalCell], at origin: CGPoint, rowIndex: Int) {
@@ -192,14 +208,19 @@ final class TerminalHostView: NSView {
         return Self.color(for: cell.background, isBackground: true)
     }
 
-    private func drawCursor() {
-        guard model.screen.isCursorVisible else { return }
-        let rect = NSRect(
+    /// 光标所在的格子（视图坐标）。
+    private var cursorCellRect: NSRect {
+        NSRect(
             x: CGFloat(model.screen.cursorColumn) * cellSize.width,
             y: CGFloat(model.screen.cursorRow) * cellSize.height,
             width: cellSize.width,
             height: cellSize.height
         )
+    }
+
+    private func drawCursor() {
+        guard model.screen.isCursorVisible else { return }
+        let rect = cursorCellRect
         if window?.firstResponder === self {
             NSColor.selectedTextBackgroundColor.withAlphaComponent(0.6).setFill()
             rect.fill()
@@ -282,15 +303,19 @@ final class TerminalHostView: NSView {
             return
         }
 
-        if let bytes = Self.bytes(for: event) {
+        // 控制键 / 方向键 / 功能键：固定字节序列，不经过输入法。
+        if let bytes = Self.controlBytes(for: event) {
             model.send(bytes)
-        } else {
-            super.keyDown(with: event)
+            return
         }
+
+        // 其余（含中文）交给输入法：组字 → 候选 → 上屏 走 NSTextInputClient。
+        // 没这一步，输入法切换对终端完全不起作用。
+        interpretKeyEvents([event])
     }
 
-    /// 按键 → 要写进 PTY 的字节序列。
-    static func bytes(for event: NSEvent) -> [UInt8]? {
+    /// 控制键 / 方向键 / 功能键 → 写进 PTY 的字节序列；不是这类键时返回 nil。
+    static func controlBytes(for event: NSEvent) -> [UInt8]? {
         switch event.keyCode {
         case 36, 76: return [0x0D]                 // Return / 小键盘 Enter
         case 51: return [0x7F]                     // Delete（退格）
@@ -320,32 +345,133 @@ final class TerminalHostView: NSView {
         default: break
         }
 
-        guard let characters = event.characters, !characters.isEmpty else { return nil }
-
-        if event.modifierFlags.contains(.control), let scalar = characters.unicodeScalars.first {
+        // ⌃ + 字母 / 符号：转成控制字节（⌃C = 0x03）
+        if event.modifierFlags.contains(.control),
+           let characters = event.characters,
+           let scalar = characters.unicodeScalars.first {
             if scalar.value < 0x20 { return [UInt8(scalar.value)] }
             if scalar.value >= 0x61, scalar.value <= 0x7A { return [UInt8(scalar.value - 0x60)] }
             if scalar.value >= 0x40, scalar.value <= 0x5F { return [UInt8(scalar.value - 0x40)] }
         }
-        return Array(characters.utf8)
+        return nil
     }
 
     // MARK: 输入法
 
+    /// 走键盘命令通道的那些（输入法 / 系统也可能派发到这里）。
     override func doCommand(by selector: Selector) {
-        // 组字相关命令交给系统；其余不响应（否则 Tab / Esc 会被当成命令吃掉）。
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
             model.send([0x0D])
         case #selector(NSResponder.insertTab(_:)):
             model.send([0x09])
+        case #selector(NSResponder.insertBacktab(_:)):
+            model.send(Array("\u{1B}[Z".utf8))
         case #selector(NSResponder.cancelOperation(_:)):
             model.send([0x1B])
         case #selector(NSResponder.deleteBackward(_:)):
             model.send([0x7F])
+        case #selector(NSResponder.deleteForward(_:)):
+            model.send(Array("\u{1B}[3~".utf8))
+        case #selector(NSResponder.moveLeft(_:)):
+            model.send(Array("\u{1B}[D".utf8))
+        case #selector(NSResponder.moveRight(_:)):
+            model.send(Array("\u{1B}[C".utf8))
+        case #selector(NSResponder.moveUp(_:)):
+            model.send(Array("\u{1B}[A".utf8))
+        case #selector(NSResponder.moveDown(_:)):
+            model.send(Array("\u{1B}[B".utf8))
+        case #selector(NSResponder.scrollToBeginningOfDocument(_:)):
+            model.send(Array("\u{1B}[H".utf8))
+        case #selector(NSResponder.scrollToEndOfDocument(_:)):
+            model.send(Array("\u{1B}[F".utf8))
+        case #selector(NSResponder.pageUp(_:)):
+            model.send(Array("\u{1B}[5~".utf8))
+        case #selector(NSResponder.pageDown(_:)):
+            model.send(Array("\u{1B}[6~".utf8))
         default:
             break
         }
+    }
+}
+
+// MARK: - 输入法
+
+/// 中文等组字输入法能工作的关键：可打印输入走 `interpretKeyEvents`，
+/// 系统把组字 / 候选 / 上屏通过下面这套回调交回来。**没实现它，输入法切换就没反应。**
+extension TerminalHostView: NSTextInputClient {
+
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text = Self.plainString(from: string)
+        clearMarkedText()
+        guard !text.isEmpty else { return }
+        model.send(text: text)
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        markedText = Self.plainString(from: string)
+        markedSelection = selectedRange
+        needsDisplay = true
+    }
+
+    func unmarkText() {
+        clearMarkedText()
+    }
+
+    func hasMarkedText() -> Bool {
+        !markedText.isEmpty
+    }
+
+    func markedRange() -> NSRange {
+        markedText.isEmpty
+            ? NSRange(location: NSNotFound, length: 0)
+            : NSRange(location: 0, length: markedText.utf16.count)
+    }
+
+    func selectedRange() -> NSRange {
+        // 终端没有"可选中文本"的概念，按未上屏组字处理即可。
+        markedRange()
+    }
+
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        guard !markedText.isEmpty else { return nil }
+        actualRange?.pointee = markedRange()
+        return NSAttributedString(
+            string: markedText,
+            attributes: [
+                .font: font,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+        )
+    }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        [.font, .underlineStyle]
+    }
+
+    /// 候选窗口贴在终端光标处，而不是屏幕角落。
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        actualRange?.pointee = markedRange()
+        guard let window else { return .zero }
+        let inWindow = convert(cursorCellRect, to: nil)
+        return window.convertToScreen(inWindow)
+    }
+
+    func characterIndex(for point: NSPoint) -> Int {
+        NSNotFound
+    }
+
+    private func clearMarkedText() {
+        guard !markedText.isEmpty else { return }
+        markedText = ""
+        markedSelection = NSRange(location: 0, length: 0)
+        needsDisplay = true
+    }
+
+    private static func plainString(from value: Any) -> String {
+        if let attributed = value as? NSAttributedString { return attributed.string }
+        if let plain = value as? String { return plain }
+        return ""
     }
 }
 

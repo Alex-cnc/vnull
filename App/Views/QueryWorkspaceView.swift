@@ -7,10 +7,17 @@ struct QueryWorkspaceView: View {
     var body: some View {
         Group {
             if let tab = appState.selectedTab {
-                VStack(spacing: 0) {
-                    tabBar
-                    Divider()
-                    QueryEditorView(tab: tab)
+                if appState.isLowerPaneVisible, appState.isLowerPaneMaximized {
+                    // 最大化：**连查询页签条一起盖住** —— 上下文栏、工具栏、页签条全部让位，
+                    // 整个工作区看起来就是面板本身（终端占满时就是一个完整的终端界面）。
+                    // 恢复按钮在面板自己的页签条上，所以不会"盖住就出不来"。
+                    LowerPaneView(tab: tab)
+                } else {
+                    VStack(spacing: 0) {
+                        tabBar
+                        Divider()
+                        QueryEditorView(tab: tab)
+                    }
                 }
             } else {
                 ContentUnavailableView(
@@ -78,7 +85,7 @@ struct QueryEditorView: View {
     @State private var isGoToLinePresented = false
 
     var body: some View {
-        let diagnostics = self.diagnostics
+        let diagnostics = QueryDiagnostics.analyze(tab: tab, in: appState)
 
         VStack(spacing: 0) {
             QueryContextBar()
@@ -86,7 +93,7 @@ struct QueryEditorView: View {
 
             QueryToolbar(
                 tab: tab,
-                connection: tabConnection,
+                connection: appState.connection(for: tab),
                 onOpenFile: {
                     appState.openFileFromPanel()
                 },
@@ -104,21 +111,17 @@ struct QueryEditorView: View {
             )
             Divider()
 
-            // 编辑区在上、下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）在下，
-            // 分隔条可拖拽调整高度；最大化时面板占满，收起时只剩编辑区。
-            Group {
-                if appState.isLowerPaneMaximized {
-                    LowerPaneView(tab: tab, diagnostics: diagnostics)
-                } else if appState.isLowerPaneVisible {
-                    VSplitView {
-                        editorArea(diagnostics)
-                            .frame(minHeight: 120, idealHeight: 260)
-                        LowerPaneView(tab: tab, diagnostics: diagnostics)
-                            .frame(minHeight: 120, idealHeight: 260)
-                    }
-                } else {
+            // 编辑区在上、下方面板在下，分隔条可拖拽调整高度；收起时只剩编辑区。
+            // （最大化态在 `QueryWorkspaceView` 里处理 —— 它还要盖住页签条。）
+            if appState.isLowerPaneVisible {
+                VSplitView {
                     editorArea(diagnostics)
+                        .frame(minHeight: 120, idealHeight: 260)
+                    LowerPaneView(tab: tab)
+                        .frame(minHeight: 120, idealHeight: 260)
                 }
+            } else {
+                editorArea(diagnostics)
             }
         }
         .sheet(isPresented: $isSaveQueryPresented) {
@@ -152,7 +155,7 @@ struct QueryEditorView: View {
                     get: { tab.sql },
                     set: { appState.updateSQL($0, for: tab.id) }
                 ),
-                databaseType: tabConnection?.dbType ?? .postgresql,
+                databaseType: appState.connection(for: tab)?.dbType ?? .postgresql,
                 diagnostics: diagnostics,
                 tabID: tab.id
             )
@@ -162,18 +165,6 @@ struct QueryEditorView: View {
                 diagnosticsBar(diagnostics)
             }
         }
-    }
-
-    // MARK: - 语法检查
-
-    private var diagnostics: [SQLDiagnostic] {
-        guard let databaseType = tabConnection?.dbType else { return [] }
-        // 超大脚本先不检查，避免每次按键都做全量扫描。
-        guard tab.sql.count <= 20_000 else { return [] }
-        return SQLLinter(
-            databaseType: databaseType,
-            language: LocalizationManager.shared.language
-        ).analyze(tab.sql)
     }
 
     private func diagnosticsBar(_ diagnostics: [SQLDiagnostic]) -> some View {
@@ -202,15 +193,5 @@ struct QueryEditorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.red.opacity(0.06))
-    }
-
-    // MARK: - 连接
-
-    private var tabConnection: ConnectionConfig? {
-        if let connectionID = tab.connectionID,
-           let connection = appState.connections.first(where: { $0.id == connectionID }) {
-            return connection
-        }
-        return appState.selectedConnection
     }
 }

@@ -11,8 +11,13 @@ struct LowerPaneView: View {
     @EnvironmentObject private var terminal: TerminalModel
 
     let tab: QueryTab
-    /// 编辑器里的实时语法诊断（Problem 页签一并展示）。
-    var diagnostics: [SQLDiagnostic] = []
+
+    /// 实时语法诊断（Problem 页签一并展示）。
+    ///
+    /// 自己算而不是由编辑器传进来：最大化时编辑器整块被盖住，就没人为这里提供诊断了。
+    private var diagnostics: [SQLDiagnostic] {
+        QueryDiagnostics.analyze(tab: tab, in: appState)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
