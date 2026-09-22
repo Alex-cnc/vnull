@@ -63,6 +63,28 @@ struct QueryTab: Identifiable {
     }
 }
 
+/// 高危语句保护相关的偏好键（FR-EXEC-16）。
+///
+/// 单独放在文件级：存储属性的初始化器里不能引用 `Self`，用具体类型名又会让
+/// 「谁拥有这些键」变得含糊，这里直接显式命名。
+private enum ExecutionSafetyDefaults {
+    static let safeModeKey = "execution.safeMode"
+    static let confirmAllWritesKey = "execution.confirmAllWrites"
+}
+
+/// 一条「被高危语句保护拦下、等待用户确认」的执行请求（FR-EXEC-16）。
+struct PendingExecution: Identifiable {
+    let id = UUID()
+    let tabID: UUID
+    let sql: String
+    let decision: ExecutionSafety.Decision
+
+    var reasons: [String] {
+        if case .needsConfirmation(let reasons, _, _) = decision { return reasons }
+        return []
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var connections: [ConnectionConfig] = []
@@ -103,6 +125,41 @@ final class AppState: ObservableObject {
     @Published var isAgentSettingsPresented = false
     /// 「自然语言 → SQL」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSQLPresented = false
+
+    // MARK: 高危语句保护（FR-EXEC-16）
+
+    /// Safe Mode 开关；默认开启（安全默认）。用 `UserDefaults` 记住，与语言偏好同一套做法。
+    @Published var isSafeModeEnabled: Bool =
+        UserDefaults.standard.object(forKey: ExecutionSafetyDefaults.safeModeKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isSafeModeEnabled, forKey: ExecutionSafetyDefaults.safeModeKey) }
+    }
+    /// 是否连普通写操作也要确认（默认关：凡事弹窗会让人闭眼点继续）。
+    @Published var isConfirmAllWritesEnabled: Bool =
+        UserDefaults.standard.object(forKey: ExecutionSafetyDefaults.confirmAllWritesKey) as? Bool ?? false {
+        didSet { UserDefaults.standard.set(isConfirmAllWritesEnabled, forKey: ExecutionSafetyDefaults.confirmAllWritesKey) }
+    }
+    /// 被拦下、等待确认的执行请求；`nil` 表示没有待确认项。
+    @Published var pendingExecution: PendingExecution?
+
+    /// 当前生效的执行安全策略。
+    var executionSafetyPolicy: ExecutionSafetyPolicy {
+        ExecutionSafetyPolicy(
+            isEnabled: isSafeModeEnabled,
+            confirmAllWrites: isConfirmAllWritesEnabled
+        )
+    }
+
+    /// 用户点了「仍然执行」。
+    func confirmPendingExecution() async {
+        guard let pending = pendingExecution else { return }
+        pendingExecution = nil
+        await executeQuery(for: pending.tabID, bypassingSafetyCheck: true)
+    }
+
+    /// 用户点了「取消」。
+    func cancelPendingExecution() {
+        pendingExecution = nil
+    }
 
     @Published var errorMessage: String?
     @Published var statusMessage: String = L(.stateNotConnected)
@@ -1183,7 +1240,7 @@ final class AppState: ObservableObject {
         executionTasks[tabID] = task
     }
 
-    func executeQuery(for tabID: UUID) async {
+    func executeQuery(for tabID: UUID, bypassingSafetyCheck: Bool = false) async {
         guard let tabIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         guard !tabs[tabIndex].isExecuting else { return }
 
@@ -1202,6 +1259,20 @@ final class AppState: ObservableObject {
                 $0.statusMessage = L(.stateNotExecuted)
             }
             return
+        }
+
+        // 高危语句保护（FR-EXEC-16）：纯客户端静态判定，拦下后不发起任何连接。
+        // 用户确认后走 `bypassingSafetyCheck: true` 再回来，避免重复弹窗。
+        if !bypassingSafetyCheck {
+            let decision = ExecutionSafety.check(
+                sql: sql,
+                databaseType: configuration.dbType,
+                policy: executionSafetyPolicy
+            )
+            if case .needsConfirmation = decision {
+                pendingExecution = PendingExecution(tabID: tabID, sql: sql, decision: decision)
+                return
+            }
         }
 
         let targetDatabase = queryDatabase(for: configuration)

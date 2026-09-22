@@ -71,6 +71,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentSQLPresented) {
             AgentSQLPanel()
         }
+        .sheet(item: $appState.pendingExecution) { pending in
+            SafeModeConfirmSheet(pending: pending)
+        }
         .task {
             await appState.loadAgentConfiguration()
         }

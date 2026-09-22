@@ -247,6 +247,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentSQLNoInstruction
     case agentSQLNoTables
 
+    // 高危语句保护（FR-EXEC-16）
+    case toolbarSafety
+    case safetySafeMode
+    case safetySafeModeHint
+    case safetyConfirmAllWrites
+    case safetyConfirmTitle
+    case safetyConfirmMessage
+    case safetyConfirmRun
+    case safetyConfirmCancel
+
     // 执行状态
     case stateNotConnected
     case stateNotExecuted
@@ -564,6 +574,14 @@ public enum LocalizedStrings {
         .agentSQLFailed: [.simplifiedChinese: "生成失败：%@", .english: "Generation failed: %@"],
         .agentSQLNoInstruction: [.simplifiedChinese: "请先填写需求描述。", .english: "Please describe what you need first."],
         .agentSQLNoTables: [.simplifiedChinese: "未能取得表清单（可关闭该项后重试）。", .english: "Could not load the table list (turn that option off and retry)."],
+        .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
+        .safetySafeMode: [.simplifiedChinese: "高危语句保护", .english: "Safe mode"],
+        .safetySafeModeHint: [.simplifiedChinese: "对不带条件的批量更新 / 删除、删表、清空表等，执行前先确认一次。", .english: "Confirm once before running unqualified UPDATE/DELETE, DROP or TRUNCATE."],
+        .safetyConfirmAllWrites: [.simplifiedChinese: "每次写入都确认", .english: "Confirm every write"],
+        .safetyConfirmTitle: [.simplifiedChinese: "这条语句有风险，确定执行？", .english: "This statement looks risky. Run it?"],
+        .safetyConfirmMessage: [.simplifiedChinese: "以下是检测到的风险点：", .english: "Detected risks:"],
+        .safetyConfirmRun: [.simplifiedChinese: "仍然执行", .english: "Run anyway"],
+        .safetyConfirmCancel: [.simplifiedChinese: "取消", .english: "Cancel"],
 
         .stateNotConnected: [.simplifiedChinese: "未连接", .english: "Not connected"],
         .stateNotExecuted: [.simplifiedChinese: "未执行", .english: "Not run"],

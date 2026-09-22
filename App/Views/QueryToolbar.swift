@@ -50,6 +50,7 @@ struct QueryToolbar: View {
                 .frame(height: 16)
 
             editMenu
+            safetyMenu
             helpButton
 
             Divider()
@@ -123,6 +124,32 @@ struct QueryToolbar: View {
         let preview = singleLine.count > 48 ? String(singleLine.prefix(48)) + "…" : singleLine
         let mark = entry.succeeded ? "✓" : "✗"
         return "\(mark) \(preview)"
+    }
+
+    /// 高危语句保护开关（FR-EXEC-16）。
+    ///
+    /// 放在工具栏而不是深层设置里：这是「执行前会不会拦我一下」的开关，
+    /// 用户被拦下时第一反应就是来这里找它。
+    private var safetyMenu: some View {
+        Menu {
+            Toggle(L(.safetySafeMode), isOn: $appState.isSafeModeEnabled)
+            Toggle(L(.safetyConfirmAllWrites), isOn: $appState.isConfirmAllWritesEnabled)
+                .disabled(!appState.isSafeModeEnabled)
+
+            Divider()
+
+            Text(L(.safetySafeModeHint))
+                .font(.caption)
+        } label: {
+            Image(systemName: appState.isSafeModeEnabled
+                  ? "checkmark.shield.fill"
+                  : "shield.slash")
+                .foregroundStyle(appState.isSafeModeEnabled ? Color.accentColor : inactiveGray)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(L(.safetySafeMode))
     }
 
     private var openFileButton: some View {
