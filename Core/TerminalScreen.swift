@@ -1,0 +1,638 @@
+import Foundation
+
+// MARK: - 单元格与颜色
+
+/// 终端颜色：默认 / 256 色索引 / 真彩。
+public enum TerminalColor: Equatable, Sendable {
+    case `default`
+    case indexed(UInt8)
+    case rgb(UInt8, UInt8, UInt8)
+}
+
+/// 一个字符格。宽字符（中日韩）占两格，第二格是 `.continuation`。
+public struct TerminalCell: Equatable, Sendable {
+    public enum Content: Equatable, Sendable {
+        case empty
+        case character(Character)
+        /// 宽字符的右半格。
+        case continuation
+    }
+
+    public var content: Content
+    public var bold: Bool
+    public var underline: Bool
+    public var inverse: Bool
+    public var foreground: TerminalColor
+    public var background: TerminalColor
+
+    public init(
+        content: Content = .empty,
+        bold: Bool = false,
+        underline: Bool = false,
+        inverse: Bool = false,
+        foreground: TerminalColor = .default,
+        background: TerminalColor = .default
+    ) {
+        self.content = content
+        self.bold = bold
+        self.underline = underline
+        self.inverse = inverse
+        self.foreground = foreground
+        self.background = background
+    }
+
+    public static let blank = TerminalCell()
+
+    public var character: Character? {
+        if case .character(let value) = content { return value }
+        return nil
+    }
+
+    /// 格子里可显示的字符（空白格给空格，宽字符右半格给空串）。
+    public var displayText: String {
+        switch content {
+        case .empty: return " "
+        case .character(let value): return String(value)
+        case .continuation: return ""
+        }
+    }
+}
+
+// MARK: - 屏幕模型
+
+/// 终端屏幕：把 PTY 吐出来的字节流解释成字符网格。
+///
+/// 放在 Core 而不是视图里，理由与 `DataTaskPresentation` 相同：这是**纯逻辑**，
+/// 能脱离图形界面单测（`TerminalScreenTests` 覆盖光标 / 擦除 / 换行 / 颜色 / 宽字符）。
+/// 视图只负责把网格画出来、把按键写成字节。
+///
+/// 实现的是一套**够用的 VT100/xterm 子集**，不追求全兼容：
+/// - C0：BS / HT / LF / CR / BEL
+/// - CSI：光标移动（A B C D E F G H f）、擦除（J K X）、插入删除（@ P L M）、
+///   滚动（S T）、SGR（m）、屏幕对齐（r，滚动区域）
+/// - OSC：忽略（窗口标题一类）
+/// - 私有模式：只认 `?25`（光标显隐）与 `?7`（自动换行）
+///
+/// 明确不做的：鼠标上报、字符集切换（只当两字节吞掉）、双向文本、图片协议。
+public final class TerminalScreen {
+
+    // MARK: 配置
+
+    public private(set) var columns: Int
+    public private(set) var rows: Int
+
+    /// 回滚缓冲区上限（行）。满了就丢最旧的。
+    public let scrollbackLimit: Int
+
+    // MARK: 状态
+
+    private var screen: [[TerminalCell]]
+    private var scrollbackLines: [[TerminalCell]] = []
+
+    public private(set) var cursorRow: Int = 0
+    public private(set) var cursorColumn: Int = 0
+    public private(set) var isCursorVisible: Bool = true
+    public var isAutoWrapEnabled: Bool = true
+
+    /// 当前 SGR 属性（新写入的字符用它）。
+    private var attributes = TerminalCell()
+
+    /// 滚动区域（DECSTBM），默认整屏。
+    private var scrollTop = 0
+    private var scrollBottom: Int
+
+    private var savedCursor: (row: Int, column: Int)?
+
+    /// 「延迟换行」标记：光标停在最后一列且已写过内容，等下一个字符才真正换行。
+    private var pendingWrap = false
+
+    // MARK: 解析状态
+
+    private enum ParserState {
+        case ground
+        case escape
+        case csi
+        case osc
+        case charset
+    }
+
+    private var state: ParserState = .ground
+    private var csiParameters: [Int] = []
+    private var csiCurrent: String = ""
+    private var csiPrivateMarker: Character?
+    private var csiIntermediate: Character?
+
+    /// 跨 chunk 的 UTF-8 半截字节。
+    private var pendingUTF8: [UInt8] = []
+
+    public init(columns: Int = 80, rows: Int = 24, scrollbackLimit: Int = 2_000) {
+        self.columns = max(1, columns)
+        self.rows = max(1, rows)
+        self.scrollbackLimit = max(0, scrollbackLimit)
+        self.scrollBottom = self.rows - 1
+        self.screen = Array(
+            repeating: Array(repeating: .blank, count: self.columns),
+            count: self.rows
+        )
+    }
+
+    // MARK: 读取
+
+    /// 可见屏幕的浅拷贝（视图渲染用）。
+    public func visibleLines() -> [[TerminalCell]] {
+        screen
+    }
+
+    public func line(_ index: Int) -> [TerminalCell] {
+        guard screen.indices.contains(index) else { return [] }
+        return screen[index]
+    }
+
+    public var scrollbackCount: Int { scrollbackLines.count }
+
+    public func scrollbackLine(_ index: Int) -> [TerminalCell] {
+        guard scrollbackLines.indices.contains(index) else { return [] }
+        return scrollbackLines[index]
+    }
+
+    /// 屏幕文本（单测与复制用）：去掉行尾空白。
+    public func text() -> String {
+        screen.map { row in
+            String(row.map(\.displayText).joined())
+                .replacingOccurrences(of: #"\s+$"#, with: "", options: .regularExpression)
+        }.joined(separator: "\n")
+    }
+
+    // MARK: 尺寸
+
+    public func resize(columns newColumns: Int, rows newRows: Int) {
+        let newColumns = max(1, newColumns)
+        let newRows = max(1, newRows)
+        guard newColumns != columns || newRows != rows else { return }
+
+        for index in screen.indices {
+            if newColumns > screen[index].count {
+                screen[index].append(contentsOf: Array(repeating: .blank, count: newColumns - screen[index].count))
+            } else if newColumns < screen[index].count {
+                screen[index].removeLast(screen[index].count - newColumns)
+            }
+            _ = index
+        }
+
+        if newRows > rows {
+            screen.append(contentsOf: Array(
+                repeating: Array(repeating: .blank, count: newColumns),
+                count: newRows - rows
+            ))
+        } else if newRows < rows {
+            // 变矮：把顶部多余的行推入回滚，保留光标附近的内容。
+            let overflow = rows - newRows
+            let trimmed = screen.prefix(overflow)
+            appendScrollback(Array(trimmed))
+            screen.removeFirst(overflow)
+            cursorRow = max(0, cursorRow - overflow)
+        }
+
+        columns = newColumns
+        rows = newRows
+        scrollTop = 0
+        scrollBottom = newRows - 1
+        cursorRow = min(cursorRow, rows - 1)
+        cursorColumn = min(cursorColumn, columns - 1)
+    }
+
+    // MARK: 馈入字节
+
+    public func feed(_ bytes: [UInt8]) {
+        for byte in bytes { feed(byte: byte) }
+    }
+
+    public func feed(text: String) {
+        feed(Array(text.utf8))
+    }
+
+    private func feed(byte: UInt8) {
+        switch state {
+        case .ground:
+            handleGround(byte)
+        case .escape:
+            handleEscape(byte)
+        case .csi:
+            handleCSI(byte)
+        case .osc:
+            handleOSC(byte)
+        case .charset:
+            // ESC ( / ) / * / + 后面跟一个字符集标识，吞掉。
+            state = .ground
+        }
+    }
+
+    // MARK: ground
+
+    private func handleGround(_ byte: UInt8) {
+        switch byte {
+        case 0x1B: // ESC
+            state = .escape
+        case 0x0D: // CR
+            pendingWrap = false
+            cursorColumn = 0
+        case 0x0A, 0x0B, 0x0C: // LF / VT / FF
+            pendingWrap = false
+            lineFeed()
+        case 0x08: // BS
+            pendingWrap = false
+            cursorColumn = max(0, cursorColumn - 1)
+        case 0x09: // HT
+            pendingWrap = false
+            cursorColumn = min(columns - 1, ((cursorColumn / 8) + 1) * 8)
+        case 0x07: // BEL
+            break
+        case 0x00...0x1F:
+            break // 其余控制字符忽略
+        default:
+            decodeUTF8(byte)
+        }
+    }
+
+    private func decodeUTF8(_ byte: UInt8) {
+        pendingUTF8.append(byte)
+        guard let text = String(bytes: pendingUTF8, encoding: .utf8) else {
+            // 还不是合法序列：继续等（最多 4 字节）
+            if pendingUTF8.count >= 4 {
+                pendingUTF8.removeAll()
+                put(Character("?"))
+            }
+            return
+        }
+        pendingUTF8.removeAll()
+        for character in text { put(character) }
+    }
+
+    private func put(_ character: Character) {
+        // 「延迟换行」：写满最后一列后先不换行，等下一个字符才换。
+        // 立即换行会让每个整行输出的末尾多出一个空行（真实终端都这么做）。
+        if pendingWrap {
+            pendingWrap = false
+            cursorColumn = 0
+            lineFeed()
+        }
+
+        let width = Self.cellWidth(character)
+        if width == 2, cursorColumn == columns - 1 {
+            // 宽字符放不下行尾：先换行
+            cursorColumn = 0
+            lineFeed()
+        }
+
+        screen[cursorRow][cursorColumn] = cell(for: character)
+        if width == 2, cursorColumn + 1 < columns {
+            screen[cursorRow][cursorColumn + 1] = cell(for: nil)
+        }
+
+        let next = cursorColumn + width
+        if next >= columns {
+            cursorColumn = columns - 1
+            pendingWrap = isAutoWrapEnabled
+        } else {
+            cursorColumn = next
+        }
+    }
+
+    private func cell(for character: Character?) -> TerminalCell {
+        var cell = attributes
+        cell.content = character.map { TerminalCell.Content.character($0) } ?? .continuation
+        return cell
+    }
+
+    private func lineFeed() {
+        if cursorRow == scrollBottom {
+            scrollUp(1)
+        } else {
+            cursorRow = min(rows - 1, cursorRow + 1)
+        }
+    }
+
+    /// 在滚动区域内上滚，腾出的行压入回滚缓冲。
+    private func scrollUp(_ count: Int) {
+        for _ in 0..<max(1, count) {
+            let removed = screen.remove(at: scrollTop)
+            if scrollTop == 0 { appendScrollback([removed]) }
+            screen.insert(Array(repeating: .blank, count: columns), at: scrollBottom)
+        }
+    }
+
+    private func scrollDown(_ count: Int) {
+        for _ in 0..<max(1, count) {
+            screen.remove(at: scrollBottom)
+            screen.insert(Array(repeating: .blank, count: columns), at: scrollTop)
+        }
+    }
+
+    private func appendScrollback(_ lines: [[TerminalCell]]) {
+        guard scrollbackLimit > 0 else { return }
+        scrollbackLines.append(contentsOf: lines)
+        if scrollbackLines.count > scrollbackLimit {
+            scrollbackLines.removeFirst(scrollbackLines.count - scrollbackLimit)
+        }
+    }
+
+    // MARK: escape / csi / osc
+
+    private func handleEscape(_ byte: UInt8) {
+        switch Character(UnicodeScalar(byte)) {
+        case "[":
+            state = .csi
+            csiParameters = []
+            csiCurrent = ""
+            csiPrivateMarker = nil
+            csiIntermediate = nil
+        case "]":
+            state = .osc
+        case "(", ")", "*", "+":
+            state = .charset
+        case "7": // DECSC 保存光标
+            savedCursor = (cursorRow, cursorColumn)
+            state = .ground
+        case "8": // DECRC 恢复光标
+            if let saved = savedCursor {
+                cursorRow = min(saved.row, rows - 1)
+                cursorColumn = min(saved.column, columns - 1)
+            }
+            state = .ground
+        case "D": // IND
+            lineFeed()
+            state = .ground
+        case "M": // RI
+            if cursorRow == scrollTop { scrollDown(1) } else { cursorRow = max(0, cursorRow - 1) }
+            state = .ground
+        case "E": // NEL
+            cursorColumn = 0
+            lineFeed()
+            state = .ground
+        case "c": // RIS 复位
+            reset()
+            state = .ground
+        default:
+            state = .ground
+        }
+    }
+
+    private func handleOSC(_ byte: UInt8) {
+        // OSC 以 BEL 或 ST(ESC \) 结束；内容（窗口标题等）一律忽略。
+        if byte == 0x07 {
+            state = .ground
+        } else if byte == 0x1B {
+            state = .charset // 复用：吞掉紧随的 '\'
+        }
+    }
+
+    private func handleCSI(_ byte: UInt8) {
+        let scalar = UnicodeScalar(byte)
+        let character = Character(scalar)
+
+        if character.isNumber {
+            csiCurrent.append(character)
+            return
+        }
+        if character == ";" {
+            csiParameters.append(Int(csiCurrent) ?? 0)
+            csiCurrent = ""
+            return
+        }
+        if character == "?" || character == ">" || character == "!" {
+            csiPrivateMarker = character
+            return
+        }
+        if character == " " || character == "$" || character == "\"" || character == "'" {
+            csiIntermediate = character
+            return
+        }
+
+        if !csiCurrent.isEmpty { csiParameters.append(Int(csiCurrent) ?? 0) }
+        csiCurrent = ""
+
+        pendingWrap = false
+        executeCSI(final: character)
+        state = .ground
+    }
+
+    private func executeCSI(final: Character) {
+        // 缺省参数按 1（光标类）或 0（擦除类）处理，调用处各自兜底。
+        let first = csiParameters.first
+
+        switch final {
+        case "A": cursorRow = max(scrollTop, cursorRow - max(1, first ?? 1))
+        case "B": cursorRow = min(scrollBottom, cursorRow + max(1, first ?? 1))
+        case "C": cursorColumn = min(columns - 1, cursorColumn + max(1, first ?? 1))
+        case "D": cursorColumn = max(0, cursorColumn - max(1, first ?? 1))
+        case "E":
+            cursorRow = min(scrollBottom, cursorRow + max(1, first ?? 1))
+            cursorColumn = 0
+        case "F":
+            cursorRow = max(scrollTop, cursorRow - max(1, first ?? 1))
+            cursorColumn = 0
+        case "G":
+            cursorColumn = clampColumn((first ?? 1) - 1)
+        case "d":
+            cursorRow = clampRow((first ?? 1) - 1)
+        case "H", "f":
+            let row = (csiParameters.indices.contains(0) ? csiParameters[0] : 1) - 1
+            let column = (csiParameters.indices.contains(1) ? csiParameters[1] : 1) - 1
+            cursorRow = clampRow(row)
+            cursorColumn = clampColumn(column)
+        case "J": eraseInDisplay(mode: first ?? 0)
+        case "K": eraseInLine(mode: first ?? 0)
+        case "X":
+            let count = max(1, first ?? 1)
+            for offset in 0..<count where cursorColumn + offset < columns {
+                screen[cursorRow][cursorColumn + offset] = .blank
+            }
+        case "L": insertLines(max(1, first ?? 1))
+        case "M": deleteLines(max(1, first ?? 1))
+        case "@": insertCharacters(max(1, first ?? 1))
+        case "P": deleteCharacters(max(1, first ?? 1))
+        case "S": scrollUp(max(1, first ?? 1))
+        case "T": scrollDown(max(1, first ?? 1))
+        case "r":
+            let top = (first ?? 1) - 1
+            let bottom = (csiParameters.indices.contains(1) ? csiParameters[1] : rows) - 1
+            if top >= 0, bottom < rows, top < bottom {
+                scrollTop = top
+                scrollBottom = bottom
+                cursorRow = scrollTop
+                cursorColumn = 0
+            }
+        case "m": applySGR()
+        case "h": if csiPrivateMarker == "?" { setPrivateMode(enabled: true) }
+        case "l": if csiPrivateMarker == "?" { setPrivateMode(enabled: false) }
+        case "n":
+            break // 设备状态查询：不回话（我们不是真的终端设备，够用即可）
+        default:
+            break
+        }
+    }
+
+    private func setPrivateMode(enabled: Bool) {
+        for parameter in csiParameters {
+            switch parameter {
+            case 25: isCursorVisible = enabled
+            case 7: isAutoWrapEnabled = enabled
+            default: break
+            }
+        }
+        if csiParameters.isEmpty { return }
+    }
+
+    private func eraseInDisplay(mode: Int) {
+        switch mode {
+        case 0:
+            eraseInLine(mode: 0)
+            for row in (cursorRow + 1)..<rows { screen[row] = blankRow() }
+        case 1:
+            eraseInLine(mode: 1)
+            for row in 0..<cursorRow { screen[row] = blankRow() }
+        case 2, 3:
+            for row in 0..<rows { screen[row] = blankRow() }
+        default:
+            break
+        }
+    }
+
+    private func eraseInLine(mode: Int) {
+        switch mode {
+        case 0:
+            for column in cursorColumn..<columns { screen[cursorRow][column] = .blank }
+        case 1:
+            for column in 0...min(cursorColumn, columns - 1) { screen[cursorRow][column] = .blank }
+        case 2:
+            screen[cursorRow] = blankRow()
+        default:
+            break
+        }
+    }
+
+    private func blankRow() -> [TerminalCell] {
+        Array(repeating: .blank, count: columns)
+    }
+
+    private func insertLines(_ count: Int) {
+        guard cursorRow >= scrollTop, cursorRow <= scrollBottom else { return }
+        for _ in 0..<count {
+            screen.remove(at: scrollBottom)
+            screen.insert(blankRow(), at: cursorRow)
+        }
+    }
+
+    private func deleteLines(_ count: Int) {
+        guard cursorRow >= scrollTop, cursorRow <= scrollBottom else { return }
+        for _ in 0..<count {
+            screen.remove(at: cursorRow)
+            screen.insert(blankRow(), at: scrollBottom)
+        }
+    }
+
+    private func insertCharacters(_ count: Int) {
+        guard cursorColumn < columns else { return }
+        let blanks = Array(repeating: TerminalCell.blank, count: count)
+        screen[cursorRow].insert(contentsOf: blanks, at: cursorColumn)
+        screen[cursorRow].removeLast(count)
+    }
+
+    private func deleteCharacters(_ count: Int) {
+        guard cursorColumn < columns else { return }
+        let removable = min(count, columns - cursorColumn)
+        screen[cursorRow].removeSubrange(cursorColumn..<(cursorColumn + removable))
+        screen[cursorRow].append(contentsOf: Array(repeating: .blank, count: removable))
+    }
+
+    private func clampRow(_ row: Int) -> Int { min(max(0, row), rows - 1) }
+    private func clampColumn(_ column: Int) -> Int { min(max(0, column), columns - 1) }
+
+    /// 复位屏幕（RIS，或用户点「重新开始」时用）。
+    public func reset() {
+        screen = Array(repeating: blankRow(), count: rows)
+        scrollbackLines.removeAll()
+        cursorRow = 0
+        cursorColumn = 0
+        attributes = .blank
+        scrollTop = 0
+        scrollBottom = rows - 1
+        isCursorVisible = true
+        isAutoWrapEnabled = true
+        savedCursor = nil
+    }
+
+    // MARK: SGR
+
+    private func applySGR() {
+        let codes = csiParameters.isEmpty ? [0] : csiParameters
+        var index = 0
+        while index < codes.count {
+            let code = codes[index]
+            switch code {
+            case 0:
+                attributes = .blank
+            case 1:
+                attributes.bold = true
+            case 4:
+                attributes.underline = true
+            case 7:
+                attributes.inverse = true
+            case 22:
+                attributes.bold = false
+            case 24:
+                attributes.underline = false
+            case 27:
+                attributes.inverse = false
+            case 30...37:
+                attributes.foreground = .indexed(UInt8(code - 30))
+            case 39:
+                attributes.foreground = .default
+            case 40...47:
+                attributes.background = .indexed(UInt8(code - 40))
+            case 49:
+                attributes.background = .default
+            case 90...97:
+                attributes.foreground = .indexed(UInt8(code - 90 + 8))
+            case 100...107:
+                attributes.background = .indexed(UInt8(code - 100 + 8))
+            case 38, 48:
+                let isForeground = code == 38
+                if index + 2 < codes.count, codes[index + 1] == 5 {
+                    let value = UInt8(clamping: codes[index + 2])
+                    if isForeground { attributes.foreground = .indexed(value) }
+                    else { attributes.background = .indexed(value) }
+                    index += 2
+                } else if index + 4 < codes.count, codes[index + 1] == 2 {
+                    let red = UInt8(clamping: codes[index + 2])
+                    let green = UInt8(clamping: codes[index + 3])
+                    let blue = UInt8(clamping: codes[index + 4])
+                    if isForeground { attributes.foreground = .rgb(red, green, blue) }
+                    else { attributes.background = .rgb(red, green, blue) }
+                    index += 4
+                }
+            default:
+                break
+            }
+            index += 1
+        }
+    }
+
+    // MARK: 宽度
+
+    /// 粗略的东亚宽字符判定：够用即可（不引 Unicode 宽度表）。
+    static func cellWidth(_ character: Character) -> Int {
+        guard let scalar = character.unicodeScalars.first else { return 1 }
+        switch scalar.value {
+        case 0x1100...0x115F, 0x2E80...0x303E, 0x3041...0x33FF,
+             0x3400...0x4DBF, 0x4E00...0x9FFF, 0xA000...0xA4CF,
+             0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE30...0xFE6F,
+             0xFF00...0xFF60, 0xFFE0...0xFFE6,
+             0x1F300...0x1F64F, 0x1F900...0x1F9FF,
+             0x20000...0x3FFFD:
+            return 2
+        default:
+            return 1
+        }
+    }
+}

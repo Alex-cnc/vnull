@@ -46,6 +46,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case bottomPanelToggle
     case bottomPanelHide
     case bottomPanelPending
+    case terminalRestart
+    case terminalStopped
 
     // 系统级菜单的语言需要重启才跟随（macOS 在进程启动时固定 AppKit 的本地化）
     case relaunchTitle
@@ -664,6 +666,8 @@ public enum LocalizedStrings {
         .bottomPanelToggle: [.simplifiedChinese: "显示 / 隐藏终端", .english: "Show/Hide Terminal"],
         .bottomPanelHide: [.simplifiedChinese: "隐藏终端", .english: "Hide terminal"],
         .bottomPanelPending: [.simplifiedChinese: "终端内容尚未接入。（受 App 沙箱限制，外部命令方案确认后再接。）", .english: "Terminal content is not wired up yet. (External commands are constrained by the App Sandbox; to be wired up once that decision is made.)"],
+        .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],
+        .terminalStopped: [.simplifiedChinese: "已停止", .english: "Stopped"],
         .relaunchTitle: [.simplifiedChinese: "系统菜单需要重启才能跟随", .english: "Restart to switch the system menus"],
         .relaunchMessage: [.simplifiedChinese: "应用界面已经切换。系统级菜单（文件 / 编辑 / 显示 / 窗口 / 帮助）由 macOS 渲染，语言在启动时就已固定，需要重启才能一起切换。", .english: "The app UI has switched. macOS renders the system menus (File, Edit, View, Window, Help) and fixes their language at launch, so a restart is needed for them to follow."],
         .relaunchMessageUnsaved: [.simplifiedChinese: "注意：还有 %d 个页签有未保存的改动，重启会丢失。", .english: "Note: %d tab(s) have unsaved changes that would be lost."],
