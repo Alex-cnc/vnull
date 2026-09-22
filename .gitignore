@@ -22,3 +22,6 @@ xcuserdata/
 !/Docs/README.md
 !/Docs/功能清单（一页纸）.md
 !/Docs/功能清单（管理视图）.md
+
+# 图标中间产物（可由 Scripts/make-app-icon.swift 从 AppIcon-source.png 重新生成）
+App/Resources/AppIcon-1024.png

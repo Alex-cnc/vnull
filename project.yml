@@ -47,6 +47,9 @@ targets:
       - path: App
         excludes:
           - "DoyahStudio.entitlements"
+          # 原画与中间产物只用于重新生成图标，不打进 .app
+          - "Resources/AppIcon-source.png"
+          - "Resources/AppIcon-1024.png"
     dependencies:
       - target: DoyahCore
     settings:
@@ -54,6 +57,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahStudio
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Doyah Studio
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         CODE_SIGN_ENTITLEMENTS: App/DoyahStudio.entitlements
         ENABLE_HARDENED_RUNTIME: YES

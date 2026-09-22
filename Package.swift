@@ -34,7 +34,9 @@ let package = Package(
             name: "DoyahStudioApp",
             dependencies: ["DoyahCore"],
             path: "App",
-            exclude: ["DoyahStudio.entitlements"]
+            // Resources 由 Scripts/build-app.sh 装进 .app；SwiftPM 不处理 .icns/.png，
+            // 不排除会报 unhandled files。
+            exclude: ["DoyahStudio.entitlements", "Resources"]
         ),
         .testTarget(
             name: "DoyahCoreTests",

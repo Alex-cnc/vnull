@@ -73,6 +73,8 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
     <string>studio.doyah.DoyahStudio</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
     <string>Doyah Studio</string>
     <key>CFBundleDisplayName</key>
@@ -92,6 +94,15 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# 应用图标（法斗 Doyah）：App/Resources/AppIcon.icns。
+# 用 sips/iconutil 校验过含全部 10 个尺寸；缺了它 Dock 与访达里就是白纸图标。
+ICON="${ROOT}/App/Resources/AppIcon.icns"
+if [ -f "${ICON}" ]; then
+  cp "${ICON}" "${APP}/Contents/Resources/AppIcon.icns"
+else
+  echo "警告：缺少 ${ICON}，应用将没有图标（可用 Scripts/make-app-icon.swift 重新生成）"
+fi
 
 # 第三方许可声明随产品分发（审核与合规都要能随包拿到）
 echo "==> 附带第三方许可声明"
