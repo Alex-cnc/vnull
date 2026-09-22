@@ -1221,19 +1221,54 @@ final class AppState: ObservableObject {
         schema: AgentSQLGenerator.SchemaSummary,
         currentStatement: String?
     ) async throws -> AgentSQLGenerator.Result {
-        try await AgentSQLGenerator.generate(
-            request: AgentSQLGenerator.Request(
-                instruction: instruction,
-                schema: schema,
-                currentStatement: currentStatement
-            ),
-            configuration: agentConfiguration,
-            apiKey: agentAPIKey,
-            // 只读模式 / 白名单来自配置（FR-AI-09），不再写死默认策略。
-            policy: agentGuardPolicy,
-            ledger: .empty,
-            client: OpenAICompatibleClient()
+        let started = Date()
+        do {
+            let result = try await AgentSQLGenerator.generate(
+                request: AgentSQLGenerator.Request(
+                    instruction: instruction,
+                    schema: schema,
+                    currentStatement: currentStatement
+                ),
+                configuration: agentConfiguration,
+                apiKey: agentAPIKey,
+                // 只读模式 / 白名单来自配置（FR-AI-09），不再写死默认策略。
+                policy: agentGuardPolicy,
+                ledger: .empty,
+                client: OpenAICompatibleClient()
+            )
+            await recordAgentModelCall(summary: instruction, outcome: .generated, since: started)
+            return result
+        } catch {
+            // 失败的调用同样留痕：审计要能回答「哪次调用失败了、花了多久」（NFR-AI-03）。
+            await recordAgentModelCall(
+                summary: instruction,
+                outcome: .failed,
+                since: started,
+                detail: ErrorPresenter.message(for: error)
+            )
+            throw error
+        }
+    }
+
+    /// 模型调用留痕（NFR-AI-03：模型 / 请求摘要 / 耗时 / 结果状态）。
+    ///
+    /// 用的是与动作提交同一份审计日志与同一个上下文（连接 / 库 / 模型，**不含口令**），
+    /// 所以导出、筛选、清空、脱敏全都自动生效，不需要为「模型调用」另开一条存储。
+    private func recordAgentModelCall(
+        summary: String,
+        outcome: AgentActionRecord.Outcome,
+        since start: Date,
+        detail: String? = nil
+    ) async {
+        let record = AgentActionRecord.makeModelCall(
+            requestSummary: summary,
+            model: nil,                      // 上下文里已经带了模型名
+            context: agentActionContext,
+            durationMilliseconds: Int(Date().timeIntervalSince(start) * 1000),
+            outcome: outcome,
+            detail: detail
         )
+        await appendAgentAudit(record)
     }
 
     /// 把生成结果放进**新页签**的编辑器里（不覆盖用户正在写的内容，也不执行）。
@@ -1248,15 +1283,28 @@ final class AppState: ObservableObject {
         schema: AgentSQLGenerator.SchemaSummary,
         hints: String?
     ) async throws -> DataTaskSpecGenerator.Result {
-        try await DataTaskSpecGenerator.generate(
-            request: DataTaskSpecGenerator.Request(specs: specs, schema: schema, hints: hints),
-            configuration: agentConfiguration,
-            apiKey: agentAPIKey,
-            // 只读模式 / 白名单来自配置（FR-AI-09），与其它智能体路径同一份策略。
-            policy: agentGuardPolicy,
-            ledger: .empty,
-            client: OpenAICompatibleClient()
-        )
+        let started = Date()
+        do {
+            let result = try await DataTaskSpecGenerator.generate(
+                request: DataTaskSpecGenerator.Request(specs: specs, schema: schema, hints: hints),
+                configuration: agentConfiguration,
+                apiKey: agentAPIKey,
+                // 只读模式 / 白名单来自配置（FR-AI-09），与其它智能体路径同一份策略。
+                policy: agentGuardPolicy,
+                ledger: .empty,
+                client: OpenAICompatibleClient()
+            )
+            await recordAgentModelCall(summary: specs, outcome: .generated, since: started)
+            return result
+        } catch {
+            await recordAgentModelCall(
+                summary: specs,
+                outcome: .failed,
+                since: started,
+                detail: ErrorPresenter.message(for: error)
+            )
+            throw error
+        }
     }
 
     /// 把生成的 SQL 放进**新页签**的编辑器：不覆盖用户正在写的内容，也不执行（FR-META-14）。

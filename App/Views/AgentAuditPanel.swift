@@ -297,6 +297,7 @@ struct AgentAuditPanel: View {
             Text(L(.agentAuditColumnConnection)).frame(width: 150, alignment: .leading)
             Text(L(.agentAuditColumnStatement)).frame(maxWidth: .infinity, alignment: .leading)
             Text(L(.agentAuditColumnModel)).frame(width: 110, alignment: .leading)
+            Text(L(.agentAuditColumnDuration)).frame(width: 70, alignment: .leading)
             Text(L(.agentAuditColumnOutcome)).frame(width: 120, alignment: .leading)
             Text("").frame(width: 18)
         }
@@ -331,6 +332,11 @@ struct AgentAuditPanel: View {
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
     }
 
+    /// 语句列的类别文案：模型调用没有语句，**不能**显示成「无法识别的语句」。
+    private func statementLabel(_ record: AgentActionRecord) -> String {
+        record.resolvedOrigin == .modelCall ? L(.agentAuditOriginModelCall) : record.statementKind.text
+    }
+
     private func recordRow(_ record: AgentActionRecord) -> some View {
         let isSelected = record.id == selectedRecordID
         return Button {
@@ -344,7 +350,7 @@ struct AgentAuditPanel: View {
                     .frame(width: 150, alignment: .leading)
                     .lineLimit(1)
 
-                Text("\(record.statementKind.text) · \(AgentAuditPresentation.statementSummary(record.sql))")
+                Text("\(statementLabel(record)) · \(AgentAuditPresentation.statementSummary(record.sql))")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -352,6 +358,11 @@ struct AgentAuditPanel: View {
                 Text(AgentAuditPresentation.modelText(record))
                     .frame(width: 110, alignment: .leading)
                     .lineLimit(1)
+
+                Text(AgentAuditPresentation.durationText(record))
+                    .frame(width: 70, alignment: .leading)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
 
                 Label(record.outcome.text, systemImage: record.outcome.symbolName)
                     .foregroundStyle(record.outcome.tint)
@@ -396,6 +407,12 @@ struct AgentAuditPanel: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
+                        if record.resolvedOrigin == .modelCall {
+                            Text(L(.agentAuditOriginModelCall))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
                         Text(record.sql)
                             .font(.system(.caption2, design: .monospaced))
                             .textSelection(.enabled)

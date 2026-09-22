@@ -52,9 +52,28 @@ public struct AgentActionRecord: Codable, Equatable, Sendable, Identifiable {
     public var statementKind: AgentStatementKind
     public var risk: AgentRiskLevel
     public var findings: [AgentGuardFinding]
+    /// 这条记录来自什么：一次**动作提交**（有 SQL 可判）还是一次**模型调用**（没有 SQL）。
+    ///
+    /// 为什么需要它：模型调用记录里的 `statementKind` 只能是 `.unknown`，
+    /// 界面若照直显示就会写成「无法识别的语句」——那是在暗示「SQL 解析失败」，
+    /// 而事实是「本次调用根本没有 SQL」。这是展示口径问题，必须显式区分。
+    /// 可选是为了兼容老日志（没有该字段时按 `.action` 解释）。
+    public enum Origin: String, Codable, Equatable, Sendable {
+        case action
+        case modelCall
+    }
+
     public var outcome: Outcome
     /// 附注：拒绝原因、失败信息等。
     public var detail: String?
+    /// 记录来源（缺字段 = 动作提交）。
+    public var origin: Origin?
+
+    /// 归一化后的来源：老日志缺字段时按「动作提交」解释。
+    public var resolvedOrigin: Origin { origin ?? .action }
+    /// 这次模型调用的耗时（毫秒）。**可选**：老日志里没有这个字段，
+    /// 可选类型让它们照旧能解码（NFR-AI-03 要求留存耗时）。
+    public var durationMilliseconds: Int?
 
     public init(
         id: UUID = UUID(),
@@ -67,7 +86,9 @@ public struct AgentActionRecord: Codable, Equatable, Sendable, Identifiable {
         risk: AgentRiskLevel,
         findings: [AgentGuardFinding] = [],
         outcome: Outcome,
-        detail: String? = nil
+        detail: String? = nil,
+        durationMilliseconds: Int? = nil,
+        origin: Origin? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -80,6 +101,8 @@ public struct AgentActionRecord: Codable, Equatable, Sendable, Identifiable {
         self.findings = findings
         self.outcome = outcome
         self.detail = detail
+        self.durationMilliseconds = durationMilliseconds
+        self.origin = origin
     }
 
     /// 动作所处的环境（连接 / 库 / 模型）。
@@ -104,6 +127,7 @@ public struct AgentActionRecord: Codable, Equatable, Sendable, Identifiable {
         context: Context = .none,
         outcome: Outcome,
         detail: String? = nil,
+        durationMilliseconds: Int? = nil,
         at date: Date = Date()
     ) -> AgentActionRecord {
         let statement = assessment.statements.first
@@ -118,8 +142,56 @@ public struct AgentActionRecord: Codable, Equatable, Sendable, Identifiable {
             risk: statement?.risk ?? .low,
             findings: findings,
             outcome: outcome,
-            detail: detail
+            detail: detail,
+            durationMilliseconds: durationMilliseconds
         )
+    }
+
+    /// 一次**模型调用**的留痕（NFR-AI-03：模型 / 请求摘要 / 耗时 / 结果状态）。
+    ///
+    /// 与「动作提交」记录的区别：模型调用本身**没有 SQL**，请求摘要放在 `sql` 字段
+    /// （面板的「语句」列就是请求摘要列），语句类别因此是 `.unknown`、风险 `.low`
+    /// —— 这不是漏判，而是「这里没有语句可判」。`detail` 里写明这是模型调用，
+    /// 免得看日志的人把它误当一条待执行语句。
+    public static func makeModelCall(
+        requestSummary: String,
+        model: String?,
+        context: Context = .none,
+        durationMilliseconds: Int?,
+        outcome: Outcome,
+        detail: String? = nil,
+        at date: Date = Date()
+    ) -> AgentActionRecord {
+        AgentActionRecord(
+            timestamp: date,
+            connectionName: context.connectionName,
+            database: context.database,
+            model: model ?? context.model,
+            sql: summaryText(requestSummary),
+            statementKind: .unknown,
+            risk: .low,
+            findings: [],
+            outcome: outcome,
+            detail: [modelCallDetail, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+            durationMilliseconds: durationMilliseconds,
+            origin: .modelCall
+        )
+    }
+
+    /// 请求摘要的长度上限：审计要能看出「当时让它干什么」，但一条日志不应被指令原文撑爆。
+    public static let requestSummaryLimit = 500
+
+    /// 「这条是模型调用」的固定附注（界面与导出都会看到）。
+    public static let modelCallDetail = "模型调用（请求摘要已留存，未执行任何 SQL）"
+
+    /// 请求摘要：压平换行、超长截断（顺序敏感，故保留原顺序）。
+    public static func summaryText(_ text: String, limit: Int = AgentActionRecord.requestSummaryLimit) -> String {
+        let flattened = text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard limit > 0, flattened.count > limit else { return flattened }
+        return String(flattened.prefix(limit)) + "…"
     }
 }
 
@@ -454,7 +526,7 @@ public actor AgentAuditLog {
     /// CSV 的列顺序（导出、预览与单测共用同一份定义，避免「导出顺序变了没人发现」）。
     public static let csvColumns: [String] = [
         "timestamp", "connection", "database", "model",
-        "statement_kind", "risk", "findings", "outcome", "sql", "detail"
+        "statement_kind", "risk", "findings", "outcome", "duration_ms", "sql", "detail"
     ]
 
     /// 导出为 CSV（**已脱敏**）。
@@ -473,6 +545,7 @@ public actor AgentAuditLog {
                 record.risk.rawValue,
                 record.findings.map(\.rawValue).joined(separator: "|"),
                 record.outcome.rawValue,
+                record.durationMilliseconds.map(String.init) ?? "",
                 record.sql,
                 record.detail ?? ""
             ]

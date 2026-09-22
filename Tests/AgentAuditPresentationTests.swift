@@ -180,7 +180,7 @@ final class AgentAuditPresentationTests: XCTestCase {
         XCTAssertEqual(
             AgentAuditLog.csvColumns,
             ["timestamp", "connection", "database", "model",
-             "statement_kind", "risk", "findings", "outcome", "sql", "detail"]
+             "statement_kind", "risk", "findings", "outcome", "duration_ms", "sql", "detail"]
         )
 
         let log = AgentAuditLog(directoryURL: try makeDirectory())
@@ -241,5 +241,30 @@ final class AgentAuditPresentationTests: XCTestCase {
         XCTAssertEqual(AgentAuditExportFormat.csv.fileExtension, "csv")
         XCTAssertEqual(AgentAuditExportFormat.json.defaultBaseName, "agent-audit")
         XCTAssertEqual(AgentAuditExportFormat.allCases.count, 2)
+    }
+
+    // MARK: - 耗时展示（NFR-AI-03）
+
+    func testDurationTextFormatsMillisecondsAndSeconds() {
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: 0), "0 ms")
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: 820), "820 ms")
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: 999), "999 ms")
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: 1000), "1.0 s")
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: 1234), "1.2 s")
+        // 日志被手改过也不该显示负数
+        XCTAssertEqual(AgentAuditPresentation.durationText(milliseconds: -5), "0 ms")
+    }
+
+    func testDurationTextUsesPlaceholderWhenRecordHasNoDuration() {
+        let without = AgentActionRecord(
+            sql: "SELECT 1", statementKind: .readQuery, risk: .low, outcome: .generated
+        )
+        XCTAssertEqual(AgentAuditPresentation.durationText(without), AgentAuditPresentation.placeholder)
+
+        let with = AgentActionRecord(
+            sql: "SELECT 1", statementKind: .readQuery, risk: .low,
+            outcome: .generated, durationMilliseconds: 2500
+        )
+        XCTAssertEqual(AgentAuditPresentation.durationText(with), "2.5 s")
     }
 }

@@ -422,4 +422,98 @@ final class AgentAuditTests: XCTestCase {
         XCTAssertEqual(restored.map(\.id), [first.id, second.id])
         XCTAssertTrue(AgentApproval.pending(from: []).isEmpty)
     }
+
+    // MARK: - 模型调用留痕（NFR-AI-03：模型 / 请求摘要 / 耗时 / 结果状态）
+
+    func testModelCallRecordCarriesModelSummaryOutcomeAndDuration() throws {
+        let record = AgentActionRecord.makeModelCall(
+            requestSummary: "把订单表里 7 月的金额按客户汇总",
+            model: "qwen2.5:7b",
+            context: context,
+            durationMilliseconds: 1234,
+            outcome: .generated
+        )
+
+        XCTAssertEqual(record.model, "qwen2.5:7b", "模型名必须留存")
+        XCTAssertEqual(record.sql, "把订单表里 7 月的金额按客户汇总", "请求摘要放在语句列")
+        XCTAssertEqual(record.outcome, .generated)
+        XCTAssertEqual(record.durationMilliseconds, 1234, "耗时必须留存")
+        XCTAssertEqual(record.connectionName, context.connectionName)
+        XCTAssertEqual(record.database, context.database)
+        // 模型调用没有语句可判 —— 不是漏判，而是本来就没有语句
+        XCTAssertEqual(record.statementKind, .unknown)
+        XCTAssertEqual(record.risk, .low)
+        XCTAssertTrue(record.detail?.contains("模型调用") == true, "附注要写明这是模型调用")
+        XCTAssertEqual(record.resolvedOrigin, .modelCall, "必须显式标出来源，界面才不会显示成「无法识别的语句」")
+    }
+
+    func testModelCallWithoutModelFallsBackToContext() throws {
+        let record = AgentActionRecord.makeModelCall(
+            requestSummary: "x", model: nil, context: context,
+            durationMilliseconds: 10, outcome: .generated
+        )
+        XCTAssertEqual(record.model, "qwen2.5:7b", "模型名缺省时取上下文里的")
+    }
+
+    func testModelCallFailureKeepsReasonAlongsideTheMarker() throws {
+        let record = AgentActionRecord.makeModelCall(
+            requestSummary: "x", model: nil, context: context,
+            durationMilliseconds: 20, outcome: .failed, detail: "请求超时"
+        )
+        let detail = try XCTUnwrap(record.detail)
+        XCTAssertTrue(detail.contains("模型调用"), "不能因为失败原因把「这是模型调用」挤掉")
+        XCTAssertTrue(detail.contains("请求超时"))
+    }
+
+    func testRequestSummaryIsFlattenedAndTruncated() {
+        let long = String(repeating: "a", count: AgentActionRecord.requestSummaryLimit + 50)
+        let summary = AgentActionRecord.summaryText("第一行\n\n第二行   内容 " + long)
+
+        XCTAssertFalse(summary.contains("\n"))
+        XCTAssertFalse(summary.contains("  "))
+        XCTAssertTrue(summary.hasPrefix("第一行 第二行 内容"))
+        XCTAssertTrue(summary.hasSuffix("…"), "超长必须截断并给出省略号")
+        XCTAssertEqual(summary.count, AgentActionRecord.requestSummaryLimit + 1)
+    }
+
+    func testShortRequestSummaryIsUntouched() {
+        XCTAssertEqual(AgentActionRecord.summaryText("SELECT 1"), "SELECT 1")
+    }
+
+    /// T-51 时代写下的审计行没有 `duration_ms` 字段，**必须照旧能读** ——
+    /// 否则升级后老日志会被静默丢弃，审计出现空洞。
+    func testRecordWithoutDurationFieldStillDecodes() throws {
+        let original = AgentActionRecord.make(
+            sql: "SELECT 1", assessment: assessment("SELECT 1"), context: context, outcome: .generated
+        )
+        var object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any]
+        )
+        object.removeValue(forKey: "durationMilliseconds")
+
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(AgentActionRecord.self, from: legacy)
+
+        XCTAssertNil(decoded.durationMilliseconds, "缺字段应当解成 nil 而不是抛错")
+        XCTAssertNil(decoded.origin, "老日志没有来源字段")
+        XCTAssertEqual(decoded.resolvedOrigin, .action, "缺字段一律按「动作提交」解释")
+        XCTAssertEqual(decoded.id, original.id)
+        XCTAssertEqual(decoded.sql, original.sql)
+    }
+
+    /// 顺带确认新字段确实落盘：写完再换实例读回来，耗时还在。
+    func testDurationSurvivesAppendAndReopen() async throws {
+        let directory = try makeDirectory()
+        let log = AgentAuditLog(directoryURL: directory)
+        let record = AgentActionRecord.makeModelCall(
+            requestSummary: "汇总 7 月金额", model: "qwen2.5:7b", context: context,
+            durationMilliseconds: 4321, outcome: .generated
+        )
+        try await log.append(record)
+
+        let reopened = AgentAuditLog(directoryURL: directory)
+        let entries = try await reopened.entries()
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.durationMilliseconds, 4321)
+    }
 }

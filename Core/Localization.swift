@@ -278,6 +278,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentAuditColumnStatement
     case agentAuditColumnModel
     case agentAuditColumnOutcome
+    case agentAuditOriginModelCall
+    case agentAuditColumnDuration
     case agentAuditColumnGuard
     case agentAuditSelectHint
     case agentAuditGuardNone
@@ -868,6 +870,8 @@ public enum LocalizedStrings {
         .agentAuditColumnStatement: [.simplifiedChinese: "语句 / 动作", .english: "Statement / action"],
         .agentAuditColumnModel: [.simplifiedChinese: "模型", .english: "Model"],
         .agentAuditColumnOutcome: [.simplifiedChinese: "结果状态", .english: "Outcome"],
+        .agentAuditColumnDuration: [.simplifiedChinese: "耗时", .english: "Duration"],
+        .agentAuditOriginModelCall: [.simplifiedChinese: "模型调用", .english: "Model call"],
         .agentAuditColumnGuard: [.simplifiedChinese: "护栏判定", .english: "Guardrail"],
         .agentAuditSelectHint: [.simplifiedChinese: "选中一条记录，查看完整语句与护栏判定。", .english: "Select a record to see the full statement and guardrail verdict."],
         .agentAuditGuardNone: [.simplifiedChinese: "未发现高危操作", .english: "No high-risk finding"],

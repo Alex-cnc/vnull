@@ -157,6 +157,19 @@ public enum AgentAuditPresentation {
         return model
     }
 
+    /// 耗时文本（NFR-AI-03 要求留存耗时）：`820 ms` / `1.4 s`；没有记录时用占位符。
+    public static func durationText(_ record: AgentActionRecord) -> String {
+        guard let milliseconds = record.durationMilliseconds else { return placeholder }
+        return durationText(milliseconds: milliseconds)
+    }
+
+    /// 毫秒 → 展示文本。负数按 0 处理（日志被手改过时也不该显示 `-3 ms`）。
+    public static func durationText(milliseconds: Int) -> String {
+        let value = max(0, milliseconds)
+        guard value >= 1000 else { return "\(value) ms" }
+        return String(format: "%.1f s", Double(value) / 1000)
+    }
+
     /// 风险点说明（NFR-AI-12 联动：让「为什么被拦」在界面上看得见）。
     public static func findingsText(_ record: AgentActionRecord) -> String {
         guard !record.findings.isEmpty else { return "" }
