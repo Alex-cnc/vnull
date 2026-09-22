@@ -794,25 +794,82 @@ final class AppState: ObservableObject {
                 column.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             )
         } ?? (result.columns.isEmpty ? nil : 0)
+        // 有 table_schema 就用它（不同方言 / 版本给不给这一列不一样，缺了就退回方言默认）。
+        let schemaIndex = result.columns.firstIndex {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "table_schema"
+        }
 
         guard let nameIndex else {
             return AgentSQLGenerator.SchemaSummary(database: database, tables: [])
         }
 
-        let tables = result.rows.prefix(Self.agentTableListLimit).compactMap { row -> AgentSQLGenerator.SchemaSummary.Table? in
+        let listed = result.rows.prefix(Self.agentTableListLimit).compactMap { row -> (name: String, schema: String?)? in
             guard nameIndex < row.count,
                   let raw = row[nameIndex],
                   case let name = raw.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty
             else { return nil }
-            return AgentSQLGenerator.SchemaSummary.Table(name: name)
+            var schema: String?
+            if let schemaIndex, schemaIndex < row.count, let rawSchema = row[schemaIndex] {
+                let trimmed = rawSchema.trimmingCharacters(in: .whitespacesAndNewlines)
+                schema = trimmed.isEmpty ? nil : trimmed
+            }
+            return (name, schema)
+        }
+
+        // 补列：**模型看不到列名就写不准查询**，所以列才是 schema 摘要里最有用的部分。
+        // 同时封两道口子——表数与总列数都设上限，避免一次外发把整库结构倒出去（NFR-AI-01）。
+        var tables: [AgentSQLGenerator.SchemaSummary.Table] = []
+        var columnBudget = Self.agentColumnBudget
+
+        for entry in listed {
+            guard columnBudget > 0 else {
+                tables.append(AgentSQLGenerator.SchemaSummary.Table(schema: entry.schema, name: entry.name))
+                continue
+            }
+            let specs = (try? await agentColumnSpecs(
+                table: entry.name,
+                schema: entry.schema,
+                database: database,
+                configuration: configuration,
+                dialect: dialect
+            )) ?? []
+            let columns = specs.prefix(columnBudget).map {
+                AgentSQLGenerator.SchemaSummary.Column(name: $0.name, type: $0.typeName)
+            }
+            columnBudget -= columns.count
+            tables.append(
+                AgentSQLGenerator.SchemaSummary.Table(
+                    schema: entry.schema,
+                    name: entry.name,
+                    columns: Array(columns)
+                )
+            )
         }
 
         return AgentSQLGenerator.SchemaSummary(database: database, tables: tables)
     }
 
+    /// 取某张表的列（供 schema 摘要外发使用）；失败返回空数组，不让整次生成失败。
+    private func agentColumnSpecs(
+        table: String,
+        schema: String?,
+        database: String,
+        configuration: ConnectionConfig,
+        dialect: any SQLDialect
+    ) async throws -> [ColumnMeta] {
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(
+            dialect.listColumnsQuery(table: table, schema: schema),
+            on: service
+        )
+        return ColumnSpecParser.columns(from: result)
+    }
+
     /// 表清单外发上限（防止把上千张表发出去）。
     static let agentTableListLimit = 60
+    /// 列信息外发总量上限（按列累计，超出后的表只发表名）。
+    static let agentColumnBudget = 400
 
     /// 走完整条「自然语言 → SQL」通道；产物是文本，**不会被自动执行**（FR-AI-02）。
     func generateAgentSQL(

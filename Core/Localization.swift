@@ -600,7 +600,7 @@ public enum LocalizedStrings {
         .agentSQLTitle: [.simplifiedChinese: "自然语言 → SQL", .english: "Plain language → SQL"],
         .agentSQLInstruction: [.simplifiedChinese: "你想要什么？", .english: "What do you want?"],
         .agentSQLInstructionPlaceholder: [.simplifiedChinese: "例如：统计每个客户近 30 天的下单总额，按金额倒序", .english: "e.g. total order amount per customer over the last 30 days, highest first"],
-        .agentSQLIncludeTables: [.simplifiedChinese: "把当前库的表清单发给模型", .english: "Send the current database's table list"],
+        .agentSQLIncludeTables: [.simplifiedChinese: "把当前库的表与列结构发给模型", .english: "Send table and column structure"],
         .agentSQLIncludeStatement: [.simplifiedChinese: "把编辑器里的当前语句发给模型", .english: "Send the statement currently in the editor"],
         .agentSQLPayload: [.simplifiedChinese: "将要外发的内容", .english: "What will be sent"],
         .agentSQLPayloadNote: [.simplifiedChinese: "只发下面这些内容；结果集行数据永不外发（NFR-AI-01）。数据库对象注释会被标记为不可信资料。", .english: "Only the content below is sent; result rows are never sent (NFR-AI-01). Object comments are marked as untrusted data."],
