@@ -88,6 +88,9 @@ struct MainWindow: View {
         .sheet(item: $appState.pendingExecution) { pending in
             SafeModeConfirmSheet(pending: pending)
         }
+        .sheet(isPresented: $appState.isSQLArchivePresented) {
+            SQLArchiveSheet()
+        }
         // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
         .sheet(isPresented: $localization.isRestartPromptPresented) {
             RelaunchPromptSheet()

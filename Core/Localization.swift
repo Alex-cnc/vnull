@@ -77,6 +77,19 @@ public enum LKey: String, CaseIterable, Sendable {
     case tableIssueColumnNameDuplicate
     case tableIssueColumnTypeEmpty
 
+    // 查询自动归档（FR-EDIT-32）
+    case archiveTitle
+    case archiveEnable
+    case archiveEnableHint
+    case archiveChooseDirectory
+    case archiveDirectoryGranted
+    case archiveDirectoryNotAuthorized
+    case archiveDirectoryHint
+    case archiveSaved
+    case archiveFailed
+    case archiveOpenFolder
+    case archiveDirectoryStale
+
     // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）
     case lowerPaneProblem
     case lowerPaneOutput
@@ -740,6 +753,17 @@ public enum LocalizedStrings {
         .tableIssueColumnNameInvalid: [.simplifiedChinese: "列名不合法：%@", .english: "Invalid column name: %@"],
         .tableIssueColumnNameDuplicate: [.simplifiedChinese: "列名重复：%@", .english: "Duplicate column name: %@"],
         .tableIssueColumnTypeEmpty: [.simplifiedChinese: "列 %@ 还没有类型。", .english: "Column %@ has no type yet."],
+        .archiveTitle: [.simplifiedChinese: "查询归档", .english: "Query Archive"],
+        .archiveEnable: [.simplifiedChinese: "自动保存执行的 SQL（按天一个文件）", .english: "Auto-save executed SQL (one file per day)"],
+        .archiveEnableHint: [.simplifiedChinese: "执行成功后把语句追加进当天的 .sql 文件：同一条 SQL 只累计执行次数，不重复抄写。文件本身可以直接拿去执行。", .english: "After a successful run the statement is appended to that day's .sql file. Repeated statements only increase a run count instead of being copied again, and the file itself is runnable."],
+        .archiveChooseDirectory: [.simplifiedChinese: "选择归档目录…", .english: "Choose archive folder…"],
+        .archiveDirectoryGranted: [.simplifiedChinese: "归档目录：%@", .english: "Archive folder: %@"],
+        .archiveDirectoryNotAuthorized: [.simplifiedChinese: "尚未选择归档目录。", .english: "No archive folder chosen yet."],
+        .archiveDirectoryHint: [.simplifiedChinese: "文件写在所选目录的 queries/ 子目录下，例如 queries/2026-09-23.sql。", .english: "Files go into a queries/ subfolder of the chosen folder, e.g. queries/2026-09-23.sql."],
+        .archiveSaved: [.simplifiedChinese: "已归档到 %@（当天 %d 条）", .english: "Archived to %@ (%d today)"],
+        .archiveFailed: [.simplifiedChinese: "查询归档写入失败：%@", .english: "Writing the query archive failed: %@"],
+        .archiveDirectoryStale: [.simplifiedChinese: "（授权书签已过期，建议重新选择一次）", .english: " (the bookmark is stale; please re-select it)"],
+        .archiveOpenFolder: [.simplifiedChinese: "在访达中显示", .english: "Reveal in Finder"],
         .lowerPaneProblem: [.simplifiedChinese: "问题", .english: "Problems"],
         .lowerPaneOutput: [.simplifiedChinese: "输出", .english: "Output"],
         .lowerPaneTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],

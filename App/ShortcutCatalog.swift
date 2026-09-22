@@ -52,6 +52,9 @@ enum AppShortcut: CaseIterable {
     /// 底部终端面板（显示 / 隐藏）。
     case terminal
 
+    /// 查询归档（FR-EDIT-32）。
+    case archive
+
     var key: KeyEquivalent {
         switch self {
         case .execute: return .return
@@ -80,6 +83,7 @@ enum AppShortcut: CaseIterable {
         case .dataTask: return "t"
         case .help: return "/"
         case .terminal: return "j"
+        case .archive: return "r"
         }
     }
 
@@ -89,7 +93,7 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .stop:
             return [.command]
-        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .dataTask, .help, .terminal:
+        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .dataTask, .help, .terminal, .archive:
             return [.command, .shift]
         case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
             return [.command, .option]

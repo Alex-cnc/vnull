@@ -35,6 +35,13 @@ struct DoyahStudioCommands: Commands {
             .keyboardShortcut("t", modifiers: [.command])
         }
 
+        CommandGroup(after: .newItem) {
+            Button(L(.archiveTitle)) {
+                appState.isSQLArchivePresented = true
+            }
+            .keyboardShortcut(AppShortcut.archive.key, modifiers: AppShortcut.archive.modifiers)
+        }
+
         CommandMenu(L(.menuAgent)) {
             Button(L(.menuAgentSettings)) {
                 appState.isAgentSettingsPresented = true

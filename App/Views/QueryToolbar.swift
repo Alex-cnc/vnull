@@ -267,6 +267,7 @@ struct QueryToolbar: View {
             (.menuAgentAudit, .agentAudit),
             (.menuDataTask, .dataTask),
             (.lowerPaneToggle, .terminal),
+            (.archiveTitle, .archive),
             (.toolbarHelpHelp, .help)
         ]
     }

@@ -239,6 +239,26 @@ final class AppState: ObservableObject {
     private let directoryBookmarkStore = DirectoryBookmarkStore.shared
     /// 目录选择器：Core 只定义 `DirectoryPicker` 协议，真实实现用 `NSOpenPanel`（FR-AI-08）。
     private let dataTaskDirectoryPicker: any DirectoryPicker = OpenPanelDirectoryPicker()
+
+    // MARK: - 查询自动归档（FR-EDIT-32）
+
+    /// 是否把执行过的 SQL 自动归档成当天的 `.sql` 文件（默认关闭，需先选目录）。
+    @Published var isSQLArchiveEnabled: Bool =
+        UserDefaults.standard.object(forKey: "sqlArchive.enabled") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(isSQLArchiveEnabled, forKey: "sqlArchive.enabled") }
+    }
+
+    /// 归档面板是否呈现。
+    @Published var isSQLArchivePresented = false
+
+    /// 归档目录的当前状态（界面直接显示整句）。
+    @Published private(set) var sqlArchiveStatus: DirectoryAccessStatus?
+
+    /// 归档目录的书签**单独存一个文件**，免得出现在数据任务面板的「使用已授权目录」列表里。
+    private let sqlArchiveBookmarks = DirectoryBookmarkStore(fileName: "sql-archive-bookmark.json")
+
+    /// 写入串行化：两次执行几乎同时结束时不至于互相覆盖。
+    private let sqlArchiveWriter = SQLArchiveWriter()
     /// App 侧调度 tick（Core 的 `TaskScheduler` 不启定时器、只做纯时间计算）。
     private var dataTaskTicker: Task<Void, Never>?
     /// 已提交审批、等待人工决定的任务执行（审批单 id → 待办）。
@@ -597,12 +617,103 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 读取归档目录书签并刷新状态（界面打开归档面板时调用）。
+    func refreshSQLArchiveStatus() async {
+        do {
+            guard let bookmark = try await sqlArchiveBookmarks.all().first else {
+                sqlArchiveStatus = .notAuthorized
+                return
+            }
+            sqlArchiveStatus = SecureDirectoryAccess.status(for: bookmark)
+        } catch {
+            sqlArchiveStatus = .resolutionFailed(reason: ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 让用户选归档目录（**取消不是错误**，只是什么都不做）。
+    func chooseSQLArchiveDirectory() async {
+        do {
+            guard let url = try dataTaskDirectoryPicker.pickDirectory(prompt: L(.archiveChooseDirectory))
+            else { return }
+            let bookmark = try SecureDirectoryAccess.makeBookmark(for: url, displayName: L(.archiveTitle))
+            _ = try await sqlArchiveBookmarks.save(bookmark)
+            await refreshSQLArchiveStatus()
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 归档目录路径（展示用；没授权时为 nil）。
+    var sqlArchiveDirectoryPath: String? {
+        sqlArchiveStatus?.path
+    }
+
+    /// 把一次执行写进当天归档。
+    ///
+    /// **归档失败绝不影响执行结果** —— 只把可读原因写进状态栏：
+    /// 一个"顺手存文件"的功能不该让查询看起来失败了。
+    private func archiveExecutedSQL(
+        sql: String,
+        configuration: ConnectionConfig,
+        database: String?,
+        duration: TimeInterval,
+        affectedRows: Int?,
+        succeeded: Bool,
+        note: String?
+    ) {
+        guard isSQLArchiveEnabled else { return }
+
+        let entry = SQLArchiveEntry(
+            sql: sql,
+            firstExecutedAt: Date(),
+            lastExecutedAt: Date(),
+            connection: configuration.displayTitle(untitled: L(.connectionUntitled)),
+            database: database ?? "",
+            durationSeconds: duration,
+            affectedRows: affectedRows,
+            succeeded: succeeded,
+            note: note
+        )
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard let bookmark = try await self.sqlArchiveBookmarks.all().first else { return }
+                let grant = try SecureDirectoryAccess.open(bookmark)
+                defer { grant.stopAccessing() }
+
+                // 归档落在所选目录的 queries/ 子目录，避免和数据任务产物混在一起。
+                let directory = grant.url.appendingPathComponent("queries", isDirectory: true)
+                let count = try await self.sqlArchiveWriter.append(entry, in: directory)
+                self.statusMessage = L(.archiveSaved, directory.lastPathComponent, count)
+            } catch {
+                self.statusMessage = L(.archiveFailed, ErrorPresenter.message(for: error))
+            }
+        }
+    }
+
     private func recordHistory(
         sql: String,
         connectionID: UUID,
         duration: TimeInterval,
-        succeeded: Bool
+        succeeded: Bool,
+        affectedRows: Int? = nil,
+        note: String? = nil
     ) {
+        // 归档放在这个**单一收口点**：成功与失败两条路径都会经过这里，
+        // 不必在别处再补一遍（补必漏）。
+        if let configuration = connections.first(where: { $0.id == connectionID }) {
+            archiveExecutedSQL(
+                sql: sql,
+                configuration: configuration,
+                database: selectedDatabase,
+                duration: duration,
+                affectedRows: affectedRows,
+                succeeded: succeeded,
+                note: note
+            )
+        }
+
         // 连续重复执行同一条 SQL 时只刷新最新一条，避免刷屏。
         if let first = queryHistory.first,
            first.sql == sql,
@@ -2566,6 +2677,10 @@ final class AppState: ObservableObject {
 
         let executionStart = Date()
 
+        // 归档要写「影响行数」，在执行过程中累计一次（原先只在事件里即时展示）。
+        // 声明在 `do` 之外：**失败分支也要用到它**（出错前可能已经写过几行）。
+        var affectedTotal = 0
+
         do {
             let service = try await ensureService(for: configuration, database: targetDatabase)
             updateTab(tabID) { $0.statusMessage = L(.stateExecuting) }
@@ -2591,6 +2706,7 @@ final class AppState: ObservableObject {
                     let isTabular = result.affectedRows == nil && result.columnCount > 0
                     let logLine: String?
                     if let affected = result.affectedRows {
+                        affectedTotal += affected
                         logLine = L(.stateStatementAffectedRows, statementNumber, affected)
                     } else if result.columnCount == 0 {
                         logLine = L(.stateStatementNoResultSet, statementNumber)
@@ -2608,6 +2724,7 @@ final class AppState: ObservableObject {
                     }
 
                 case .affectedRows(let count):
+                    affectedTotal += count
                     updateTab(tabID) { $0.statusMessage = L(.stateAffectedRows, count) }
 
                 case .notice(let message):
@@ -2635,7 +2752,9 @@ final class AppState: ObservableObject {
                 sql: sql,
                 connectionID: configuration.id,
                 duration: Date().timeIntervalSince(executionStart),
-                succeeded: true
+                succeeded: true,
+                affectedRows: affectedTotal > 0 ? affectedTotal : nil,
+                note: nil
             )
         } catch {
             if Task.isCancelled {
@@ -2650,7 +2769,9 @@ final class AppState: ObservableObject {
                     sql: sql,
                     connectionID: configuration.id,
                     duration: Date().timeIntervalSince(executionStart),
-                    succeeded: false
+                    succeeded: false,
+                    affectedRows: affectedTotal > 0 ? affectedTotal : nil,
+                    note: message
                 )
             }
         }

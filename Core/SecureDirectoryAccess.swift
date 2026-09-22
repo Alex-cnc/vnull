@@ -379,7 +379,9 @@ public actor DirectoryBookmarkStore {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    public init(directoryURL: URL? = nil) {
+    /// - Parameter fileName: 书签文件名。**归档目录用独立文件**，
+    ///   免得出现在数据任务面板的「使用已授权目录」列表里。
+    public init(directoryURL: URL? = nil, fileName: String = "directory-bookmarks.json") {
         let baseURL: URL
         if let directoryURL {
             baseURL = directoryURL
@@ -391,7 +393,7 @@ public actor DirectoryBookmarkStore {
             baseURL = applicationSupport.appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
         }
 
-        self.fileURL = baseURL.appendingPathComponent("directory-bookmarks.json", isDirectory: false)
+        self.fileURL = baseURL.appendingPathComponent(fileName, isDirectory: false)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
