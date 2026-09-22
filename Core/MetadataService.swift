@@ -135,6 +135,31 @@ public struct MetadataService: Sendable {
         }
     }
 
+    /// 读取一张表的**结构**（列名 / 类型 / 可空 / 默认值 / 主键），供表结构编辑器算差异（FR-DDL-03）。
+    ///
+    /// 方言不支持时抛可读错误，而不是返回空数组 —— 空数组会被界面误当成"这张表没有列"。
+    public func tableStructure(of object: DatabaseObject) async throws -> [TableColumnDefinition] {
+        guard let query = dialect.tableStructureQuery(table: object.name, schema: object.schema) else {
+            throw AppError.queryFailed("当前方言不支持读取表结构")
+        }
+
+        let result = try await run(query)
+        return result.rows.compactMap { row -> TableColumnDefinition? in
+            guard let name = value(row, at: 0), !name.isEmpty else { return nil }
+            let typeName = value(row, at: 1) ?? ""
+            let isNullable = (value(row, at: 2) ?? "YES").uppercased() != "NO"
+            let defaultValue = value(row, at: 3) ?? ""
+            let isPrimaryKey = (value(row, at: 4) ?? "NO").uppercased() == "YES"
+            return TableColumnDefinition(
+                name: name,
+                typeName: typeName,
+                isNullable: isNullable,
+                defaultValue: defaultValue,
+                isPrimaryKey: isPrimaryKey
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     private func isSystemSchema(_ name: String) -> Bool {

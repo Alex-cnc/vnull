@@ -24,6 +24,8 @@ struct ObjectTreeView: View {
     @State private var isCreateDatabasePresented = false
     /// 「新建表」的目标节点（数据库或 schema 节点）；非 nil 时呈现表设计面板。
     @State private var createTableTarget: DatabaseObject?
+    /// 「编辑表结构」的目标表节点；非 nil 时呈现表设计面板（编辑模式）。
+    @State private var alterTableTarget: DatabaseObject?
     /// 库属性 / 删除数据库（FR-SESS-05）。
     @State private var isPropertiesPresented = false
     @State private var isDropDatabasePresented = false
@@ -93,11 +95,22 @@ struct ObjectTreeView: View {
             await reloadRoot()
         }
         .sheet(item: $createTableTarget) { target in
-            CreateTableSheet(
+            TableDesignSheet(
+                mode: .create,
                 databaseType: appState.selectedConnection?.dbType ?? .postgresql,
                 initialSchema: target.kind == .schema ? target.name : target.schema
-            ) { name, schema, columns in
+            ) { name, schema, columns, _ in
                 Task { _ = await appState.createTable(named: name, schema: schema, columns: columns) }
+            }
+        }
+        .sheet(item: $alterTableTarget) { target in
+            TableDesignSheet(
+                mode: .alter(tableName: target.name),
+                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
+                initialSchema: target.schema,
+                loadStructure: { try await appState.tableStructure(of: target) }
+            ) { _, _, original, edited in
+                Task { _ = await appState.alterTable(target, from: original, to: edited) }
             }
         }
         .sheet(isPresented: $isCreateDatabasePresented) {
@@ -376,6 +389,13 @@ struct ObjectTreeView: View {
                 Divider()
                 Button(L(.tableDesignTitle)) {
                     createTableTarget = object
+                }
+            }
+
+            if object.kind == .table {
+                Divider()
+                Button(L(.tableDesignAlterTitle)) {
+                    alterTableTarget = object
                 }
             }
 

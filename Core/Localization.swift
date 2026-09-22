@@ -60,6 +60,15 @@ public enum LKey: String, CaseIterable, Sendable {
     case tableDesignFailed
     case tableDesignInvalid
     case tableDesignRemoveColumn
+    case tableDesignAlterTitle
+    case tableDesignApply
+    case tableDesignNoChanges
+    case tableDesignDestructive
+    case tableDesignPrimaryKeyLocked
+    case tableDesignLoading
+    case tableDesignLoadFailed
+    case tableDesignAltered
+    case tableDesignAlterFailed
     case tableIssueNameEmpty
     case tableIssueNameInvalid
     case tableIssueNoColumns
@@ -697,6 +706,15 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
+        .tableDesignAlterTitle: [.simplifiedChinese: "编辑表结构", .english: "Edit Table Structure"],
+        .tableDesignApply: [.simplifiedChinese: "应用变更", .english: "Apply changes"],
+        .tableDesignNoChanges: [.simplifiedChinese: "没有改动。", .english: "No changes."],
+        .tableDesignDestructive: [.simplifiedChinese: "以下变更会动到已有数据（删列 / 改类型），请确认：", .english: "These changes affect existing data (dropping a column or changing a type):"],
+        .tableDesignPrimaryKeyLocked: [.simplifiedChinese: "主键在「编辑表结构」里只读：改主键要先删约束再重建，容易误伤数据，留待后续版本。", .english: "Primary keys are read-only while editing: changing one means dropping and recreating a constraint, which is easy to get wrong. Deferred to a later version."],
+        .tableDesignLoading: [.simplifiedChinese: "正在读取表结构…", .english: "Loading table structure…"],
+        .tableDesignLoadFailed: [.simplifiedChinese: "读取表结构失败：%@", .english: "Loading the table structure failed: %@"],
+        .tableDesignAltered: [.simplifiedChinese: "已更新表 %@（%@ 项变更）。", .english: "Updated table %@ (%@ changes)."],
+        .tableDesignAlterFailed: [.simplifiedChinese: "第 %d 条变更执行失败：%@", .english: "Change %d failed: %@"],
         .tableDesignTitle: [.simplifiedChinese: "新建表", .english: "New Table"],
         .tableDesignName: [.simplifiedChinese: "表名", .english: "Table name"],
         .tableDesignSchema: [.simplifiedChinese: "模式（schema，可留空）", .english: "Schema (optional)"],

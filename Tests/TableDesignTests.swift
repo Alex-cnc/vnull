@@ -61,13 +61,22 @@ final class TableDesignTests: XCTestCase {
         XCTAssertEqual(issues, [.columnNameInvalid("bad name")])
     }
 
-    /// 判重不区分大小写：服务端折叠未加引号的标识符，`Name` 与 `name` 实际是同一列。
-    func testDuplicateColumnNameIsCaseInsensitive() {
+    func testExactDuplicateColumnNameIsReported() {
+        let issues = TableDesign.validate(
+            tableName: "t",
+            columns: [column("name"), column("name")]
+        )
+        XCTAssertEqual(issues, [.columnNameDuplicate("name")])
+    }
+
+    /// 判重**大小写敏感**：生成器始终给标识符加引号，`Name` 与 `name` 是两列。
+    /// （早先按不敏感判重会把这种合法设计误判成重复。）
+    func testCaseDifferingColumnNamesAreAllowed() {
         let issues = TableDesign.validate(
             tableName: "t",
             columns: [column("Name"), column("name")]
         )
-        XCTAssertEqual(issues, [.columnNameDuplicate("name")])
+        XCTAssertTrue(issues.isEmpty, "\(issues)")
     }
 
     func testMissingColumnType() {
@@ -160,5 +169,103 @@ final class TableDesignTests: XCTestCase {
             "id" int NOT NULL
         );
         """)
+    }
+    // MARK: 列级差异（改已有表）
+
+    func testNoChangesWhenNothingEdited() {
+        let original = [column("id", "bigint", nullable: false, primaryKey: true), column("name", "text")]
+        XCTAssertTrue(TableDesign.columnChanges(original: original, edited: original).isEmpty)
+    }
+
+    /// 类型写法的大小写 / 空格差异不算改类型，否则会凭空生成 ALTER。
+    func testTypeComparisonIgnoresCaseAndSpacing() {
+        let original = [column("name", "text")]
+        let edited = [column("name", "  TEXT ")]
+        XCTAssertTrue(TableDesign.columnChanges(original: original, edited: edited).isEmpty)
+    }
+
+    func testAddColumn() {
+        let original = [column("id", "bigint")]
+        let added = column("nickname", "text")
+        let edited = original + [added]
+        // 注意复用同一个定义实例：TableColumnDefinition 带随机 id（列表身份用），
+        // 重建同内容的定义 UUID 不同，直接比会假失败。
+        XCTAssertEqual(TableDesign.columnChanges(original: original, edited: edited), [.add(added)])
+    }
+
+    func testDropColumn() {
+        let original = [column("id", "bigint"), column("tmp", "text")]
+        let edited = [column("id", "bigint")]
+        XCTAssertEqual(TableDesign.columnChanges(original: original, edited: edited), [.drop(name: "tmp")])
+    }
+
+    /// 改名在差异里表现为「删一列 + 加一列」，且删除那步是破坏性的 —— 不假装支持 rename。
+    func testRenameShowsUpAsDropPlusAdd() {
+        let renamed = column("new_name", "text")
+        let changes = TableDesign.columnChanges(
+            original: [column("old_name", "text")],
+            edited: [renamed]
+        )
+        XCTAssertEqual(changes, [.drop(name: "old_name"), .add(renamed)])
+        XCTAssertTrue(changes[0].isDestructive)
+    }
+
+    func testNullabilityAndDefaultChanges() {
+        let original = [column("state", "text", nullable: true, defaultValue: "'a'")]
+        let edited = [column("state", "text", nullable: false, defaultValue: "'b'")]
+        XCTAssertEqual(
+            TableDesign.columnChanges(original: original, edited: edited),
+            [.setNotNull(name: "state"), .setDefault(name: "state", value: "'b'")]
+        )
+    }
+
+    func testClearingDefaultEmitsDropDefault() {
+        let changes = TableDesign.columnChanges(
+            original: [column("state", "text", defaultValue: "'a'")],
+            edited: [column("state", "text", defaultValue: "  ")]
+        )
+        XCTAssertEqual(changes, [.dropDefault(name: "state")])
+    }
+
+    func testChangeTypeIsDestructiveButAddIsNot() {
+        XCTAssertTrue(TableDesign.ColumnChange.changeType(name: "a", to: "int").isDestructive)
+        XCTAssertTrue(TableDesign.ColumnChange.drop(name: "a").isDestructive)
+        XCTAssertFalse(TableDesign.ColumnChange.add(column("a", "int")).isDestructive)
+        XCTAssertFalse(TableDesign.ColumnChange.setNotNull(name: "a").isDestructive)
+    }
+
+    // MARK: ALTER TABLE 语句
+
+    func testAlterStatementsCoverEveryChangeKind() {
+        let changes: [TableDesign.ColumnChange] = [
+            .add(column("c1", "int", nullable: false, defaultValue: "0")),
+            .drop(name: "c2"),
+            .changeType(name: "c3", to: "bigint"),
+            .setNotNull(name: "c4"),
+            .dropNotNull(name: "c5"),
+            .setDefault(name: "c6", value: "now()"),
+            .dropDefault(name: "c7")
+        ]
+        let statements = SQLGenerator.alterTableStatements(
+            table: "users",
+            schema: "app",
+            changes: changes,
+            dialect: pg
+        )
+        XCTAssertEqual(statements, [
+            "ALTER TABLE \"app\".\"users\" ADD COLUMN \"c1\" int NOT NULL DEFAULT 0;",
+            "ALTER TABLE \"app\".\"users\" DROP COLUMN \"c2\";",
+            "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"c3\" TYPE bigint;",
+            "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"c4\" SET NOT NULL;",
+            "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"c5\" DROP NOT NULL;",
+            "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"c6\" SET DEFAULT now();",
+            "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"c7\" DROP DEFAULT;"
+        ])
+    }
+
+    func testAlterStatementsEmptyWhenNoChanges() {
+        XCTAssertTrue(
+            SQLGenerator.alterTableStatements(table: "t", changes: [], dialect: pg).isEmpty
+        )
     }
 }

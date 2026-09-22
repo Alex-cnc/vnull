@@ -56,6 +56,12 @@ public protocol SQLDialect: Sendable {
     func objectPrivilegeQuery(role: String) -> String?
     /// 锁等待 / 阻塞链查询（FR-DIAG-05）；nil = 该方言不支持。
     func lockWaitingQuery() -> String?
+    /// 表结构查询（FR-DDL-03）：列名 / 类型 / 可空 / **默认值** / **是否主键**；nil = 该方言不支持。
+    ///
+    /// 与 `listColumnsQuery` 的区别：那个只给对象树用的列名与类型，这个要支撑"改表结构"，
+    /// 必须知道当前默认值与主键 —— 否则界面上算不出差异、会把没改的列也写成 ALTER。
+    func tableStructureQuery(table: String, schema: String?) -> String?
+
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -77,6 +83,7 @@ public extension SQLDialect {
     func cancelSessionStatement(pid: Int) -> String? { nil }
     func terminateSessionStatement(pid: Int) -> String? { nil }
     func objectPrivilegeQuery(role: String) -> String? { nil }
+    func tableStructureQuery(table: String, schema: String?) -> String? { nil }
     func lockWaitingQuery() -> String? { nil }
 }
 
@@ -227,6 +234,32 @@ public struct PostgresDialect: SQLDialect {
         }
         sql += " ORDER BY table_name"
         return sql
+    }
+
+    /// 列 + 主键一次取回：`information_schema` 里主键要跨两张表，用 LEFT JOIN 收拢成一条查询，
+    /// 免得为每张表再发一次往返。
+    public func tableStructureQuery(table: String, schema: String?) -> String? {
+        let schemaName = schema ?? "public"
+        return """
+        SELECT c.column_name,
+               c.data_type,
+               c.is_nullable,
+               c.column_default,
+               CASE WHEN pk.column_name IS NULL THEN 'NO' ELSE 'YES' END AS is_primary_key
+        FROM information_schema.columns c
+        LEFT JOIN (
+            SELECT kcu.column_name
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'PRIMARY KEY'
+              AND tc.table_schema = \(literal(schemaName))
+              AND tc.table_name = \(literal(table))
+        ) pk ON pk.column_name = c.column_name
+        WHERE c.table_schema = \(literal(schemaName)) AND c.table_name = \(literal(table))
+        ORDER BY c.ordinal_position
+        """
     }
 
     public func listColumnsQuery(table: String, schema: String?) -> String {

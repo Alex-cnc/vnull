@@ -146,6 +146,50 @@ public enum SQLGenerator {
         return "CREATE TABLE \(target) (\n    " + definitions.joined(separator: ",\n    ") + "\n);"
     }
 
+    /// 把列级变更翻译成 `ALTER TABLE` 语句（FR-DDL-03），**一条语句一项变更**。
+    ///
+    /// 返回数组而不是一整段：这样界面能逐条预览、执行失败时也能指出是第几条。
+    ///
+    /// 注意：改类型在 PostgreSQL 上遇到不兼容的转换需要 `USING`（例如 `text` → `integer`），
+    /// 这里不擅自生成 —— 由服务端报错，使用者看到的是真实原因，而不是我们猜出来的 `USING`。
+    public static func alterTableStatements(
+        table: String,
+        schema: String? = nil,
+        changes: [TableDesign.ColumnChange],
+        dialect: any SQLDialect
+    ) -> [String] {
+        let target = qualifiedName(table: table, schema: schema, dialect: dialect)
+
+        return changes.map { change -> String in
+            switch change {
+            case .add(let column):
+                var definition = "\(dialect.quoteIdentifier(column.name)) \(column.typeName.trimmingCharacters(in: .whitespaces))"
+                if !column.isNullable { definition += " NOT NULL" }
+                let defaultValue = column.defaultValue.trimmingCharacters(in: .whitespaces)
+                if !defaultValue.isEmpty { definition += " DEFAULT \(defaultValue)" }
+                return "ALTER TABLE \(target) ADD COLUMN \(definition);"
+
+            case .drop(let name):
+                return "ALTER TABLE \(target) DROP COLUMN \(dialect.quoteIdentifier(name));"
+
+            case .changeType(let name, let typeName):
+                return "ALTER TABLE \(target) ALTER COLUMN \(dialect.quoteIdentifier(name)) TYPE \(typeName);"
+
+            case .setNotNull(let name):
+                return "ALTER TABLE \(target) ALTER COLUMN \(dialect.quoteIdentifier(name)) SET NOT NULL;"
+
+            case .dropNotNull(let name):
+                return "ALTER TABLE \(target) ALTER COLUMN \(dialect.quoteIdentifier(name)) DROP NOT NULL;"
+
+            case .setDefault(let name, let value):
+                return "ALTER TABLE \(target) ALTER COLUMN \(dialect.quoteIdentifier(name)) SET DEFAULT \(value);"
+
+            case .dropDefault(let name):
+                return "ALTER TABLE \(target) ALTER COLUMN \(dialect.quoteIdentifier(name)) DROP DEFAULT;"
+            }
+        }
+    }
+
     /// 生成 `DROP TABLE`（带 `IF EXISTS`，避免手滑报错中断脚本）（FR-DDL-02）。
     public static func dropTable(
         table: String,

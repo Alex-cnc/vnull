@@ -307,6 +307,61 @@ final class AppState: ObservableObject {
         return selectedConnection
     }
 
+    /// 读取一张表的结构（列 / 类型 / 可空 / 默认值 / 主键），供表结构编辑器算差异。
+    func tableStructure(of object: DatabaseObject) async throws -> [TableColumnDefinition] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let database = object.database ?? currentDatabaseName(for: configuration)
+        let metadata = try await makeMetadataService(configuration: configuration, database: database)
+        return try await metadata.tableStructure(of: object)
+    }
+
+    /// 把编辑后的列定义与原始结构比对，生成并**逐条**执行 `ALTER TABLE`（FR-DDL-03）。
+    ///
+    /// 逐条执行而不是拼成一整段：失败时能指出是第几条，使用者知道"改到哪儿断了"。
+    /// 已经执行的语句**不回滚**（DDL 在多数方言里本就不可回滚），这一点在界面提示里讲清楚。
+    func alterTable(
+        _ object: DatabaseObject,
+        from original: [TableColumnDefinition],
+        to edited: [TableColumnDefinition]
+    ) async -> Bool {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+
+        let changes = TableDesign.columnChanges(original: original, edited: edited)
+        let statements = SQLGenerator.alterTableStatements(
+            table: object.name,
+            schema: object.schema,
+            changes: changes,
+            dialect: SQLDialectFactory.make(for: configuration.dbType)
+        )
+        guard !statements.isEmpty else { return true }
+
+        do {
+            let database = object.database ?? currentDatabaseName(for: configuration)
+            let service = try await ensureService(for: configuration, database: database)
+            for (index, statement) in statements.enumerated() {
+                do {
+                    _ = try await runSingleQuery(statement, on: service)
+                } catch {
+                    errorMessage = L(.tableDesignAlterFailed, index + 1, ErrorPresenter.message(for: error))
+                    metadataRevision += 1 // 前面几条可能已经生效，让对象树刷新
+                    return false
+                }
+            }
+
+            statusMessage = L(.tableDesignAltered, object.name, "\(changes.count)")
+            metadataRevision += 1
+            return true
+        } catch {
+            errorMessage = L(.tableDesignAlterFailed, 1, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
     // MARK: - 新建表（FR-DDL-03）
 
     /// 按表设计生成并执行 `CREATE TABLE`。
