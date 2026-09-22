@@ -45,6 +45,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case bottomPanelTerminal
     case bottomPanelToggle
     case bottomPanelHide
+    case bottomPanelMaximize
+    case bottomPanelRestore
     case bottomPanelPending
     case terminalRestart
     case terminalStopped
@@ -664,6 +666,8 @@ public enum LocalizedStrings {
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
         .bottomPanelTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],
         .bottomPanelToggle: [.simplifiedChinese: "显示 / 隐藏终端", .english: "Show/Hide Terminal"],
+        .bottomPanelMaximize: [.simplifiedChinese: "最大化终端", .english: "Maximize terminal"],
+        .bottomPanelRestore: [.simplifiedChinese: "恢复终端", .english: "Restore terminal"],
         .bottomPanelHide: [.simplifiedChinese: "隐藏终端", .english: "Hide terminal"],
         .bottomPanelPending: [.simplifiedChinese: "终端内容尚未接入。（受 App 沙箱限制，外部命令方案确认后再接。）", .english: "Terminal content is not wired up yet. (External commands are constrained by the App Sandbox; to be wired up once that decision is made.)"],
         .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],

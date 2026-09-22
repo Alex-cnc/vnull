@@ -3,12 +3,12 @@ import DoyahCore
 
 /// 主窗口底部的终端面板。
 ///
-/// `@StateObject` 持有 `TerminalModel`：语言切换会让根视图按 `.id(language)` 整树重建，
-/// 但 `@StateObject` 的生命周期跟着视图身份走——所以切换语言会把 shell 重启一次。
-/// 这是可接受的（会话本来也不跨重启），但别把它当成"持久会话"。
+/// 终端会话（`TerminalModel`）挂在 **App 层**（`@StateObject` 在 `DoyahStudioApp`），
+/// 这里只通过 environment 取用。原因：最大化 / 恢复、以及切换语言导致的整树重建
+/// 都会重建这个视图，若会话挂在这里，正在跑的 shell（比如一个 dsh 会话）就会被杀掉。
 struct BottomPanelView: View {
     @EnvironmentObject private var appState: AppState
-    @StateObject private var model = TerminalModel()
+    @EnvironmentObject private var terminal: TerminalModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +19,7 @@ struct BottomPanelView: View {
         .frame(minHeight: 120, idealHeight: 220)
         .background(.background)
         .onAppear {
-            model.startIfNeeded(columns: model.screen.columns, rows: model.screen.rows)
+            terminal.startIfNeeded(columns: terminal.screen.columns, rows: terminal.screen.rows)
         }
     }
 
@@ -31,7 +31,7 @@ struct BottomPanelView: View {
                 .font(.caption)
                 .bold()
 
-            if !model.isRunning {
+            if !terminal.isRunning {
                 Text(L(.terminalStopped))
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -39,7 +39,7 @@ struct BottomPanelView: View {
 
             Spacer()
 
-            if let errorText = model.errorText {
+            if let errorText = terminal.errorText {
                 Text(errorText)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -47,7 +47,7 @@ struct BottomPanelView: View {
             }
 
             Button {
-                model.restart(columns: model.screen.columns, rows: model.screen.rows)
+                terminal.restart(columns: terminal.screen.columns, rows: terminal.screen.rows)
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -55,6 +55,18 @@ struct BottomPanelView: View {
             .help(L(.terminalRestart))
 
             Button {
+                appState.isBottomPanelMaximized.toggle()
+            } label: {
+                Image(systemName: appState.isBottomPanelMaximized
+                      ? "rectangle.compress.vertical"
+                      : "rectangle.expand.vertical")
+            }
+            .buttonStyle(.borderless)
+            .help(appState.isBottomPanelMaximized ? L(.bottomPanelRestore) : L(.bottomPanelMaximize))
+
+            Button {
+                // 收起时同时取消最大化：下次打开回到常规分栏，而不是又占满整屏。
+                appState.isBottomPanelMaximized = false
                 appState.isBottomPanelVisible = false
             } label: {
                 Image(systemName: "chevron.down")
@@ -67,7 +79,7 @@ struct BottomPanelView: View {
     }
 
     private var content: some View {
-        TerminalView(model: model)
+        TerminalView(model: terminal)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

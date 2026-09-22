@@ -239,6 +239,12 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(isBottomPanelVisible, forKey: "ui.bottomPanelVisible") }
     }
 
+    /// 底部栏是否最大化（占满整个详情区）。同样用 `UserDefaults` 记住。
+    @Published var isBottomPanelMaximized: Bool =
+        UserDefaults.standard.object(forKey: "ui.bottomPanelMaximized") as? Bool ?? false {
+        didSet { UserDefaults.standard.set(isBottomPanelMaximized, forKey: "ui.bottomPanelMaximized") }
+    }
+
     /// 当前生效的执行安全策略。
     var executionSafetyPolicy: ExecutionSafetyPolicy {
         ExecutionSafetyPolicy(

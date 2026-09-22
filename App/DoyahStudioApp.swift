@@ -5,6 +5,9 @@ import DoyahCore
 struct DoyahStudioApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var localization = LocalizationManager.shared
+    /// 终端会话放在 App 层而不是面板里：最大化 / 恢复、以及切换语言导致的整树重建
+    /// 都不该把正在跑的 shell（比如一个 dsh 会话）杀掉。
+    @StateObject private var terminal = TerminalModel()
 
     init() {
         MainMenuLocalizer.start()
@@ -15,6 +18,7 @@ struct DoyahStudioApp: App {
             MainWindow()
                 .environmentObject(appState)
                 .environmentObject(localization)
+                .environmentObject(terminal)
                 .frame(minWidth: 1_100, minHeight: 700)
                 // 语言切换时整棵视图树重建，保证所有文案立即刷新。
                 .id(localization.language)

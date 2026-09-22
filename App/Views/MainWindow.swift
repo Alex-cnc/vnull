@@ -49,9 +49,11 @@ struct MainWindow: View {
             )
             .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            // 底部栏：显示时用 VSplitView 让分隔条可拖拽调节高度；隐藏时整块移除，
-            // 不留一条空的分隔条。
-            if appState.isBottomPanelVisible {
+            // 三种布局：最大化（只留面板）/ 分栏（分隔条可拖拽调高度）/ 隐藏（只留工作区）。
+            // 注意 BottomPanelView 里的终端会话挂在 App 层，所以这些切换都不会重启 shell。
+            if appState.isBottomPanelVisible, appState.isBottomPanelMaximized {
+                BottomPanelView()
+            } else if appState.isBottomPanelVisible {
                 VSplitView {
                     QueryWorkspaceView()
                     BottomPanelView()
