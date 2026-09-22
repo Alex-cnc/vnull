@@ -76,6 +76,25 @@ check() {
   fi
 }
 
+# 任意一个 needle 命中即通过：用于服务端返回文案会被 lc_messages 本地化的断言
+# （例如取消查询在中文实例上回的是「由于用户请求而正在取消查询」）。
+check_any() {
+  local name="$1"
+  local output="$2"
+  shift 2
+  local needle
+  for needle in "$@"; do
+    if grep -qF -- "${needle}" <<<"${output}"; then
+      echo "  ✅ ${name}"
+      PASS=$((PASS + 1))
+      return
+    fi
+  done
+  echo "  ❌ ${name}（以下均未找到：$*）"
+  echo "${output}" | sed 's/^/     | /'
+  FAIL=$((FAIL + 1))
+}
+
 echo ""
 echo "==> 用例 1：连接与版本"
 set +e
@@ -99,7 +118,7 @@ echo "==> 用例 2：多语句 + 中文 / NULL"
 OUTPUT="$(run_cli -c "DROP TABLE IF EXISTS compat_check;
 CREATE TABLE compat_check(id int, name text);
 INSERT INTO compat_check VALUES (1, '中文'), (2, NULL);
-SELECT * FROM compat_check ORDER BY id;")"
+SELECT * FROM compat_check ORDER BY id;")" || true
 check "4 条语句全部执行" "${OUTPUT}" "finished: 4 statement(s)"
 check "中文往返正确" "${OUTPUT}" "1 | 中文"
 check "NULL 显示为 NULL" "${OUTPUT}" "2 | NULL"
@@ -108,7 +127,7 @@ echo ""
 echo "==> 用例 3：DML 影响行数"
 OUTPUT="$(run_cli -c "INSERT INTO compat_check VALUES (10), (11), (12);
 UPDATE compat_check SET name = 'x' WHERE id >= 10;
-DELETE FROM compat_check WHERE id = 12;")"
+DELETE FROM compat_check WHERE id = 12;")" || true
 check "INSERT 影响 3 行" "${OUTPUT}" "affectedRows: 3"
 check "UPDATE 影响 3 行" "${OUTPUT}" "affectedRows: 3"
 check "DELETE 影响 1 行" "${OUTPUT}" "affectedRows: 1"
@@ -126,11 +145,11 @@ else
   echo "  ❌ 退出码为 ${STATUS}，期望 2"
   FAIL=$((FAIL + 1))
 fi
-check "取消由服务端执行" "${OUTPUT}" "canceling statement due to user request"
+check_any "取消由服务端执行" "${OUTPUT}" "canceling statement due to user request" "由于用户请求而正在取消查询" "57014"
 
 echo ""
 echo "==> 用例 5：对象树"
-OUTPUT="$(run_cli --tree --columns)"
+OUTPUT="$(run_cli --tree --columns)" || true
 check "根节点是服务器" "${OUTPUT}" "server"
 check "列出数据库" "${OUTPUT}" "database"
 check "列出 schema" "${OUTPUT}" "schema"
@@ -140,8 +159,8 @@ check "列出列与类型" "${OUTPUT}" "column name"
 if [ "${SKIP_CROSS_DB}" -eq 0 ]; then
   run_cli -c "DROP DATABASE IF EXISTS ic_compat_second;" >/dev/null 2>&1 || true
   if run_cli -c "CREATE DATABASE ic_compat_second;" >/dev/null 2>&1; then
-    run_cli_db ic_compat_second -c "CREATE TABLE IF NOT EXISTS compat_second(id int);" >/dev/null
-    OUTPUT="$(run_cli --tree)"
+    run_cli_db ic_compat_second -c "CREATE TABLE IF NOT EXISTS compat_second(id int);" >/dev/null 2>&1 || true
+    OUTPUT="$(run_cli --tree)" || true
     check "跨数据库浏览" "${OUTPUT}" "database ic_compat_second"
     run_cli -c "DROP DATABASE IF EXISTS ic_compat_second;" >/dev/null 2>&1 || true
   else
