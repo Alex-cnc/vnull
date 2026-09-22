@@ -88,6 +88,10 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# 第三方许可声明随产品分发（审核与合规都要能随包拿到）
+echo "==> 附带第三方许可声明"
+cp "${ROOT}/THIRD-PARTY-NOTICES.md" "${APP}/Contents/Resources/THIRD-PARTY-NOTICES.md"
+
 echo "==> ad-hoc 签名"
 codesign --force --sign - \
   --entitlements "${ROOT}/App/PostgresClient.entitlements" \

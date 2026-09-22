@@ -57,4 +57,8 @@ Vendor/     第三方依赖（PostgresNIO）
 
 ## 许可证
 
-[Apache License 2.0](LICENSE)
+本项目以 [Apache License 2.0](LICENSE) 发布。
+
+产品包含的第三方开源组件及其许可证见
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)（会随 `.app` 一并分发到
+`Contents/Resources/`）。
