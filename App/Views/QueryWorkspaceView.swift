@@ -114,22 +114,45 @@ struct QueryEditorView: View {
             // 三块自下而上：编辑区 → 结果表 → 下方面板，分隔条都可拖拽。
             // **结果表留在查询自己的地盘**（它是数据，不是日志），下方面板只放应用级页签
             // （问题 / 输出 / 终端 / 调试控制台）—— 这样面板与产品未来无关。
-            // 面板收起时用另一个分支，保证 VSplitView 的子视图数量稳定。
-            if appState.isLowerPaneVisible {
-                VSplitView {
-                    editorArea(diagnostics)
-                        .frame(minHeight: 100, idealHeight: 220)
-                    resultArea
-                        .frame(minHeight: 100, idealHeight: 220)
-                    LowerPaneView(tab: tab)
-                        .frame(minHeight: 100, idealHeight: 160)
-                }
-            } else {
-                VSplitView {
-                    editorArea(diagnostics)
-                        .frame(minHeight: 100, idealHeight: 300)
-                    resultArea
-                        .frame(minHeight: 100, idealHeight: 280)
+            //
+            // 两条默认值（需求提出者要求）：
+            // ① **结果区默认不显示** —— 只有执行过、且确实有表格结果才出现，一上来空着会显得拥挤；
+            // ② **下方面板默认占 20% 高度** —— 让人知道有这么个面板，又不至于把编辑区挤扁。
+            // VSplitView 的子视图数量必须按分支固定，所以四种组合各写一条。
+            GeometryReader { geometry in
+                let total = geometry.size.height
+                let panelIdeal = max(110, total * 0.2)
+                let upperTotal = max(220, total - (appState.isLowerPaneVisible ? panelIdeal : 0))
+                let editorIdeal = showsResult ? upperTotal * 0.55 : upperTotal
+                let resultIdeal = upperTotal * 0.45
+
+                Group {
+                    if showsResult, appState.isLowerPaneVisible {
+                        VSplitView {
+                            editorArea(diagnostics)
+                                .frame(minHeight: 100, idealHeight: editorIdeal)
+                            resultArea
+                                .frame(minHeight: 100, idealHeight: resultIdeal)
+                            LowerPaneView(tab: tab)
+                                .frame(minHeight: 90, idealHeight: panelIdeal)
+                        }
+                    } else if showsResult {
+                        VSplitView {
+                            editorArea(diagnostics)
+                                .frame(minHeight: 100, idealHeight: editorIdeal)
+                            resultArea
+                                .frame(minHeight: 100, idealHeight: resultIdeal)
+                        }
+                    } else if appState.isLowerPaneVisible {
+                        VSplitView {
+                            editorArea(diagnostics)
+                                .frame(minHeight: 100, idealHeight: editorIdeal)
+                            LowerPaneView(tab: tab)
+                                .frame(minHeight: 90, idealHeight: panelIdeal)
+                        }
+                    } else {
+                        editorArea(diagnostics)
+                    }
                 }
             }
         }
@@ -153,6 +176,11 @@ struct QueryEditorView: View {
 
     private var defaultQueryName: String {
         appState.suggestedQueryName(for: tab)
+    }
+
+    /// 结果区要不要出现：执行过、且确实有表格结果（没有结果集的语句不进结果区）。
+    private var showsResult: Bool {
+        tab.hasTabularResult
     }
 
     // MARK: - 编辑区

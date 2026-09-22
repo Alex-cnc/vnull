@@ -13,6 +13,14 @@ struct QueryTab: Identifiable {
     var selectedResultIndex: Int
     var isExecuting: Bool
 
+    /// 是否有**可展示的表格结果** —— 决定结果区要不要出现。
+    ///
+    /// 只认「有列的」结果集：`CREATE TABLE` / `INSERT` 这类没有结果集，它们的交代在
+    /// Output / Problem 页签里，硬在结果区摆一张空表只是噪音。
+    var hasTabularResult: Bool {
+        results.contains { $0.columnCount > 0 }
+    }
+
     /// 每个结果集的「出处」标签，与 `results` 一一对应（例：`第 2 条语句返回 5 行 × 3 列`）。
     ///
     /// **刻意不写进 Output 日志**：行 × 列 结果表自己就展示了，写进日志会让 Result 与 Output

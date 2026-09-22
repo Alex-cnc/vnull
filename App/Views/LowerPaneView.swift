@@ -26,7 +26,7 @@ struct LowerPaneView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minHeight: 120)
+        .frame(minHeight: 90)
         .background(.background)
         .onAppear {
             terminal.startIfNeeded(columns: terminal.screen.columns, rows: terminal.screen.rows)
