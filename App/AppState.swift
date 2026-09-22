@@ -13,6 +13,13 @@ struct QueryTab: Identifiable {
     var selectedResultIndex: Int
     var isExecuting: Bool
 
+    /// 每个结果集的「出处」标签，与 `results` 一一对应（例：`第 2 条语句返回 5 行 × 3 列`）。
+    ///
+    /// **刻意不写进 Output 日志**：行 × 列 结果表自己就展示了，写进日志会让 Result 与 Output
+    /// 两个页签看起来重复。它作为结果集的出处，挂在 Result 页签的表头。
+    /// 注意没有 `didSet` —— 这正是它不进日志的原因。
+    var resultSummaries: [String] = []
+
     /// 执行输出日志（下方面板 Output 页签）。
     ///
     /// 用 `didSet` 在**模型层**拦截，而不是去改那 70 多处赋值点：
@@ -2408,6 +2415,7 @@ final class AppState: ObservableObject {
             $0.errorMessage = nil
             $0.statusMessage = L(.stateConnecting, configuration.endpointDescription, targetDatabase)
             $0.results = []
+            $0.resultSummaries = []
             $0.selectedResultIndex = 0
             $0.connectionID = configuration.id
             $0.database = targetDatabase
@@ -2434,18 +2442,26 @@ final class AppState: ObservableObject {
                 case .resultSet(let result):
                     resultCount += 1
                     let statementNumber = currentStatementIndex + 1
-                    let summary: String
+                    // 有表格的结果集：行 × 列 交给 Result 页签的表头，**不进 Output 日志**，
+                    // 否则两个页签会重复同一件事。没有表格的（影响行数 / 无结果集）才进日志，
+                    // 因为结果表里根本不会出现它们。
+                    let isTabular = result.affectedRows == nil && result.columnCount > 0
+                    let logLine: String?
                     if let affected = result.affectedRows {
-                        summary = L(.stateStatementAffectedRows, statementNumber, affected)
+                        logLine = L(.stateStatementAffectedRows, statementNumber, affected)
                     } else if result.columnCount == 0 {
-                        summary = L(.stateStatementNoResultSet, statementNumber)
+                        logLine = L(.stateStatementNoResultSet, statementNumber)
                     } else {
-                        summary = L(.stateStatementResult, statementNumber, result.rowCount, result.columnCount)
+                        logLine = nil
                     }
+                    let provenance = L(.stateStatementResult, statementNumber, result.rowCount, result.columnCount)
                     updateTab(tabID) {
                         $0.results.append(result)
+                        $0.resultSummaries.append(isTabular ? provenance : "")
                         $0.selectedResultIndex = $0.results.count - 1
-                        $0.statusMessage = summary
+                        if let logLine {
+                            $0.statusMessage = logLine
+                        }
                     }
 
                 case .affectedRows(let count):
