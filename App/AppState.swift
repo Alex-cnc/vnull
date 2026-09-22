@@ -823,15 +823,76 @@ final class AppState: ObservableObject {
 
     /// 把生成结果放进**新页签**的编辑器里（不覆盖用户正在写的内容，也不执行）。
     func openGeneratedSQLInNewTab(_ sql: String) {
+        openSQLInNewTab(sql, status: L(.agentSQLNotExecuted))
+    }
+
+    /// 把生成的 SQL 放进**新页签**的编辑器：不覆盖用户正在写的内容，也不执行（FR-META-14）。
+    func openSQLInNewTab(_ sql: String, status: String? = nil) {
         newQueryTab()
         guard let tabID = selectedTabID else { return }
         updateSQL(sql, for: tabID)
-        statusMessage = L(.agentSQLNotExecuted)
+        statusMessage = status ?? L(.objectTreeOpenedInNewTab)
     }
 
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
     var agentOutboundDecision: AgentOutboundDecision {
         AgentGate.decide(configuration: agentConfiguration, apiKey: agentAPIKey)
+    }
+
+    // MARK: - 对象树节点动作（FR-META-14 / FR-DATA-01 / FR-META-13）
+
+    /// 取表 / 视图的列定义（含可空性）；供生成 DDL 与模板使用。
+    ///
+    /// 单独查一次而不是复用节点树里的列节点：树里的列信息只有类型名，
+    /// 拿不到 `is_nullable` —— 少了它，导出的建表语句会悄悄丢掉 NOT NULL。
+    func columnSpecs(for object: DatabaseObject) async throws -> [ColumnMeta] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let database = object.database ?? currentDatabaseName(for: configuration)
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let schema = object.schema ?? (configuration.dbType == .postgresql ? "public" : nil)
+
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(
+            dialect.listColumnsQuery(table: object.name, schema: schema),
+            on: service
+        )
+        return ColumnSpecParser.columns(from: result)
+    }
+
+    /// 执行一个对象树动作：生成 SQL 进新页签，或把文本复制到剪贴板。
+    ///
+    /// **一律不自动执行**；破坏性动作（清空 / 删除）也只是把语句写进编辑器，
+    /// 真正运行时还会被 Safe Mode（FR-EXEC-16）再拦一次。
+    func performTreeAction(_ action: ObjectTreeAction, on object: DatabaseObject) async {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+
+        // 需要列的动作：按需加载；加载失败就退回「无列」由 Core 判定（生成 SELECT 仍可用，
+        // 生成 INSERT / DDL 会明确失败并提示，而不是猜列）。
+        var columns: [ColumnMeta] = []
+        if action == .selectTemplate || action == .insertTemplate || action == .viewDDL {
+            columns = (try? await columnSpecs(for: object)) ?? []
+        }
+        let target = ObjectTreeTarget(object: object, columns: columns)
+
+        if let text = ObjectTreeActions.copiedText(for: action, target: target, dialect: dialect) {
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            statusMessage = L(.objectTreeCopied, text)
+            return
+        }
+
+        guard let sql = ObjectTreeActions.sql(for: action, target: target, dialect: dialect) else {
+            errorMessage = L(.treeActionUnavailable)
+            return
+        }
+        openSQLInNewTab(sql)
     }
 
     // MARK: - 锁与阻塞链（FR-DIAG-05）

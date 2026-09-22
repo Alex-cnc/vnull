@@ -259,12 +259,23 @@ struct ObjectTreeView: View {
             }
             .padding(.leading, CGFloat(row.depth) * 12)
             .contentShape(Rectangle())
+            // 双击表 / 视图 → 浏览前 N 行（FR-DATA-01）。
+            // 双击手势必须写在单击之前，否则会被单击吞掉。
+            .onTapGesture(count: 2) {
+                guard !row.isGroupHeader else { return }
+                guard ObjectTreeActions.isAvailable(.browseRows, for: row.object.kind) else { return }
+                Task { await appState.performTreeAction(.browseRows, on: row.object) }
+            }
             .onTapGesture {
                 guard !row.isGroupHeader, row.isExpandable else { return }
                 toggle(row.object)
             }
-            .contextMenuIf(row.object.kind == .server) {
-                serverContextMenu
+            .contextMenuIf(treeMenuKinds.contains(row.object.kind) && !row.isGroupHeader) {
+                if row.object.kind == .server {
+                    serverContextMenu
+                } else {
+                    objectContextMenu(for: row.object)
+                }
             }
 
             if row.isExpanded && !row.isGroupHeader {
@@ -293,6 +304,75 @@ struct ObjectTreeView: View {
             }
         }
         .padding(.vertical, 1)
+    }
+
+    /// 挂右键菜单的节点类型（服务器节点见 FR-META-11，其余见 FR-META-14）。
+    private var treeMenuKinds: Set<DatabaseObject.Kind> {
+        [.server, .table, .view, .column]
+    }
+
+    /// 表 / 视图 / 列节点的右键菜单（FR-META-14）。
+    ///
+    /// 菜单项是否呈现**由 Core 的 `ObjectTreeActions.isAvailable` 决定**，
+    /// 不在视图里再写一份类型判断 —— 否则两处规则迟早不一致。
+    @ViewBuilder
+    private func objectContextMenu(for object: DatabaseObject) -> some View {
+        if ObjectTreeActions.isAvailable(.browseRows, for: object.kind) {
+            Button(L(.treeActionBrowseRows, ObjectTreeActions.defaultBrowseLimit)) {
+                runTreeAction(.browseRows, on: object)
+            }
+
+            Divider()
+
+            Button(L(.treeActionSelectTemplate)) {
+                runTreeAction(.selectTemplate, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.insertTemplate, for: object.kind) {
+            Button(L(.treeActionInsertTemplate)) {
+                runTreeAction(.insertTemplate, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.copyQualifiedName, for: object.kind) {
+            Button(L(.treeActionCopyQualifiedName)) {
+                runTreeAction(.copyQualifiedName, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.copyColumnName, for: object.kind) {
+            Button(L(.treeActionCopyColumnName)) {
+                runTreeAction(.copyColumnName, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.viewDDL, for: object.kind) {
+            Divider()
+
+            Button(L(.treeActionViewDDL)) {
+                runTreeAction(.viewDDL, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.truncateTable, for: object.kind) {
+            Divider()
+
+            // 只生成语句、不执行；真要跑还会被 Safe Mode 拦一次。
+            Button(L(.treeActionTruncate), role: .destructive) {
+                runTreeAction(.truncateTable, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.dropTable, for: object.kind) {
+            Button(L(.treeActionDrop), role: .destructive) {
+                runTreeAction(.dropTable, on: object)
+            }
+        }
+    }
+
+    private func runTreeAction(_ action: ObjectTreeAction, on object: DatabaseObject) {
+        Task { await appState.performTreeAction(action, on: object) }
     }
 
     /// 服务器节点的右键菜单（FR-META-11）。

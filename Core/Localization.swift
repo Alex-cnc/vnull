@@ -335,6 +335,19 @@ public enum LKey: String, CaseIterable, Sendable {
     case helpPlaceholder
     case helpShortcutsTitle
 
+    // 对象树节点动作（FR-META-14）
+    case treeActionBrowseRows
+    case treeActionSelectTemplate
+    case treeActionInsertTemplate
+    case treeActionCopyQualifiedName
+    case treeActionCopyColumnName
+    case treeActionViewDDL
+    case treeActionTruncate
+    case treeActionDrop
+    case treeActionUnavailable
+    case objectTreeCopied
+    case objectTreeOpenedInNewTab
+
     // 删除确认 / 结果导出 / 查询历史 / 编辑器补全
     case connectionDeleteConfirmTitle
     case connectionDeleteConfirmMessage
@@ -666,6 +679,17 @@ public enum LocalizedStrings {
         .goToLineConfirm: [.simplifiedChinese: "跳转", .english: "Go"],
         .helpPlaceholder: [.simplifiedChinese: "帮助内容待补充", .english: "Help content coming soon"],
         .helpShortcutsTitle: [.simplifiedChinese: "快捷键", .english: "Keyboard shortcuts"],
+        .treeActionBrowseRows: [.simplifiedChinese: "浏览前 %d 行", .english: "Browse first %d rows"],
+        .treeActionSelectTemplate: [.simplifiedChinese: "生成 SELECT 模板", .english: "Generate SELECT template"],
+        .treeActionInsertTemplate: [.simplifiedChinese: "生成 INSERT 模板", .english: "Generate INSERT template"],
+        .treeActionCopyQualifiedName: [.simplifiedChinese: "复制限定名", .english: "Copy qualified name"],
+        .treeActionCopyColumnName: [.simplifiedChinese: "复制列名", .english: "Copy column name"],
+        .treeActionViewDDL: [.simplifiedChinese: "查看建表 DDL", .english: "View CREATE TABLE DDL"],
+        .treeActionTruncate: [.simplifiedChinese: "生成清空语句（TRUNCATE）", .english: "Generate TRUNCATE statement"],
+        .treeActionDrop: [.simplifiedChinese: "生成删除语句（DROP）", .english: "Generate DROP statement"],
+        .treeActionUnavailable: [.simplifiedChinese: "该操作需要先加载表结构，或对该节点不可用。", .english: "This action needs the table structure to be loaded, or does not apply to this node."],
+        .objectTreeCopied: [.simplifiedChinese: "已复制：%@", .english: "Copied: %@"],
+        .objectTreeOpenedInNewTab: [.simplifiedChinese: "已在新页签中生成语句（未执行）。", .english: "Statement generated in a new tab (not executed)."],
         .connectionDeleteConfirmTitle: [.simplifiedChinese: "删除连接？", .english: "Delete connection?"],
         .connectionDeleteConfirmMessage: [.simplifiedChinese: "将删除连接「%@」以及保存在钥匙串中的密码，该操作不可撤销。", .english: "This permanently deletes “%@” and its Keychain password."],
         .resultExport: [.simplifiedChinese: "导出结果", .english: "Export Result"],
