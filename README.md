@@ -3,7 +3,7 @@
 macOS 上的数据库工作台：连上数据库、写查询、看结果、导数据，并把 **AI 智能体**作为一等能力内置
 ——默认关闭、开启后**每一步都看得见、可审批、可审计**。
 
-- 产品名 **Doyah Studio**，包标识 `com.vnull.DoyahStudio`
+- 产品名 **Doyah Studio**，包标识 `studio.doyah.DoyahStudio`
 - 当前支持的数据库：**PostgreSQL**（多数据库是产品方向：方言层与驱动层按可插拔设计，
   GBase 8a 为下一个目标，见 [GBase 技术验证](Docs/GBase-技术验证.md)）
 - 运行环境：macOS 14 及以上
