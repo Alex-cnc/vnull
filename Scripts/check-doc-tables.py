@@ -25,6 +25,7 @@ DEFAULT_TARGETS = [
     "Docs/测试用例.md",
     "Docs/概要设计.md",
     "Docs/发布方案.md",
+    "Docs/手工验收运行手册.md",
 ]
 
 
