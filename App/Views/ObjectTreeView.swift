@@ -78,7 +78,10 @@ struct ObjectTreeView: View {
                 }
             }
         }
-        .id(appState.selectedConnectionID)
+        // 这里**不要**再加 `.id(appState.selectedConnectionID)`：
+        // 那会让整棵子树被销毁重建，切连接 / 删连接时侧栏会明显闪一下；
+        // 而下面 `.task(id:)` 已经会在连接变化时调 `reloadRoot()`，
+        // 由它负责把缓存与展开状态清干净，效果一样但不会整块重建。
         .task(
             id: RefreshKey(
                 connectionID: appState.selectedConnectionID,
@@ -499,14 +502,20 @@ struct ObjectTreeView: View {
 
         isLoadingRoot = true
         rootError = nil
-        childrenCache = [:]
-        expandedIDs = []
-        errors = [:]
 
         do {
-            roots = try await appState.loadMetadataRoot()
+            // 先把新数据取回来，**再**清缓存与展开状态：否则请求往返期间树会先空掉一次，
+            // 那也是一次可见的闪。
+            let newRoots = try await appState.loadMetadataRoot()
+            roots = newRoots
+            childrenCache = [:]
+            expandedIDs = []
+            errors = [:]
         } catch {
             roots = []
+            childrenCache = [:]
+            expandedIDs = []
+            errors = [:]
             rootError = ErrorPresenter.message(for: error)
         }
         isLoadingRoot = false

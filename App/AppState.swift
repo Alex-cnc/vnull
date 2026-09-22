@@ -416,9 +416,11 @@ final class AppState: ObservableObject {
     func addConnection(_ configuration: ConnectionConfig, password: String) async {
         do {
             try secretStore.setPassword(password, for: configuration.id)
+            // 与 deleteConnection 同理：内存变更一次做完再落盘，
+            // 否则 await 会把它拆成两轮渲染（列表先更新、选中项再跳）。
             connections.append(configuration)
-            try await store.save(connections)
             selectedConnectionID = configuration.id
+            try await store.save(connections)
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
         }
@@ -437,8 +439,8 @@ final class AppState: ObservableObject {
             } else {
                 connections.append(configuration)
             }
-            try await store.save(connections)
             selectedConnectionID = configuration.id
+            try await store.save(connections)
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
         }
@@ -566,11 +568,19 @@ final class AppState: ObservableObject {
         do {
             try secretStore.deletePassword(for: configuration.id)
             invalidateService(for: configuration.id)
+
+            // 内存里的两处变更**必须在同一次同步执行里做完**，落盘推到它们之后。
+            // 原先的顺序是「先删列表 → await 落盘 → 再改选中项」：那个 await 会把
+            // 「列表里已经没有它、选中项还指着它」的中间状态交给界面渲染一次，
+            // 于是侧栏选中行瞬间指向一个不存在的行再跳到别的行 —— 就是删除连接时
+            // 界面连闪的来源（实测一次删除会出现 4 次这种中间状态）。
+            let wasSelected = selectedConnectionID == configuration.id
             connections.removeAll { $0.id == configuration.id }
-            try await store.save(connections)
-            if selectedConnectionID == configuration.id {
+            if wasSelected {
                 selectedConnectionID = connections.first?.id
             }
+
+            try await store.save(connections)
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
         }
