@@ -13,17 +13,31 @@ final class LocalizationManager: ObservableObject {
 
     @Published private(set) var language: AppLanguage
 
+    /// 进程启动时的语言——也就是 AppKit 当前用来渲染系统级菜单的那一种。
+    private let launchLanguage: AppLanguage
+
+    /// 系统菜单现在是否需要重启才能跟随当前语言。
+    ///
+    /// 跟 `launchLanguage` 比而不是简单置 true：切走再切回来就不需要重启了。
+    var systemMenusNeedRestart: Bool { language != launchLanguage }
+
+    /// 重启提示是否正在显示（用户点「稍后」收起它，`systemMenusNeedRestart` 仍为真）。
+    @Published var isRestartPromptPresented = false
+
     private init() {
+        let resolved: AppLanguage
         if let raw = UserDefaults.standard.string(forKey: Self.storageKey),
            let stored = AppLanguage(rawValue: raw) {
-            language = stored
+            resolved = stored
         } else {
-            language = .systemDefault
+            resolved = .systemDefault
         }
+        language = resolved
+        launchLanguage = resolved
         // 让 AppKit 自带的系统级菜单（文件 / 编辑 / 显示 / 窗口 / 帮助…）跟随同一语言。
         // 注意：这个键**在进程启动时**才被读取，运行时改它对当前进程无效
         // （实测 `Bundle.main.preferredLocalizations` 不会变）——只对下一次启动生效。
-        Self.syncAppleLanguages(language)
+        Self.syncAppleLanguages(resolved)
     }
 
     /// 同步 `AppleLanguages`：它控制 AppKit 自带的本地化（系统菜单 / 文件对话框 / 关于面板…）。
@@ -39,6 +53,10 @@ final class LocalizationManager: ObservableObject {
         language = newLanguage
         UserDefaults.standard.set(newLanguage.rawValue, forKey: Self.storageKey)
         Self.syncAppleLanguages(newLanguage)
+
+        // 系统级菜单只在下次启动时才能跟随，所以切换后提示一次重启；
+        // 切回启动时的语言则不需要重启，提示也随之收起。
+        isRestartPromptPresented = systemMenusNeedRestart
 
         // 菜单栏要走两条路才能全变（详见 `Core/MenuLocalization.swift` 的实测记录）：
         // 标题由 SwiftUI 重建命令图时刷新；叶子项 SwiftUI 不管，得自己改 NSMenuItem.title。

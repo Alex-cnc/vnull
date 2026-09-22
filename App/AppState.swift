@@ -125,6 +125,12 @@ final class AppState: ObservableObject {
     @Published var tabs: [QueryTab] = []
     @Published var selectedTabID: UUID?
     @Published var savedQueries: [SavedQuery] = []
+
+    /// 有未保存改动的页签数。重启前提示会用到（NFR-I18N-03）：
+    /// 不能让人为了换个界面语言把正在写的查询丢掉。
+    var dirtyTabCount: Int {
+        tabs.filter(\.isDirty).count
+    }
     // MARK: 智能体（FR-AI-01）
 
     /// 智能体接入配置；默认是「总开关关闭 + 端点为空」的安全默认（AC-AI-01）。

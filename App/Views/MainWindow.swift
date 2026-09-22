@@ -34,6 +34,7 @@ enum ConnectionFormMode: Identifiable {
 
 struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var localization: LocalizationManager
     @State private var formMode: ConnectionFormMode?
 
     var body: some View {
@@ -84,6 +85,10 @@ struct MainWindow: View {
         }
         .sheet(item: $appState.pendingExecution) { pending in
             SafeModeConfirmSheet(pending: pending)
+        }
+        // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
+        .sheet(isPresented: $localization.isRestartPromptPresented) {
+            RelaunchPromptSheet()
         }
         .task {
             await appState.loadAgentConfiguration()
