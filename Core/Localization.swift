@@ -333,6 +333,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case goToLineInvalid
     case goToLineConfirm
     case helpPlaceholder
+    case helpShortcutsTitle
 
     // 删除确认 / 结果导出 / 查询历史 / 编辑器补全
     case connectionDeleteConfirmTitle
@@ -434,7 +435,7 @@ public enum LocalizedStrings {
         .toolbarSaveQueryHelp: [.simplifiedChinese: "保存当前查询 SQL", .english: "Save the current SQL"],
         .toolbarSavedQueriesEmpty: [.simplifiedChinese: "暂无已保存查询", .english: "No saved queries"],
         .toolbarSavedQueriesHelp: [.simplifiedChinese: "已保存的查询（点击回填到当前页签）", .english: "Saved queries (click to load into the current tab)"],
-        .toolbarExecuteHelp: [.simplifiedChinese: "执行 SQL（⌘↩）", .english: "Run SQL (⌘↩)"],
+        .toolbarExecuteHelp: [.simplifiedChinese: "执行 SQL", .english: "Run SQL"],
         .toolbarStopHelp: [.simplifiedChinese: "停止执行", .english: "Stop"],
         .toolbarStopIdleHelp: [.simplifiedChinese: "当前没有正在执行的查询", .english: "No query is running"],
         .toolbarCheckHelp: [.simplifiedChinese: "语法检查（EXPLAIN，不执行数据修改）", .english: "Syntax check via EXPLAIN (does not run DML)"],
@@ -642,10 +643,10 @@ public enum LocalizedStrings {
         .lintExtraCloseParen: [.simplifiedChinese: "多余的右括号 )", .english: "Unmatched closing parenthesis )"],
         .lintMissingCloseParen: [.simplifiedChinese: "左括号 ( 没有对应的右括号 )", .english: "Unmatched opening parenthesis ("],
         .toolbarOpenFileHelp: [.simplifiedChinese: "打开 SQL / 文本文件", .english: "Open a SQL/text file"],
-        .toolbarSaveFileHelp: [.simplifiedChinese: "保存到文件（⌘S）", .english: "Save to file (⌘S)"],
+        .toolbarSaveFileHelp: [.simplifiedChinese: "保存到文件", .english: "Save to file"],
         .toolbarSaveAs: [.simplifiedChinese: "另存为…", .english: "Save As…"],
         .toolbarEditHelp: [.simplifiedChinese: "编辑", .english: "Edit"],
-        .toolbarHelpHelp: [.simplifiedChinese: "帮助（内容待补充）", .english: "Help (coming soon)"],
+        .toolbarHelpHelp: [.simplifiedChinese: "快捷键与帮助", .english: "Shortcuts & help"],
         .editMenuFind: [.simplifiedChinese: "查找…", .english: "Find…"],
         .editMenuReplace: [.simplifiedChinese: "替换…", .english: "Replace…"],
         .editMenuGoToLine: [.simplifiedChinese: "跳到行 / 列…", .english: "Go to Line/Column…"],
@@ -664,6 +665,7 @@ public enum LocalizedStrings {
         .goToLineInvalid: [.simplifiedChinese: "行号无效", .english: "Invalid line number"],
         .goToLineConfirm: [.simplifiedChinese: "跳转", .english: "Go"],
         .helpPlaceholder: [.simplifiedChinese: "帮助内容待补充", .english: "Help content coming soon"],
+        .helpShortcutsTitle: [.simplifiedChinese: "快捷键", .english: "Keyboard shortcuts"],
         .connectionDeleteConfirmTitle: [.simplifiedChinese: "删除连接？", .english: "Delete connection?"],
         .connectionDeleteConfirmMessage: [.simplifiedChinese: "将删除连接「%@」以及保存在钥匙串中的密码，该操作不可撤销。", .english: "This permanently deletes “%@” and its Keychain password."],
         .resultExport: [.simplifiedChinese: "导出结果", .english: "Export Result"],

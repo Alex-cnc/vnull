@@ -112,7 +112,8 @@ struct QueryToolbar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(L(.historyHelp))
+        .help(AppShortcut.history.help(L(.historyHelp)))
+        .keyboardShortcut(AppShortcut.history.key, modifiers: AppShortcut.history.modifiers)
     }
 
     /// 菜单项文案：单行 SQL 摘要 + 成功/失败标记。
@@ -130,12 +131,9 @@ struct QueryToolbar: View {
     /// 运行范围菜单（FR-EXEC-14）：整篇 / 光标所在语句 / 选中片段。
     private var runScopeMenu: some View {
         Menu {
-            Picker(L(.toolbarRunScope), selection: $appState.executionScope) {
-                Text(L(.runScopeAll)).tag(ExecutionScope.Mode.all)
-                Text(L(.runScopeCurrentStatement)).tag(ExecutionScope.Mode.currentStatement)
-                Text(L(.runScopeSelection)).tag(ExecutionScope.Mode.selection)
-            }
-            .pickerStyle(.inline)
+            scopeButton(L(.runScopeAll), mode: .all, shortcut: .scopeAll)
+            scopeButton(L(.runScopeCurrentStatement), mode: .currentStatement, shortcut: .scopeCurrentStatement)
+            scopeButton(L(.runScopeSelection), mode: .selection, shortcut: .scopeSelection)
 
             Divider()
 
@@ -147,7 +145,27 @@ struct QueryToolbar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(L(.toolbarRunScope))
+        .help(L(.toolbarRunScope) + "（" + AppShortcut.scopeAll.display + " / "
+              + AppShortcut.scopeCurrentStatement.display + " / "
+              + AppShortcut.scopeSelection.display + "）")
+    }
+
+    /// 运行范围的一个选项：显示当前是否生效 + 快捷键。
+    private func scopeButton(
+        _ title: String,
+        mode: ExecutionScope.Mode,
+        shortcut: AppShortcut
+    ) -> some View {
+        Button {
+            appState.executionScope = mode
+        } label: {
+            if appState.executionScope == mode {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+        .keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
     }
 
     private var runScopeTitle: String {
@@ -173,7 +191,13 @@ struct QueryToolbar: View {
     private var safetyMenu: some View {
         Menu {
             Toggle(L(.safetySafeMode), isOn: $appState.isSafeModeEnabled)
+                .keyboardShortcut(AppShortcut.safeMode.key, modifiers: AppShortcut.safeMode.modifiers)
+
             Toggle(L(.safetyConfirmAllWrites), isOn: $appState.isConfirmAllWritesEnabled)
+                .keyboardShortcut(
+                    AppShortcut.confirmAllWrites.key,
+                    modifiers: AppShortcut.confirmAllWrites.modifiers
+                )
                 .disabled(!appState.isSafeModeEnabled)
 
             Divider()
@@ -189,7 +213,57 @@ struct QueryToolbar: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(L(.safetySafeMode))
+        .help(AppShortcut.safeMode.help(L(.safetySafeMode)))
+    }
+
+    /// 帮助面板：直接由 `AppShortcut` 生成完整快捷键表，
+    /// 与按钮上挂的是同一份定义，不会出现「提示与实键不一致」。
+    private var shortcutList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L(.helpShortcutsTitle))
+                .font(.headline)
+
+            ForEach(Array(Self.shortcutRows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(L(row.title))
+                        .font(.caption)
+                        .frame(width: 190, alignment: .leading)
+                    Text(row.shortcut.display)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 360)
+    }
+
+    /// 帮助面板里展示的条目（顺序即阅读顺序）。
+    private static var shortcutRows: [(title: LKey, shortcut: AppShortcut)] {
+        [
+            (.toolbarExecuteHelp, .execute),
+            (.toolbarStopHelp, .stop),
+            (.toolbarCheckHelp, .check),
+            (.toolbarOpenFileHelp, .openFile),
+            (.toolbarSaveFileHelp, .saveFile),
+            (.toolbarSaveAs, .saveFileAs),
+            (.toolbarSaveQueryHelp, .saveQuery),
+            (.toolbarSavedQueriesHelp, .savedQueries),
+            (.historyHelp, .history),
+            (.editMenuFind, .find),
+            (.editMenuReplace, .replace),
+            (.editMenuGoToLine, .goToLine),
+            (.editMenuIndent, .indent),
+            (.editMenuOutdent, .outdent),
+            (.editMenuClear, .clearEditor),
+            (.editMenuFormat, .format),
+            (.runScopeAll, .scopeAll),
+            (.runScopeCurrentStatement, .scopeCurrentStatement),
+            (.runScopeSelection, .scopeSelection),
+            (.safetySafeMode, .safeMode),
+            (.safetyConfirmAllWrites, .confirmAllWrites),
+            (.toolbarHelpHelp, .help)
+        ]
     }
 
     private var openFileButton: some View {
@@ -197,8 +271,8 @@ struct QueryToolbar: View {
             toolbarIcon("folder")
         }
         .buttonStyle(.plain)
-        .help(L(.toolbarOpenFileHelp))
-        .keyboardShortcut("o", modifiers: .command)
+        .help(AppShortcut.openFile.help(L(.toolbarOpenFileHelp)))
+        .keyboardShortcut(AppShortcut.openFile.key, modifiers: AppShortcut.openFile.modifiers)
     }
 
     private var saveFileMenu: some View {
@@ -206,6 +280,7 @@ struct QueryToolbar: View {
             Button(L(.toolbarSaveAs)) {
                 onSaveFileAs()
             }
+            .keyboardShortcut(AppShortcut.saveFileAs.key, modifiers: AppShortcut.saveFileAs.modifiers)
         } label: {
             toolbarIcon("square.and.arrow.down")
         } primaryAction: {
@@ -213,8 +288,8 @@ struct QueryToolbar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(L(.toolbarSaveFileHelp))
-        .keyboardShortcut("s", modifiers: .command)
+        .help(AppShortcut.saveFile.help(L(.toolbarSaveFileHelp)))
+        .keyboardShortcut(AppShortcut.saveFile.key, modifiers: AppShortcut.saveFile.modifiers)
     }
 
     // MARK: - 编辑菜单
@@ -224,33 +299,43 @@ struct QueryToolbar: View {
             Button(L(.editMenuFind)) {
                 onEditCommand(.showFind)
             }
+            .keyboardShortcut(AppShortcut.find.key, modifiers: AppShortcut.find.modifiers)
+
             Button(L(.editMenuReplace)) {
                 onEditCommand(.showReplace)
             }
+            .keyboardShortcut(AppShortcut.replace.key, modifiers: AppShortcut.replace.modifiers)
 
             Divider()
 
             Button(L(.editMenuGoToLine)) {
                 onRequestGoToLine()
             }
+            .keyboardShortcut(AppShortcut.goToLine.key, modifiers: AppShortcut.goToLine.modifiers)
 
             Divider()
 
             Button(L(.editMenuIndent)) {
                 onEditCommand(.indent)
             }
+            .keyboardShortcut(AppShortcut.indent.key, modifiers: AppShortcut.indent.modifiers)
+
             Button(L(.editMenuOutdent)) {
                 onEditCommand(.outdent)
             }
+            .keyboardShortcut(AppShortcut.outdent.key, modifiers: AppShortcut.outdent.modifiers)
 
             Divider()
 
             Button(L(.editMenuClear)) {
                 onEditCommand(.clear)
             }
+            .keyboardShortcut(AppShortcut.clearEditor.key, modifiers: AppShortcut.clearEditor.modifiers)
+
             Button(L(.editMenuFormat)) {
                 onEditCommand(.format)
             }
+            .keyboardShortcut(AppShortcut.format.key, modifiers: AppShortcut.format.modifiers)
         } label: {
             toolbarIcon("pencil")
         }
@@ -266,12 +351,10 @@ struct QueryToolbar: View {
             toolbarIcon("questionmark.circle")
         }
         .buttonStyle(.plain)
-        .help(L(.toolbarHelpHelp))
+        .help(AppShortcut.help.help(L(.toolbarHelpHelp)))
+        .keyboardShortcut(AppShortcut.help.key, modifiers: AppShortcut.help.modifiers)
         .popover(isPresented: $isHelpPresented, arrowEdge: .bottom) {
-            Text(L(.helpPlaceholder))
-                .font(.callout)
-                .padding(12)
-                .frame(width: 220)
+            shortcutList
         }
     }
 
@@ -284,7 +367,8 @@ struct QueryToolbar: View {
             toolbarIcon("bookmark")
         }
         .buttonStyle(.plain)
-        .help(L(.toolbarSaveQueryHelp))
+        .help(AppShortcut.saveQuery.help(L(.toolbarSaveQueryHelp)))
+        .keyboardShortcut(AppShortcut.saveQuery.key, modifiers: AppShortcut.saveQuery.modifiers)
         .disabled(tab.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
@@ -319,7 +403,8 @@ struct QueryToolbar: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(L(.toolbarSavedQueriesHelp))
+        .help(AppShortcut.savedQueries.help(L(.toolbarSavedQueriesHelp)))
+        .keyboardShortcut(AppShortcut.savedQueries.key, modifiers: AppShortcut.savedQueries.modifiers)
     }
 
     // MARK: - 执行 / 停止 / 检查
@@ -335,9 +420,9 @@ struct QueryToolbar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(L(.toolbarExecuteHelp))
+        .help(AppShortcut.execute.help(L(.toolbarExecuteHelp)))
         .disabled(tab.isExecuting)
-        .keyboardShortcut(.return, modifiers: [.command])
+        .keyboardShortcut(AppShortcut.execute.key, modifiers: AppShortcut.execute.modifiers)
     }
 
     private var stopButton: some View {
@@ -353,7 +438,8 @@ struct QueryToolbar: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(tab.isExecuting ? L(.toolbarStopHelp) : L(.toolbarStopIdleHelp))
+        .help(AppShortcut.stop.help(tab.isExecuting ? L(.toolbarStopHelp) : L(.toolbarStopIdleHelp)))
+        .keyboardShortcut(AppShortcut.stop.key, modifiers: AppShortcut.stop.modifiers)
         .disabled(!tab.isExecuting)
     }
 
@@ -366,7 +452,8 @@ struct QueryToolbar: View {
             toolbarIcon("checkmark.circle")
         }
         .buttonStyle(.plain)
-        .help(L(.toolbarCheckHelp))
+        .help(AppShortcut.check.help(L(.toolbarCheckHelp)))
+        .keyboardShortcut(AppShortcut.check.key, modifiers: AppShortcut.check.modifiers)
         .disabled(tab.isExecuting)
     }
 
