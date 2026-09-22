@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-05 / FR-AI-06：数据任务面板的纯逻辑（调度状态映射、执行记录展示、列表筛选）。
 final class DataTaskPresentationTests: XCTestCase {

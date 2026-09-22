@@ -92,7 +92,7 @@ public struct KeychainAgentKeyStore: AgentKeyStore {
 
 /// 智能体配置的持久化（FR-AI-01）。
 ///
-/// 写到 `~/Library/Application Support/PostgresClient/agent.json`。
+/// 写到 `~/Library/Application Support/DoyahStudio/agent.json`。
 /// 文件里**只有非敏感项**：总开关、端点、模型名、超时、配额。
 /// API Key 在钥匙串里（`AgentKeyStore`），类型层面就没有可写入的字段。
 public actor AgentConfigurationStore {

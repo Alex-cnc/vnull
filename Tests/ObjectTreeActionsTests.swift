@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-META-14 / FR-DATA-01 / FR-META-13（表部分）：对象树动作 → SQL。
 final class ObjectTreeActionsTests: XCTestCase {

@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「由规格说明生成任务定义」子面板（FR-AI-05 的自然语言入口）。
 ///

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-05 / FR-AI-06：specs → 数据任务模型、试运行预览、调度骨架与执行历史。
 final class DataTaskTests: XCTestCase {

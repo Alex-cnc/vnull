@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// Core 的审计 / 护栏枚举 → 界面文案与配色。
 ///

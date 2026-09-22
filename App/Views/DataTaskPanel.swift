@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「数据任务…」面板（FR-AI-05 / FR-AI-06 / FR-AI-08）。
 ///

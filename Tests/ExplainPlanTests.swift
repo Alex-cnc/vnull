@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-DIAG-01 ~ FR-DIAG-02：执行计划解析。
 final class ExplainPlanTests: XCTestCase {

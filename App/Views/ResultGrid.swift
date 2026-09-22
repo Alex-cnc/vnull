@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import PostgresClientCore
+import DoyahCore
 
 /// 结果表格：NSTableView 桥接实现。
 ///

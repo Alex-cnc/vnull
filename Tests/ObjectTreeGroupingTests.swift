@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-META-15：对象树按类型 / schema 分组视图。
 final class ObjectTreeGroupingTests: XCTestCase {

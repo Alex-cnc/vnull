@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-05 / FR-AI-06 / FR-AI-08：数据任务的 SQL 编译、护栏判定与授权目录产物导出。
 final class DataTaskRunTests: XCTestCase {

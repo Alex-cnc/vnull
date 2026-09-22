@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-DATA-01 ~ FR-DATA-03、FR-DDL-01 ~ FR-DDL-02、FR-DIAG-01：SQL 生成器。
 final class SQLGeneratorTests: XCTestCase {

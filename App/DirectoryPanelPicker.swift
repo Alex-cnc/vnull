@@ -1,5 +1,5 @@
 import AppKit
-import PostgresClientCore
+import DoyahCore
 
 /// `NSOpenPanel` 实现的目录选择器（FR-AI-08）。
 ///

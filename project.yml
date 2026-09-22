@@ -1,4 +1,4 @@
-name: PostgresClient
+name: DoyahStudio
 options:
   bundleIdPrefix: com.vnull
   deploymentTarget:
@@ -22,7 +22,7 @@ packages:
     path: Vendor/postgres-nio
 
 targets:
-  PostgresClientCore:
+  DoyahCore:
     type: framework
     platform: macOS
     sources:
@@ -40,49 +40,49 @@ targets:
       - package: PostgresNIO
         product: PostgresNIO
 
-  PostgresClient:
+  DoyahStudio:
     type: application
     platform: macOS
     sources:
       - path: App
         excludes:
-          - "PostgresClient.entitlements"
+          - "DoyahStudio.entitlements"
     dependencies:
-      - target: PostgresClientCore
+      - target: DoyahCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClient
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: 智能数据库客户端
+        INFOPLIST_KEY_CFBundleDisplayName: Doyah Studio
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
-        CODE_SIGN_ENTITLEMENTS: App/PostgresClient.entitlements
+        CODE_SIGN_ENTITLEMENTS: App/DoyahStudio.entitlements
         ENABLE_HARDENED_RUNTIME: YES
 
-  PostgresClientTests:
+  DoyahStudioTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - path: Tests
     dependencies:
-      - target: PostgresClientCore
+      - target: DoyahCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vnull.PostgresClientTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  PostgresClientCore:
+  DoyahCore:
     build:
       targets:
-        PostgresClientCore: all
-        PostgresClientTests: [test]
+        DoyahCore: all
+        DoyahStudioTests: [test]
     test:
       config: Debug
       targets:
-        - PostgresClientTests
-  PostgresClient:
+        - DoyahStudioTests
+  DoyahStudio:
     build:
       targets:
-        PostgresClient: all
+        DoyahStudio: all
     run:
       config: Debug

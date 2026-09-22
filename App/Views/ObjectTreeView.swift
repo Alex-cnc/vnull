@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 数据库对象树。
 ///

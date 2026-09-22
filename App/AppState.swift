@@ -2,7 +2,7 @@ import Foundation
 import Combine
 import AppKit
 import UniformTypeIdentifiers
-import PostgresClientCore
+import DoyahCore
 
 struct QueryTab: Identifiable {
     let id: UUID

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-09 / NFR-AI-03：审计面板用到的纯逻辑（过滤、格式化、导出列顺序、导出脱敏）。
 final class AgentAuditPresentationTests: XCTestCase {

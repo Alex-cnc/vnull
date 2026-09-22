@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 假传输层：记录收到的请求，返回预置响应，不碰网络。
 private final class FakeTransport: HTTPTransport, @unchecked Sendable {

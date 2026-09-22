@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 假书签实现：把「书签」当成它记录的路径，不碰真实钥匙串 / 沙箱。
 private final class FakeBookmarking: SecurityScopedBookmarking, @unchecked Sendable {

@@ -111,7 +111,7 @@ public struct AgentAuditFilter: Equatable, Sendable {
 /// 审计面板的展示格式（FR-AI-09：时间 / 连接 / 语句（或动作摘要）/ 模型 / 结果状态）。
 ///
 /// 放在 Core 而不是视图里：这些是**纯字符串变换**，抽出来才有单测可写
-/// （视图里的格式化逻辑没法在 `PostgresClientCoreTests` 里覆盖）。
+/// （视图里的格式化逻辑没法在 `DoyahCoreTests` 里覆盖）。
 public enum AgentAuditPresentation {
 
     /// 空值占位符（不是文案，故不走文案表）。

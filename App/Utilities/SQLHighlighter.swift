@@ -1,5 +1,5 @@
 import Foundation
-import PostgresClientCore
+import DoyahCore
 
 enum SQLHighlighter {
     static func highlight(_ sql: String, dialect: SQLDialect) -> AttributedString {

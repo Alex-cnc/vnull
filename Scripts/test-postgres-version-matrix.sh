@@ -27,7 +27,7 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 SWIFT="${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SCRATCH="${ROOT}/.build"
 CACHE="${ROOT}/.build-cache"
-CLI="${SCRATCH}/debug/PostgresClientCLI"
+CLI="${SCRATCH}/debug/DoyahCLI"
 
 export DEVELOPER_DIR
 export CLANG_MODULE_CACHE_PATH="${SCRATCH}/clang-module-cache"
@@ -41,7 +41,7 @@ fi
 
 echo "==> 编译 CLI（增量）"
 "${SWIFT}" build \
-  --product PostgresClientCLI \
+  --product DoyahCLI \
   --disable-sandbox \
   --package-path "${ROOT}" \
   --cache-path "${CACHE}" \

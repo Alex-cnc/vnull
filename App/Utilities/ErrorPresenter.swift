@@ -1,5 +1,5 @@
 import Foundation
-import PostgresClientCore
+import DoyahCore
 
 /// 把底层错误转成适合直接展示给用户的文本（按当前界面语言）。
 /// AppError 走本地化文案；Core 的 `LocalizedError` 取它的可读说明；其他错误保留反射详情。

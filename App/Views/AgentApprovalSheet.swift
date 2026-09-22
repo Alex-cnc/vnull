@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 智能体动作的**逐次审批单**（FR-AI-09）。
 ///

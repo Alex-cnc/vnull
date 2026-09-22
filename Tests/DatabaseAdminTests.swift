@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-SESS-04 / FR-SESS-05：已授权限解析与服务端错误归类。
 final class DatabaseAdminTests: XCTestCase {

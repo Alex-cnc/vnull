@@ -1,8 +1,8 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 @main
-struct PostgresClientApp: App {
+struct DoyahStudioApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var localization = LocalizationManager.shared
 

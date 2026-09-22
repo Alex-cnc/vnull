@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-IO-04：备份 / 恢复命令行构建。
 final class BackupCommandTests: XCTestCase {

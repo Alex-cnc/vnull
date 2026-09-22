@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-EXEC-14：运行范围控制（整篇 / 光标所在语句 / 选中片段）。
 final class ExecutionScopeTests: XCTestCase {

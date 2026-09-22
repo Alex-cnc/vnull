@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「库属性…」表单（FR-SESS-05）。
 ///

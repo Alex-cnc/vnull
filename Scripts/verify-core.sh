@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# 编译并测试 PostgresClientCore（包含 PostgresNIO 驱动）。
+# 编译并测试 DoyahCore（包含 PostgresNIO 驱动）。
 #
 # 该脚本使用 SwiftPM CLI，不依赖 Xcode GUI；
 # 适合在没有数据库服务器时，先验证驱动编译与单元测试。

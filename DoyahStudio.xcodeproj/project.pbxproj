@@ -10,7 +10,7 @@
 		064451130DA0A384EC98A529 /* QueryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F018EA6AEE8809567E7DD73D /* QueryModels.swift */; };
 		0A0F3EC651C2877261A8F0D3 /* TabNumberGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D52CF539A99323094779A6E4 /* TabNumberGenerator.swift */; };
 		195768308A13A681C63CDC7F /* ConnectionFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81AA4ABF9CF72733FEAB7251 /* ConnectionFormView.swift */; };
-		1E10F924C52A5EB71908A16D /* PostgresClientCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		1E10F924C52A5EB71908A16D /* DoyahCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* DoyahCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		1E8D7BB22617A3E9D226FE13 /* CreateDatabaseSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0F09A2E1A3340C251FFF5D /* CreateDatabaseSheet.swift */; };
 		1EF615501D41FA055F483938 /* SQLLinter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01911800B15572A05AB0098F /* SQLLinter.swift */; };
 		232960B77202537D2E8DBC0F /* SavedQueryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 753341E62F5CE1BAABFD943E /* SavedQueryStoreTests.swift */; };
@@ -30,8 +30,8 @@
 		482DC7BEF2896D633E51EF14 /* QueryToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A872263E55D63E55B03425 /* QueryToolbar.swift */; };
 		49A4F6F1C1BD79518EAF961B /* ResultExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 017B542F5D87E4E079990123 /* ResultExporterTests.swift */; };
 		4BD0F85BE373538A78AF1F3B /* SQLFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B14F13D4C167AC27680570 /* SQLFormatter.swift */; };
-		4C0FED44D294BEB4079126DB /* PostgresClientCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; };
-		504A69DFDBCAA6630AB7FE86 /* PostgresClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BA86921CC190D3C34464059 /* PostgresClientApp.swift */; };
+		4C0FED44D294BEB4079126DB /* DoyahCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* DoyahCore.framework */; };
+		504A69DFDBCAA6630AB7FE86 /* DoyahStudioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BA86921CC190D3C34464059 /* DoyahStudioApp.swift */; };
 		5422A0FD22EC47849FE33089 /* ResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EAA933988F41E72CBA8A786 /* ResultView.swift */; };
 		553783B91B91440AE1454046 /* SQLFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE761441E016E1647CA1398B /* SQLFormatterTests.swift */; };
 		55605FDEEE0BA191C4BCB023 /* MetadataServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29721E3892586E8C4D0AC6AA /* MetadataServiceTests.swift */; };
@@ -45,14 +45,14 @@
 		7FC784D03A5A7537153C567D /* SecureASCIIField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7359577E004A412372A0A9B /* SecureASCIIField.swift */; };
 		82F0C1D9DCFD68F3D88F92AD /* SessionMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 227D6DEAAD12199057ABB061 /* SessionMonitorTests.swift */; };
 		87BDEBCCB0A4B5602F02FD51 /* LocalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88C17AF0C5C4E6236CC64D53 /* LocalizationTests.swift */; };
-		8B37A26E0495D692913698A8 /* PostgresClientCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; };
+		8B37A26E0495D692913698A8 /* DoyahCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* DoyahCore.framework */; };
 		916CCFF2979ED159891AD5E7 /* PrivilegeProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F988138E63413A1CA9E52B /* PrivilegeProbe.swift */; };
 		93A6FB40095277A3600377C3 /* DatabaseType.swift in Sources */ = {isa = PBXBuildFile; fileRef = B19D8C4881F610903ED30C71 /* DatabaseType.swift */; };
 		94113F965CB13A32C9E27F12 /* TabNumberGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DACB96E5B9414F7EF1A942B /* TabNumberGeneratorTests.swift */; };
 		94F99DA05E7D67AF8DE69C6B /* PostgresServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C423164DCAAC13E22C3C7D /* PostgresServiceTests.swift */; };
 		9AB95365B58520F933FAF7B6 /* EditorTextSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6AB8A3EA6084883799A5A32 /* EditorTextSync.swift */; };
 		9F7304FC4BF5A9386E18FB92 /* StatementSplitterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F79F3D842E457E3F39F8DD2 /* StatementSplitterTests.swift */; };
-		A06AAC9462F15D3C2FFB4620 /* PostgresClientCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A06AAC9462F15D3C2FFB4620 /* DoyahCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = BA28582C03392AE33E0094EA /* DoyahCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A79CA3E3FEC2F7085DD87D6B /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95032B9D1BEABE0EC51F6FF /* AppState.swift */; };
 		AC34B9D27166E23867320F04 /* PostgresService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9BD17A79290627AA8124318 /* PostgresService.swift */; };
 		C19081BED1A685BF1DC718E1 /* SQLLinterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D489E85A8C697E91CB8A9EF0 /* SQLLinterTests.swift */; };
@@ -83,14 +83,14 @@
 			containerPortal = 1503A7B795E103E81B82B4E2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 814EEA159BE6A01C935B82E9;
-			remoteInfo = PostgresClientCore;
+			remoteInfo = DoyahCore;
 		};
 		CAE39761C5719C3560EAFE41 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1503A7B795E103E81B82B4E2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 814EEA159BE6A01C935B82E9;
-			remoteInfo = PostgresClientCore;
+			remoteInfo = DoyahCore;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -101,7 +101,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				A06AAC9462F15D3C2FFB4620 /* PostgresClientCore.framework in Embed Frameworks */,
+				A06AAC9462F15D3C2FFB4620 /* DoyahCore.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -112,7 +112,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				1E10F924C52A5EB71908A16D /* PostgresClientCore.framework in Embed Frameworks */,
+				1E10F924C52A5EB71908A16D /* DoyahCore.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -125,7 +125,7 @@
 		104E6C55A19CEBD6083F92B6 /* ResultTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultTableView.swift; sourceTree = "<group>"; };
 		17532F4242A171E0ED87F1D6 /* SessionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitor.swift; sourceTree = "<group>"; };
 		18E63E37DB14E5854BD32814 /* DialectTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialectTests.swift; sourceTree = "<group>"; };
-		1BA86921CC190D3C34464059 /* PostgresClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresClientApp.swift; sourceTree = "<group>"; };
+		1BA86921CC190D3C34464059 /* DoyahStudioApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoyahStudioApp.swift; sourceTree = "<group>"; };
 		227D6DEAAD12199057ABB061 /* SessionMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorTests.swift; sourceTree = "<group>"; };
 		29721E3892586E8C4D0AC6AA /* MetadataServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataServiceTests.swift; sourceTree = "<group>"; };
 		297E5B5B60163E07FBBFAA99 /* SQLGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLGenerator.swift; sourceTree = "<group>"; };
@@ -161,7 +161,7 @@
 		88C17AF0C5C4E6236CC64D53 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		89474F5A1A8B41222A2F6109 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 		8F4D8CD8C0DD21A900C14AB1 /* SQLTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLTokenizer.swift; sourceTree = "<group>"; };
-		98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PostgresClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		98FFC4B6A78C528A08BD6B90 /* DoyahStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DoyahStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1A872263E55D63E55B03425 /* QueryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryToolbar.swift; sourceTree = "<group>"; };
 		A5C6A5197F7C3CDE5FC6B21D /* PostgresCellFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresCellFormatter.swift; sourceTree = "<group>"; };
 		A838B481DD4F8470B63B88D9 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
@@ -171,7 +171,7 @@
 		B19D8C4881F610903ED30C71 /* DatabaseType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseType.swift; sourceTree = "<group>"; };
 		B6AB8A3EA6084883799A5A32 /* EditorTextSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorTextSync.swift; sourceTree = "<group>"; };
 		B975A15675096FA72837C333 /* QueryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryWorkspaceView.swift; sourceTree = "<group>"; };
-		BA28582C03392AE33E0094EA /* PostgresClientCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PostgresClientCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA28582C03392AE33E0094EA /* DoyahCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = DoyahCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		CF1EB089F820E0AABCB4C628 /* SaveQuerySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveQuerySheet.swift; sourceTree = "<group>"; };
 		D2896CB2B7076B2F3625DDA9 /* SQLHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLHighlighter.swift; sourceTree = "<group>"; };
 		D489E85A8C697E91CB8A9EF0 /* SQLLinterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLLinterTests.swift; sourceTree = "<group>"; };
@@ -184,7 +184,7 @@
 		EF91E702B30215FF5541A5FF /* PrivilegeProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegeProbeTests.swift; sourceTree = "<group>"; };
 		F018EA6AEE8809567E7DD73D /* QueryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryModels.swift; sourceTree = "<group>"; };
 		F2C423164DCAAC13E22C3C7D /* PostgresServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresServiceTests.swift; sourceTree = "<group>"; };
-		F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PostgresClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F5A9910AC41862DFD7D59E8C /* DoyahStudioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DoyahStudioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F7359577E004A412372A0A9B /* SecureASCIIField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureASCIIField.swift; sourceTree = "<group>"; };
 		F9BD17A79290627AA8124318 /* PostgresService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostgresService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -194,7 +194,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C0FED44D294BEB4079126DB /* PostgresClientCore.framework in Frameworks */,
+				4C0FED44D294BEB4079126DB /* DoyahCore.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -211,7 +211,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8B37A26E0495D692913698A8 /* PostgresClientCore.framework in Frameworks */,
+				8B37A26E0495D692913698A8 /* DoyahCore.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,9 +280,9 @@
 		86A84067C5B10C100227CD92 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */,
-				BA28582C03392AE33E0094EA /* PostgresClientCore.framework */,
-				F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */,
+				98FFC4B6A78C528A08BD6B90 /* DoyahStudio.app */,
+				BA28582C03392AE33E0094EA /* DoyahCore.framework */,
+				F5A9910AC41862DFD7D59E8C /* DoyahStudioTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -350,7 +350,7 @@
 				A95032B9D1BEABE0EC51F6FF /* AppState.swift */,
 				451A474C178DC8B282AF4B79 /* EditorCommandCenter.swift */,
 				89474F5A1A8B41222A2F6109 /* LocalizationManager.swift */,
-				1BA86921CC190D3C34464059 /* PostgresClientApp.swift */,
+				1BA86921CC190D3C34464059 /* DoyahStudioApp.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -358,9 +358,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		814EEA159BE6A01C935B82E9 /* PostgresClientCore */ = {
+		814EEA159BE6A01C935B82E9 /* DoyahCore */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "PostgresClientCore" */;
+			buildConfigurationList = 02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "DoyahCore" */;
 			buildPhases = (
 				DCAE1E200C574F2CA635607D /* Sources */,
 				3911B76AEA6C1D9B9A2FA13A /* Frameworks */,
@@ -369,17 +369,17 @@
 			);
 			dependencies = (
 			);
-			name = PostgresClientCore;
+			name = DoyahCore;
 			packageProductDependencies = (
 				B728A1E7F03E926C61B3488C /* PostgresNIO */,
 			);
-			productName = PostgresClientCore;
-			productReference = BA28582C03392AE33E0094EA /* PostgresClientCore.framework */;
+			productName = DoyahCore;
+			productReference = BA28582C03392AE33E0094EA /* DoyahCore.framework */;
 			productType = "com.apple.product-type.framework";
 		};
-		A21FB6710A7F4557B2974425 /* PostgresClientTests */ = {
+		A21FB6710A7F4557B2974425 /* DoyahStudioTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "PostgresClientTests" */;
+			buildConfigurationList = BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "DoyahStudioTests" */;
 			buildPhases = (
 				75673D9AA67A907AF8461EA0 /* Sources */,
 				30A712CFF99752B4A5505065 /* Frameworks */,
@@ -390,16 +390,16 @@
 			dependencies = (
 				17274383FEAE38DC99C53A30 /* PBXTargetDependency */,
 			);
-			name = PostgresClientTests;
+			name = DoyahStudioTests;
 			packageProductDependencies = (
 			);
-			productName = PostgresClientTests;
-			productReference = F5A9910AC41862DFD7D59E8C /* PostgresClientTests.xctest */;
+			productName = DoyahStudioTests;
+			productReference = F5A9910AC41862DFD7D59E8C /* DoyahStudioTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		F9E82AFFB44017733F50966F /* PostgresClient */ = {
+		F9E82AFFB44017733F50966F /* DoyahStudio */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "PostgresClient" */;
+			buildConfigurationList = 829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "DoyahStudio" */;
 			buildPhases = (
 				3851A09845017370FE24C3C4 /* Sources */,
 				E82FB90EE041D0BC13854C45 /* Frameworks */,
@@ -410,11 +410,11 @@
 			dependencies = (
 				F57A6ABAFF4F6637BEE7AA9E /* PBXTargetDependency */,
 			);
-			name = PostgresClient;
+			name = DoyahStudio;
 			packageProductDependencies = (
 			);
-			productName = PostgresClient;
-			productReference = 98FFC4B6A78C528A08BD6B90 /* PostgresClient.app */;
+			productName = DoyahStudio;
+			productReference = 98FFC4B6A78C528A08BD6B90 /* DoyahStudio.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -440,7 +440,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "PostgresClient" */;
+			buildConfigurationList = 305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "DoyahStudio" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -457,9 +457,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				814EEA159BE6A01C935B82E9 /* PostgresClientCore */,
-				F9E82AFFB44017733F50966F /* PostgresClient */,
-				A21FB6710A7F4557B2974425 /* PostgresClientTests */,
+				814EEA159BE6A01C935B82E9 /* DoyahCore */,
+				F9E82AFFB44017733F50966F /* DoyahStudio */,
+				A21FB6710A7F4557B2974425 /* DoyahStudioTests */,
 			);
 		};
 /* End PBXProject section */
@@ -478,7 +478,7 @@
 				2DE4CFA0BD8DB20317B5E341 /* LocalizationManager.swift in Sources */,
 				C6A56ADF38E6A62AB8E522F5 /* MainWindow.swift in Sources */,
 				C7147F764E90887288C84E4F /* ObjectTreeView.swift in Sources */,
-				504A69DFDBCAA6630AB7FE86 /* PostgresClientApp.swift in Sources */,
+				504A69DFDBCAA6630AB7FE86 /* DoyahStudioApp.swift in Sources */,
 				FC0C42F097D79F1A1C65B713 /* QueryContextBar.swift in Sources */,
 				482DC7BEF2896D633E51EF14 /* QueryToolbar.swift in Sources */,
 				FEA65E0AF1E82FC489DC5C45 /* QueryWorkspaceView.swift in Sources */,
@@ -553,12 +553,12 @@
 /* Begin PBXTargetDependency section */
 		17274383FEAE38DC99C53A30 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 814EEA159BE6A01C935B82E9 /* PostgresClientCore */;
+			target = 814EEA159BE6A01C935B82E9 /* DoyahCore */;
 			targetProxy = CAE39761C5719C3560EAFE41 /* PBXContainerItemProxy */;
 		};
 		F57A6ABAFF4F6637BEE7AA9E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 814EEA159BE6A01C935B82E9 /* PostgresClientCore */;
+			target = 814EEA159BE6A01C935B82E9 /* DoyahCore */;
 			targetProxy = 3EA133F5DED83E386BCD44D5 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -668,11 +668,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = App/PostgresClient.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/DoyahStudio.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PostgresClient;
+				INFOPLIST_KEY_CFBundleDisplayName = DoyahStudio;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -687,11 +687,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = App/PostgresClient.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/DoyahStudio.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PostgresClient;
+				INFOPLIST_KEY_CFBundleDisplayName = DoyahStudio;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -812,7 +812,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "PostgresClientCore" */ = {
+		02A5C5DFB5A84B0BEE23A577 /* Build configuration list for PBXNativeTarget "DoyahCore" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3E73819FA35943B528E2DC81 /* Debug */,
@@ -821,7 +821,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "PostgresClient" */ = {
+		305FF05A2663B2642952FD76 /* Build configuration list for PBXProject "DoyahStudio" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				DD46DBA37647971622CDBD88 /* Debug */,
@@ -830,7 +830,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "PostgresClient" */ = {
+		829F790EB727CE7C5245A27D /* Build configuration list for PBXNativeTarget "DoyahStudio" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				8BCBD7735505BDB2F527D93E /* Debug */,
@@ -839,7 +839,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "PostgresClientTests" */ = {
+		BD9C01E7D668D19689AFD56F /* Build configuration list for PBXNativeTarget "DoyahStudioTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5CC0AD5120FE55F4C1109571 /* Debug */,

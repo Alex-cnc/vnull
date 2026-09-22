@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 建库权限探测与数据库名预校验（FR-META-11）。
 final class PrivilegeProbeTests: XCTestCase {

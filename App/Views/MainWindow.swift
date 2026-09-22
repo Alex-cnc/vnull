@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 连接表单的展示模式。
 /// 用 `.sheet(item:)` 而不是 `isPresented` + 可选值，

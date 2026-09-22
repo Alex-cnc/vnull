@@ -1,6 +1,6 @@
 import Foundation
 import Combine
-import PostgresClientCore
+import DoyahCore
 
 /// 语言管理：读取 / 保存用户选择，并在切换时通知界面重建。
 ///

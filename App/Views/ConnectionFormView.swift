@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 struct ConnectionFormView: View {
     @Environment(\.dismiss) private var dismiss

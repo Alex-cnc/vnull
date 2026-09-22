@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-09 / NFR-AI-03：执行审批状态机与审计日志。
 final class AgentAuditTests: XCTestCase {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 用假的 DatabaseService 验证 MetadataService 的层级与映射，
 /// 不依赖真实数据库。

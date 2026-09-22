@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-SESS-01 ~ FR-SESS-02：会话监控解析。
 final class SessionMonitorTests: XCTestCase {

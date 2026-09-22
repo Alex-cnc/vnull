@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import PostgresClientCore
+import DoyahCore
 
 /// SQL 编辑器：NSTextView 桥接。
 ///

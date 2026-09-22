@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "814EEA159BE6A01C935B82E9"
-               BuildableName = "PostgresClientCore.framework"
-               BlueprintName = "PostgresClientCore"
-               ReferencedContainer = "container:PostgresClient.xcodeproj">
+               BuildableName = "DoyahCore.framework"
+               BlueprintName = "DoyahCore"
+               ReferencedContainer = "container:DoyahStudio.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -30,9 +30,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A21FB6710A7F4557B2974425"
-               BuildableName = "PostgresClientTests.xctest"
-               BlueprintName = "PostgresClientTests"
-               ReferencedContainer = "container:PostgresClient.xcodeproj">
+               BuildableName = "DoyahStudioTests.xctest"
+               BlueprintName = "DoyahStudioTests"
+               ReferencedContainer = "container:DoyahStudio.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -47,9 +47,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "814EEA159BE6A01C935B82E9"
-            BuildableName = "PostgresClientCore.framework"
-            BlueprintName = "PostgresClientCore"
-            ReferencedContainer = "container:PostgresClient.xcodeproj">
+            BuildableName = "DoyahCore.framework"
+            BlueprintName = "DoyahCore"
+            ReferencedContainer = "container:DoyahStudio.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -59,9 +59,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A21FB6710A7F4557B2974425"
-               BuildableName = "PostgresClientTests.xctest"
-               BlueprintName = "PostgresClientTests"
-               ReferencedContainer = "container:PostgresClient.xcodeproj">
+               BuildableName = "DoyahStudioTests.xctest"
+               BlueprintName = "DoyahStudioTests"
+               ReferencedContainer = "container:DoyahStudio.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -82,9 +82,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "814EEA159BE6A01C935B82E9"
-            BuildableName = "PostgresClientCore.framework"
-            BlueprintName = "PostgresClientCore"
-            ReferencedContainer = "container:PostgresClient.xcodeproj">
+            BuildableName = "DoyahCore.framework"
+            BlueprintName = "DoyahCore"
+            ReferencedContainer = "container:DoyahStudio.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </LaunchAction>
@@ -98,9 +98,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "814EEA159BE6A01C935B82E9"
-            BuildableName = "PostgresClientCore.framework"
-            BlueprintName = "PostgresClientCore"
-            ReferencedContainer = "container:PostgresClient.xcodeproj">
+            BuildableName = "DoyahCore.framework"
+            BlueprintName = "DoyahCore"
+            ReferencedContainer = "container:DoyahStudio.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>

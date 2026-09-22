@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-12 / AC-AI-02 / AC-AI-04：智能体安全护栏。
 final class AgentGuardrailTests: XCTestCase {

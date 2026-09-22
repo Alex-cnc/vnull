@@ -1,6 +1,6 @@
 # 第三方组件许可声明（Third-Party Notices）
 
-本产品（智能数据库客户端 / 工程名 `PostgresClient`）包含以下第三方开源组件。
+本产品（**Doyah Studio**）包含以下第三方开源组件。
 各组件的版权归其作者所有，按各自的许可证授权使用。本文件随产品分发。
 
 - 组件版本以 `Package.resolved` 为准；`postgres-nio` 以 vendor 形式随本仓库提供。

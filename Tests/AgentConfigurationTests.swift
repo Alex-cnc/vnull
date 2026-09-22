@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 测试用内存密钥库：不碰真实钥匙串。
 private final class InMemoryAgentKeyStore: AgentKeyStore, @unchecked Sendable {

@@ -1,5 +1,5 @@
 import Foundation
-import PostgresClientCore
+import DoyahCore
 
 enum SQLCompleter {
     static func suggestions(for prefix: String, dialect: SQLDialect) -> [String] {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 final class PostgresServiceTests: XCTestCase {
     func testPostgresConfigurationMapping() async throws {

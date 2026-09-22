@@ -4,7 +4,7 @@ import Foundation
 ///
 /// 放在 Core 而不是视图里，理由与 `AgentAuditPresentation` 相同：
 /// 「调度判定 → 界面状态」「执行记录 → 展示文本」这些是纯函数，
-/// 抽出来才能在 `PostgresClientCoreTests` 里有单测；视图里只剩摆放。
+/// 抽出来才能在 `DoyahCoreTests` 里有单测；视图里只剩摆放。
 public enum DataTaskPresentation {
 
     /// 界面上的调度状态（`ScheduleDecision` 的界面化投影）。

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-05：自然语言 specs → 数据任务定义（复用既有模型通道与闸门）。
 final class DataTaskSpecGeneratorTests: XCTestCase {

@@ -37,11 +37,11 @@ export CLANG_MODULE_CACHE_PATH="${SCRATCH}/clang-module-cache"
 export SWIFT_MODULE_CACHE_PATH="${SCRATCH}/swift-module-cache"
 mkdir -p "${SCRATCH}" "${CACHE}" "${CLANG_MODULE_CACHE_PATH}" "${SWIFT_MODULE_CACHE_PATH}"
 
-CLI="${SCRATCH}/debug/PostgresClientCLI"
+CLI="${SCRATCH}/debug/DoyahCLI"
 # 每次增量编译，确保 CLI 用的是最新 Core 代码（SwiftPM 增量构建很快）。
 echo "==> 编译 CLI（增量）"
 "${SWIFT}" build \
-  --product PostgresClientCLI \
+  --product DoyahCLI \
   --disable-sandbox \
   --package-path "${ROOT}" \
   --cache-path "${CACHE}" \

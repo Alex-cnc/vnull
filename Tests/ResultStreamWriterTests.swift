@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-RES-13：大结果流式落盘（分块一致 + 中断清理）。
 final class ResultStreamWriterTests: XCTestCase {

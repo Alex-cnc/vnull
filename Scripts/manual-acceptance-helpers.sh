@@ -8,7 +8,7 @@ set -euo pipefail
 #   第 13 步：会话 A 开着事务改某行不提交，会话 B 改同一行 → App 的「锁与阻塞…」面板应列出
 #            「被阻塞 pid = B、阻塞者 pid = A」并可「定位阻塞者」
 #
-# 本脚本用**本工程自己的 CLI**（`.build/debug/PostgresClientCLI`）造这些状态，
+# 本脚本用**本工程自己的 CLI**（`.build/debug/DoyahCLI`）造这些状态，
 # 不需要装 psql / pg_isready。用完 `cleanup` 收尾，不留垃圾。
 #
 # 用法：
@@ -34,7 +34,7 @@ set -euo pipefail
 #         只 kill 本地 PID 是不够的。
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CLI="${ROOT}/.build/debug/PostgresClientCLI"
+CLI="${ROOT}/.build/debug/DoyahCLI"
 STATE="${TMPDIR:-/tmp}/pc-acceptance-pids"
 LOCK_TABLE="ic_lock_demo"
 HOLD_SECONDS=900
@@ -60,7 +60,7 @@ cli() { "${CLI}" --cancel-after "${CANCEL_AFTER:-20}" "$@"; }
 resolve_password() {
   if [ -n "${PGPASSWORD:-}" ]; then return; fi
   local bundle="${APP_BUNDLE_ID:-com.vnull.PostgresClient}"
-  local plist="$HOME/Library/Containers/${bundle}/Data/Library/Application Support/PostgresClient/connections.json"
+  local plist="$HOME/Library/Containers/${bundle}/Data/Library/Application Support/DoyahStudio/connections.json"
   local account=""
   if [ -f "${plist}" ]; then
     account="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d[0]['id'] if d else '')" "${plist}" 2>/dev/null || true)"

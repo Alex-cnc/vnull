@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「自然语言 → SQL」面板（FR-AI-02）。
 ///

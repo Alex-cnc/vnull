@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「审批与审计…」面板（FR-AI-09、NFR-AI-03、NFR-AI-12 联动）。
 ///

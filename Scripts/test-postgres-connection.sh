@@ -68,4 +68,4 @@ exec "${SWIFT}" run \
   --scratch-path "${SCRATCH}" \
   --manifest-cache local \
   -Xswiftc -disable-sandbox \
-  PostgresClientCLI "$@"
+  DoyahCLI "$@"

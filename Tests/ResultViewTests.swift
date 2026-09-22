@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-RES-08 ~ FR-RES-10：客户端排序、筛选、分页。
 final class ResultViewTests: XCTestCase {

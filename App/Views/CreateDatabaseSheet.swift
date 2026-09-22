@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「新建数据库」命名表单（FR-META-11）。
 ///

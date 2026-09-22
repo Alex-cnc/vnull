@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「删除数据库…」二次确认（FR-SESS-05）。
 ///

@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 struct ResultTableView: View {
     let result: QueryResult?

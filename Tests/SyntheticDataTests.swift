@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-07：合成数据生成（可复现 + 约束满足 + 写库走审批）。
 final class SyntheticDataTests: XCTestCase {

@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 struct QueryWorkspaceView: View {
     @EnvironmentObject private var appState: AppState

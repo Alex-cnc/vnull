@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-AI-09：智能体动作的提交闸门（只读模式 / 白名单 / 逐次审批）。
 ///

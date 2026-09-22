@@ -1,9 +1,9 @@
 import Foundation
 import Darwin
-import PostgresClientCore
+import DoyahCore
 
 @main
-struct PostgresClientCLI {
+struct DoyahCLI {
     /// 解析 `--cancel-after <秒>`；未指定时返回 nil。
     private static func cancelDelay(arguments: [String]) -> Double? {
         guard let index = arguments.firstIndex(of: "--cancel-after"),

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-DIAG-05：锁等待与阻塞链解析。
 final class LockMonitorTests: XCTestCase {

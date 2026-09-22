@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 「锁与阻塞…」面板（FR-DIAG-05）。
 ///

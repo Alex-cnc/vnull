@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "PostgresClientCore",
+    name: "DoyahCore",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .library(
-            name: "PostgresClientCore",
-            targets: ["PostgresClientCore"]
+            name: "DoyahCore",
+            targets: ["DoyahCore"]
         )
     ],
     dependencies: [
@@ -17,28 +17,28 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PostgresClientCore",
+            name: "DoyahCore",
             dependencies: [
                 .product(name: "PostgresNIO", package: "postgres-nio")
             ],
             path: "Core"
         ),
         .executableTarget(
-            name: "PostgresClientCLI",
-            dependencies: ["PostgresClientCore"],
+            name: "DoyahCLI",
+            dependencies: ["DoyahCore"],
             path: "CLI"
         ),
         // 让 SwiftPM 也能编译 App 源码（Xcode 工程之外的第二条验证路径）。
         // 打包成 .app 由 Scripts/build-app.sh 负责。
         .executableTarget(
-            name: "PostgresClientApp",
-            dependencies: ["PostgresClientCore"],
+            name: "DoyahStudioApp",
+            dependencies: ["DoyahCore"],
             path: "App",
-            exclude: ["PostgresClient.entitlements"]
+            exclude: ["DoyahStudio.entitlements"]
         ),
         .testTarget(
-            name: "PostgresClientCoreTests",
-            dependencies: ["PostgresClientCore"],
+            name: "DoyahCoreTests",
+            dependencies: ["DoyahCore"],
             path: "Tests"
         )
     ]

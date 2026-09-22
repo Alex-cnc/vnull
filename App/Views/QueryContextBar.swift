@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 工作区顶部的「服务器 / 数据库」上下文栏。
 ///

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// 中文输入法光标缺陷（BUG-005）的判定逻辑回归。
 ///

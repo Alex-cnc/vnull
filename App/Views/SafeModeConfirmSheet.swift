@@ -1,5 +1,5 @@
 import SwiftUI
-import PostgresClientCore
+import DoyahCore
 
 /// 高危语句保护确认弹窗（FR-EXEC-16）。
 ///

@@ -1,5 +1,5 @@
 import XCTest
-@testable import PostgresClientCore
+@testable import DoyahCore
 
 /// FR-EXEC-16：高危语句保护（Safe Mode）。
 final class ExecutionSafetyTests: XCTestCase {
