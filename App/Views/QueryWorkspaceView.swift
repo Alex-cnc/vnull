@@ -111,17 +111,26 @@ struct QueryEditorView: View {
             )
             Divider()
 
-            // 编辑区在上、下方面板在下，分隔条可拖拽调整高度；收起时只剩编辑区。
-            // （最大化态在 `QueryWorkspaceView` 里处理 —— 它还要盖住页签条。）
+            // 三块自下而上：编辑区 → 结果表 → 下方面板，分隔条都可拖拽。
+            // **结果表留在查询自己的地盘**（它是数据，不是日志），下方面板只放应用级页签
+            // （问题 / 输出 / 终端 / 调试控制台）—— 这样面板与产品未来无关。
+            // 面板收起时用另一个分支，保证 VSplitView 的子视图数量稳定。
             if appState.isLowerPaneVisible {
                 VSplitView {
                     editorArea(diagnostics)
-                        .frame(minHeight: 120, idealHeight: 260)
+                        .frame(minHeight: 100, idealHeight: 220)
+                    resultArea
+                        .frame(minHeight: 100, idealHeight: 220)
                     LowerPaneView(tab: tab)
-                        .frame(minHeight: 120, idealHeight: 260)
+                        .frame(minHeight: 100, idealHeight: 160)
                 }
             } else {
-                editorArea(diagnostics)
+                VSplitView {
+                    editorArea(diagnostics)
+                        .frame(minHeight: 100, idealHeight: 300)
+                    resultArea
+                        .frame(minHeight: 100, idealHeight: 280)
+                }
             }
         }
         .sheet(isPresented: $isSaveQueryPresented) {
@@ -193,5 +202,45 @@ struct QueryEditorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.red.opacity(0.06))
+    }
+
+    // MARK: - 结果区
+
+    private var resultArea: some View {
+        VStack(spacing: 0) {
+            // 结果集的「出处」（第 N 条语句 · X 行 × Y 列）。这是结果集自己的元信息，
+            // 所以留在结果表这一块，而不是再往 Output 日志抄一遍。
+            if let provenance = selectedProvenance {
+                Text(provenance)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                Divider()
+            }
+
+            ResultTableView(
+                result: tab.result,
+                resultCount: tab.results.count,
+                selectedIndex: tab.selectedResultIndex,
+                onSelectResult: { index in
+                    appState.selectResult(index, for: tab.id)
+                },
+                isExecuting: tab.isExecuting,
+                onExport: { format in
+                    Task { await appState.exportResult(for: tab.id, format: format) }
+                }
+            )
+        }
+    }
+
+    /// 当前选中结果集的「出处」；没有（例如刚清空）时为 nil。
+    private var selectedProvenance: String? {
+        let index = tab.selectedResultIndex
+        guard tab.resultSummaries.indices.contains(index) else { return nil }
+        let value = tab.resultSummaries[index]
+        return value.isEmpty ? nil : value
     }
 }

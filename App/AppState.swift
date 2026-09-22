@@ -284,7 +284,7 @@ final class AppState: ObservableObject {
 
     /// 当前选中的下方面板页签。
     @Published var lowerPaneTab: LowerPaneTab =
-        LowerPaneTab(rawValue: UserDefaults.standard.string(forKey: "ui.lowerPaneTab") ?? "") ?? .result {
+        LowerPaneTab(rawValue: UserDefaults.standard.string(forKey: "ui.lowerPaneTab") ?? "") ?? .problem {
         didSet { UserDefaults.standard.set(lowerPaneTab.rawValue, forKey: "ui.lowerPaneTab") }
     }
 
@@ -305,7 +305,7 @@ final class AppState: ObservableObject {
         switch lowerPaneTab {
         case .problem: tabs[index].problemLog = TabLog.cleared()
         case .output: tabs[index].outputLog = TabLog.cleared()
-        case .result, .terminal, .debugConsole: break
+        case .terminal, .debugConsole: break
         }
     }
 

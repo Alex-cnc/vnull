@@ -142,35 +142,6 @@ struct LowerPaneView: View {
     @ViewBuilder
     private var content: some View {
         switch appState.lowerPaneTab {
-        case .result:
-            VStack(spacing: 0) {
-                // 结果集的「出处」（第 N 条语句 · X 行 × Y 列）。
-                // 这是结果集自己的元信息，所以留在结果页签里，而不是再往 Output 日志抄一遍。
-                if let provenance = selectedProvenance {
-                    Text(provenance)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                    Divider()
-                }
-
-                ResultTableView(
-                    result: tab.result,
-                    resultCount: tab.results.count,
-                    selectedIndex: tab.selectedResultIndex,
-                    onSelectResult: { index in
-                        appState.selectResult(index, for: tab.id)
-                    },
-                    isExecuting: tab.isExecuting,
-                    onExport: { format in
-                        Task { await appState.exportResult(for: tab.id, format: format) }
-                    }
-                )
-            }
-
         case .problem:
             problemsContent
 
@@ -189,14 +160,6 @@ struct LowerPaneView: View {
                 text: L(.lowerPaneDebugPlaceholder)
             )
         }
-    }
-
-    /// 当前选中结果集的「出处」；没有（例如刚清空）时为 nil。
-    private var selectedProvenance: String? {
-        let index = tab.selectedResultIndex
-        guard tab.resultSummaries.indices.contains(index) else { return nil }
-        let value = tab.resultSummaries[index]
-        return value.isEmpty ? nil : value
     }
 
     private var problemsContent: some View {

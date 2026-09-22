@@ -42,7 +42,6 @@ public enum LKey: String, CaseIterable, Sendable {
     case menuLanguage
 
     // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）
-    case lowerPaneResult
     case lowerPaneProblem
     case lowerPaneOutput
     case lowerPaneTerminal
@@ -671,7 +670,6 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
-        .lowerPaneResult: [.simplifiedChinese: "结果", .english: "Result"],
         .lowerPaneProblem: [.simplifiedChinese: "问题", .english: "Problems"],
         .lowerPaneOutput: [.simplifiedChinese: "输出", .english: "Output"],
         .lowerPaneTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],
