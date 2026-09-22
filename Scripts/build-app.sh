@@ -97,9 +97,18 @@ PLIST
 echo "==> 附带第三方许可声明"
 cp "${ROOT}/THIRD-PARTY-NOTICES.md" "${APP}/Contents/Resources/THIRD-PARTY-NOTICES.md"
 
+# 是否带 App 沙箱：默认带。DOYAH_NO_SANDBOX=1 产出**本地用**的非沙箱构建，
+# 内嵌终端才是完整 shell（R-18 路线③的局部验证）；分发构建务必保持默认。
+if [ "${DOYAH_NO_SANDBOX:-0}" = "1" ]; then
+  ENTITLEMENTS="${ROOT}/App/DoyahStudio-unsandboxed.entitlements"
+  echo "==> 注意：本次为**非沙箱**构建（仅供本机使用，不要拿去分发）"
+else
+  ENTITLEMENTS="${ROOT}/App/DoyahStudio.entitlements"
+fi
+
 echo "==> ad-hoc 签名"
 codesign --force --sign - \
-  --entitlements "${ROOT}/App/DoyahStudio.entitlements" \
+  --entitlements "${ENTITLEMENTS}" \
   --timestamp=none \
   "${APP}" 2>&1 | tail -3
 

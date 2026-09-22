@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 刻意**不含** com.apple.security.app-sandbox：本地用的非沙箱构建，
+	     让内嵌终端能真正当作 shell（R-18 路线③的局部验证）。
+	     分发用构建仍走 App/DoyahStudio.entitlements（带沙箱）。 -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>
