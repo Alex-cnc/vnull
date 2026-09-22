@@ -15,3 +15,10 @@ _transfer_*.md
 # Xcode 个人状态（不应入库：含用户名与本地路径）
 xcuserdata/
 *.xcuserstate
+
+# Docs：只公开面向产品的文档；内部工程文档（需求书 / 调研 / 设计 / 测试 / 发布 / 过程记录）
+# 保留在本地，不随公开仓库发布。新增产品向文档时在这里加白名单。
+/Docs/*
+!/Docs/README.md
+!/Docs/功能清单（一页纸）.md
+!/Docs/功能清单（管理视图）.md
