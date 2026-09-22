@@ -18,6 +18,9 @@ import pathlib
 import sys
 
 DEFAULT_TARGETS = [
+    "Docs/产品能力规划说明书.md",
+    "Docs/功能清单（一页纸）.md",
+    "Docs/功能清单（管理视图）.md",
     "Docs/需求规范书.md",
     "Docs/README.md",
     "Docs/兼容性矩阵.md",
