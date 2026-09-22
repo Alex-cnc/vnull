@@ -33,7 +33,7 @@ set -euo pipefail
 #      ② cleanup 必须走**服务端**取消（`pg_cancel_backend`，同角色即可，无需超级用户），
 #         只 kill 本地 PID 是不够的。
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 CLI="${ROOT}/.build/debug/DoyahCLI"
 STATE="${TMPDIR:-/tmp}/pc-acceptance-pids"
 LOCK_TABLE="ic_lock_demo"

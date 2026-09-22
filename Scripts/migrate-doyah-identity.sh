@@ -21,7 +21,7 @@ set -euo pipefail
 #   - 钥匙串优先用 PGPASSWORD 环境变量（避免读旧条目时弹系统授权框），否则从旧 service 读
 #   - 全程**不打印任何口令**，只打印账号与长度
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 APPLY=0
 [ "${1:-}" = "--apply" ] && APPLY=1
 STAMP="$(date +%Y%m%d-%H%M%S)"

@@ -22,7 +22,7 @@ set -euo pipefail
 #   - 跨库用例需要 CREATEDB 权限，没有时加 `--skip-cross-db`；
 #   - 端口默认 5432，SSL 默认 prefer（本地可显式 disable）。
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 SWIFT="${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SCRATCH="${ROOT}/.build"

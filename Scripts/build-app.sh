@@ -11,7 +11,7 @@ set -euo pipefail
 # 说明：ad-hoc 签名 + entitlements 足以在本机运行（App Sandbox + 网络客户端）。
 # 如果要分发或使用钥匙串的持久授权，请换用自己的开发者证书签名。
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 CONFIGURATION="${1:-debug}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 SWIFT="${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"

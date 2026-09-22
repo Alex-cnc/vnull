@@ -15,7 +15,7 @@ set -euo pipefail
 #   PGSERVER_DATADIR  测试数据目录，默认 $HOME/tools/pgdata-querytest
 #   TEST_PGPORT       测试端口，默认 55432
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PGSERVER_PREFIX="${PGSERVER_PREFIX:-$HOME/tools/pgserver/pgserver/pginstall}"
 PGBIN="${PGSERVER_PREFIX}/bin"
 TEST_PGPORT="${TEST_PGPORT:-55432}"

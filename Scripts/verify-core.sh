@@ -6,7 +6,7 @@ set -euo pipefail
 # 该脚本使用 SwiftPM CLI，不依赖 Xcode GUI；
 # 适合在没有数据库服务器时，先验证驱动编译与单元测试。
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 SWIFT="${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SCRATCH="${ROOT}/.build"

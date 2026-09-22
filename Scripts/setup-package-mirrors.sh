@@ -15,7 +15,7 @@ set -euo pipefail
 
 CONFIG_DIR="${HOME}/.swiftpm/configuration"
 CONFIG_FILE="${CONFIG_DIR}/mirrors.json"
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 
 # PostgresNIO 本身已经打包在工程 Vendor 目录；否则回退到本机 clone 或 GitHub 直连
 if [ -d "${PROJECT_ROOT}/Vendor/postgres-nio/.git" ]; then

@@ -8,7 +8,7 @@ set -euo pipefail
 #
 # 这个脚本在 xcodegen generate 之后自动补齐关联。
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PBXPROJ="${PROJECT_ROOT}/DoyahStudio.xcodeproj/project.pbxproj"
 
 python3 - "${PBXPROJ}" <<'PY'
