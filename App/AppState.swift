@@ -85,6 +85,18 @@ struct PendingExecution: Identifiable {
     }
 }
 
+/// 一次「已提交审批、等待人工决定」的数据任务执行（FR-AI-06）。
+///
+/// 审批本身复用 `AgentActionGate` / `AgentApproval`（不另造第二套审批机制）；
+/// 这里只记住「批准之后还要做什么」：导出产物、记一条执行历史。
+struct PendingDataTaskRun {
+    let task: DataTaskDefinition
+    let plannedAt: Date?
+    let startedAt: Date
+    /// 提交审批的那段写语句（批准后原样执行）。
+    let writeSQL: String
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var connections: [ConnectionConfig] = []
@@ -154,6 +166,43 @@ final class AppState: ObservableObject {
     @Published var agentAuditMessage: String?
     /// 面板内的错误（读取 / 导出失败、执行失败…）。
     @Published var agentAuditError: String?
+
+    // MARK: 数据任务（FR-AI-05 / FR-AI-06 / FR-AI-08）
+
+    /// 「数据任务…」面板的呈现开关（菜单命令驱动）。
+    @Published var isDataTaskPresented = false
+    /// 已保存的数据任务定义（`data-tasks.json`）。
+    @Published var dataTasks: [DataTaskDefinition] = []
+    /// 执行历史（`task-runs.jsonl`，追加式；状态 / 行数 / 耗时 / 消息都在记录里）。
+    @Published var dataTaskRuns: [TaskRunRecord] = []
+    /// 每个任务当前的调度判定（App 侧 tick 更新，界面直接展示）。
+    @Published var dataTaskDecisions: [UUID: ScheduleDecision] = [:]
+    /// 已授权目录（`directory-bookmarks.json`），可在多个任务间复用（FR-AI-08）。
+    @Published var storedDirectoryBookmarks: [DirectoryBookmark] = []
+    /// 面板内的一行提示（保存成功 / 已提交审批 / 产物已导出…）。
+    @Published var dataTaskMessage: String?
+    /// 面板内的错误（读取 / 保存 / 导出 / 执行失败）。
+    @Published var dataTaskError: String?
+
+    private let dataTaskStore = DataTaskStore.shared
+    private let directoryBookmarkStore = DirectoryBookmarkStore.shared
+    /// 目录选择器：Core 只定义 `DirectoryPicker` 协议，真实实现用 `NSOpenPanel`（FR-AI-08）。
+    private let dataTaskDirectoryPicker: any DirectoryPicker = OpenPanelDirectoryPicker()
+    /// App 侧调度 tick（Core 的 `TaskScheduler` 不启定时器、只做纯时间计算）。
+    private var dataTaskTicker: Task<Void, Never>?
+    /// 已提交审批、等待人工决定的任务执行（审批单 id → 待办）。
+    private var pendingDataTaskRuns: [UUID: PendingDataTaskRun] = [:]
+    /// 已尝试过的计划时刻：**同一个时间点不会被反复补跑**（错过窗口默认不自动补跑的落地）。
+    private var dataTaskLastAttempts: [UUID: Date] = [:]
+    /// 上次成功执行时刻（调度器判重依据；从执行历史重建，不额外落盘）。
+    private var dataTaskLastSuccessfulRuns: [UUID: Date] = [:]
+
+    /// 调度宽限：计划时间过去不超过 5 分钟算「到点」按计划执行；
+    /// 超过 5 分钟的算「错过」——**只提示、不自动补跑**（客户端可能整天没打开，
+    /// 一开就补跑十几个写库任务的风险远大于收益，见 Core 的 `TaskScheduler` 注释）。
+    static let dataTaskGrace: TimeInterval = 300
+    /// 调度 tick 间隔。
+    static let dataTaskTickInterval: Duration = .seconds(30)
 
     // MARK: 高危语句保护（FR-EXEC-16）
 
@@ -965,32 +1014,105 @@ final class AppState: ObservableObject {
 
         if approve {
             do {
-                try await executeApprovedAgentAction(approval.record.sql)
+                let rowsWritten = try await executeApprovedAgentAction(approval.record.sql)
                 try approval.markExecuted()
                 agentAuditError = nil
                 agentAuditMessage = L(.agentApprovalApproved)
+                // 数据任务的执行要接着收尾（导出产物 + 记执行历史）。
+                if let pending = pendingDataTaskRuns.removeValue(forKey: id) {
+                    await finishApprovedDataTaskRun(pending, rowsWritten: rowsWritten)
+                }
             } catch {
                 // 批准了但执行失败：记为 `failed`，失败原因进审计（不是静默失败）。
                 let message = ErrorPresenter.message(for: error)
                 try? approval.markFailed(detail: message)
                 agentAuditError = L(.errorQueryFailed, message)
+                if let pending = pendingDataTaskRuns.removeValue(forKey: id) {
+                    await failDataTaskRun(pending, message: message)
+                }
             }
         } else {
             agentAuditError = nil
             agentAuditMessage = L(.agentApprovalRejected)
+            if let pending = pendingDataTaskRuns.removeValue(forKey: id) {
+                await skipDataTaskRun(pending, message: L(.dataTaskRunRejected))
+            }
         }
 
         await appendAgentAudit(approval.record)
     }
 
-    /// 执行一条**已获批准**的智能体语句，复用既有的连接与逐条下发路径。
-    private func executeApprovedAgentAction(_ sql: String) async throws {
+    /// 已获批准的数据任务执行收尾：导出产物 → 记一条执行历史。
+    private func finishApprovedDataTaskRun(_ pending: PendingDataTaskRun, rowsWritten: Int?) async {
+        var artifactName: String?
+        var artifactFailure: String?
+        if pending.task.output != nil {
+            do {
+                artifactName = try await exportDataTaskArtifact(pending.task)
+            } catch {
+                artifactFailure = ErrorPresenter.message(for: error)
+            }
+        }
+
+        let message = artifactName.map { L(.dataTaskRunSucceeded, rowsWritten ?? 0, $0) }
+            ?? L(.dataTaskRunSucceededNoArtifact, rowsWritten ?? 0)
+
+        await recordDataTaskRun(
+            task: pending.task,
+            plannedAt: pending.plannedAt,
+            startedAt: pending.startedAt,
+            status: .succeeded,
+            rowsWritten: rowsWritten,
+            message: message
+        )
+
+        if let artifactFailure {
+            dataTaskError = L(.dataTaskRunArtifactFailed, artifactFailure)
+            dataTaskMessage = message
+        } else {
+            dataTaskError = nil
+            dataTaskMessage = message
+        }
+    }
+
+    /// 执行一条**已获批准**的智能体语句，复用既有的连接与逐条下发路径；
+    /// 返回影响行数合计（没有该事件时为 `nil`），供执行历史记录「写入行数」。
+    private func executeApprovedAgentAction(_ sql: String) async throws -> Int? {
         guard let configuration = selectedConnection else { throw AppError.notConnected }
         let service = try await ensureService(
             for: configuration,
             database: queryDatabase(for: configuration)
         )
-        try await runStatements(sql, databaseType: configuration.dbType, on: service)
+        return try await runStatementsCountingAffected(
+            sql,
+            databaseType: configuration.dbType,
+            on: service
+        )
+    }
+
+    /// 与 `runStatements` 同一条下发路径，额外把影响行数累加起来。
+    private func runStatementsCountingAffected(
+        _ sql: String,
+        databaseType: DatabaseType,
+        on service: any DatabaseService
+    ) async throws -> Int? {
+        let statements = StatementSplitter(databaseType: databaseType).split(sql)
+        var affected: Int?
+        for statement in statements {
+            for try await event in service.execute(statement.sql, options: .default) {
+                switch event {
+                case .affectedRows(let count):
+                    affected = (affected ?? 0) + count
+                case .resultSet(let result):
+                    if let rows = result.affectedRows {
+                        affected = (affected ?? 0) + rows
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        return affected
     }
 
     /// 供模型参考的 schema 摘要（NFR-AI-01：只有结构，没有行数据）。
@@ -1119,6 +1241,24 @@ final class AppState: ObservableObject {
         openSQLInNewTab(sql, status: L(.agentSQLNotExecuted))
     }
 
+    /// 走完整条「规格说明 → 数据任务定义」通道（FR-AI-05）；产物是**定义草案**，
+    /// 既不保存也不执行 —— 保存要过试运行 + 校验，执行要走审批（FR-AI-09）。
+    func generateDataTaskSpec(
+        specs: String,
+        schema: AgentSQLGenerator.SchemaSummary,
+        hints: String?
+    ) async throws -> DataTaskSpecGenerator.Result {
+        try await DataTaskSpecGenerator.generate(
+            request: DataTaskSpecGenerator.Request(specs: specs, schema: schema, hints: hints),
+            configuration: agentConfiguration,
+            apiKey: agentAPIKey,
+            // 只读模式 / 白名单来自配置（FR-AI-09），与其它智能体路径同一份策略。
+            policy: agentGuardPolicy,
+            ledger: .empty,
+            client: OpenAICompatibleClient()
+        )
+    }
+
     /// 把生成的 SQL 放进**新页签**的编辑器：不覆盖用户正在写的内容，也不执行（FR-META-14）。
     func openSQLInNewTab(_ sql: String, status: String? = nil) {
         newQueryTab()
@@ -1130,6 +1270,424 @@ final class AppState: ObservableObject {
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
     var agentOutboundDecision: AgentOutboundDecision {
         AgentGate.decide(configuration: agentConfiguration, apiKey: agentAPIKey)
+    }
+
+    // MARK: - 数据任务（FR-AI-05 / FR-AI-06 / FR-AI-08）
+
+    /// 当前连接对应的方言（数据任务的 SQL 编译与护栏判定都用它）。
+    var dataTaskDialect: any SQLDialect {
+        SQLDialectFactory.make(for: selectedConnection?.dbType ?? .postgresql)
+    }
+
+    // MARK: 读取与保存
+
+    /// 读取任务定义、执行历史与已授权目录（启动 / 打开面板 / 刷新时调用）。
+    func loadDataTasks() async {
+        do {
+            dataTasks = try await dataTaskStore.tasks()
+        } catch {
+            dataTasks = []
+            dataTaskError = L(.dataTaskLoadFailed, ErrorPresenter.message(for: error))
+        }
+        await reloadDataTaskRuns()
+        storedDirectoryBookmarks = (try? await directoryBookmarkStore.all()) ?? []
+    }
+
+    /// 只刷新执行历史（顺带重建「上次成功执行时刻」）。
+    func reloadDataTaskRuns() async {
+        do {
+            dataTaskRuns = try await dataTaskStore.runs()
+        } catch {
+            dataTaskRuns = []
+            dataTaskError = L(.dataTaskLoadFailed, ErrorPresenter.message(for: error))
+        }
+
+        var lastSuccess: [UUID: Date] = [:]
+        for record in dataTaskRuns where record.status == .succeeded {
+            if let previous = lastSuccess[record.taskID], previous >= record.startedAt { continue }
+            lastSuccess[record.taskID] = record.startedAt
+        }
+        dataTaskLastSuccessfulRuns = lastSuccess
+    }
+
+    /// 保存任务定义；**定义不合法就不写盘**（界面同时会禁用保存按钮）。
+    @discardableResult
+    func saveDataTask(_ task: DataTaskDefinition) async -> Bool {
+        guard task.isValid else {
+            dataTaskError = L(.dataTaskSaveBlocked)
+            return false
+        }
+        return await persistDataTask(task, successMessage: L(.dataTaskSaved, task.name))
+    }
+
+    /// 删除任务定义（不动执行历史 —— 历史是审计材料，删了就无法追溯）。
+    @discardableResult
+    func deleteDataTask(id: UUID) async -> Bool {
+        let name = dataTasks.first { $0.id == id }?.name ?? ""
+        do {
+            try await dataTaskStore.delete(id: id)
+            dataTasks.removeAll { $0.id == id }
+            dataTaskDecisions[id] = nil
+            dataTaskError = nil
+            dataTaskMessage = L(.dataTaskDeleted, name)
+            return true
+        } catch {
+            dataTaskError = L(.dataTaskDeleteFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    /// 停用 / 恢复任务（FR-AI-06 的「可暂停 / 停用」）。
+    func setDataTaskEnabled(_ isEnabled: Bool, id: UUID) async {
+        guard var task = dataTasks.first(where: { $0.id == id }) else { return }
+        task.isEnabled = isEnabled
+        _ = await persistDataTask(task, successMessage: nil)
+    }
+
+    /// 上次成功执行时刻（面板用它算「下次执行」）。
+    func dataTaskLastSuccessfulRun(for taskID: UUID) -> Date? {
+        dataTaskLastSuccessfulRuns[taskID]
+    }
+
+    /// 某个任务当前的调度判定；没 tick 过时给一个即时判定（不写状态）。
+    func dataTaskDecision(for task: DataTaskDefinition, now: Date = Date()) -> ScheduleDecision {
+        dataTaskDecisions[task.id]
+            ?? TaskScheduler.decision(
+                for: task,
+                now: now,
+                lastRun: dataTaskLastSuccessfulRuns[task.id],
+                grace: Self.dataTaskGrace
+            )
+    }
+
+    /// 写盘并把内存里的那份同步成「落盘后的版本」（`updatedAt` 会变）。
+    @discardableResult
+    private func persistDataTask(_ task: DataTaskDefinition, successMessage: String?) async -> Bool {
+        do {
+            let stored = try await dataTaskStore.save(task)
+            if let index = dataTasks.firstIndex(where: { $0.id == stored.id }) {
+                dataTasks[index] = stored
+            } else {
+                dataTasks.append(stored)
+            }
+            dataTaskError = nil
+            if let successMessage { dataTaskMessage = successMessage }
+            return true
+        } catch {
+            dataTaskError = L(.dataTaskSaveFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    // MARK: 目录授权（FR-AI-08）
+
+    /// 让用户选一个目录并授权（`NSOpenPanel` → security-scoped bookmark）。
+    ///
+    /// **用户取消不是错误**：返回 `nil`，面板什么都不做。
+    func chooseDataTaskExportDirectory(
+        displayName: String,
+        format: DataTaskDefinition.ExportSettings.Format,
+        fileNameTemplate: String?
+    ) async -> DataTaskDefinition.ExportSettings? {
+        dataTaskError = nil
+        do {
+            guard let settings = try SecureDirectoryAccess.requestExportSettings(
+                prompt: L(.dataTaskChooseDirectory),
+                format: format,
+                fileNameTemplate: fileNameTemplate,
+                picker: dataTaskDirectoryPicker
+            ) else { return nil }
+
+            await rememberDirectoryBookmark(from: settings, displayName: displayName)
+            return settings
+        } catch {
+            // 未授权 / 创建书签失败：给可读原因与补救建议，绝不静默。
+            dataTaskError = ErrorPresenter.message(for: error)
+            return nil
+        }
+    }
+
+    /// 用已经授权过的目录作为任务的导出目录（不重新弹面板）。
+    func dataTaskExportSettings(
+        using bookmark: DirectoryBookmark,
+        format: DataTaskDefinition.ExportSettings.Format,
+        fileNameTemplate: String?
+    ) -> DataTaskDefinition.ExportSettings {
+        DataTaskDefinition.ExportSettings(
+            format: format,
+            directoryBookmark: bookmark.bookmarkData,
+            fileNameTemplate: fileNameTemplate
+        )
+    }
+
+    /// 当前授权状态；`nil` = 任务还没设导出目录。
+    func dataTaskDirectoryStatus(
+        _ settings: DataTaskDefinition.ExportSettings?
+    ) -> DirectoryAccessStatus? {
+        guard let settings, let bookmark = SecureDirectoryAccess.bookmark(from: settings) else {
+            return nil
+        }
+        return SecureDirectoryAccess.status(for: bookmark)
+    }
+
+    /// 验证授权目录真的可写：把「任务定义 + 试运行预览」写成一份说明文件。
+    ///
+    /// 刻意**不碰数据库**：这条路径只验证「书签 → 解析 → 写文件」，因此在没有可达实例时
+    /// 也能证明 FR-AI-08 的接线是通的。
+    @discardableResult
+    func verifyDataTaskExportDirectory(_ task: DataTaskDefinition) async -> Bool {
+        guard let settings = task.output,
+              let bookmark = SecureDirectoryAccess.bookmark(from: settings)
+        else {
+            dataTaskError = DataTaskRunError.missingExportSettings.errorDescription
+            return false
+        }
+
+        do {
+            let grant = try SecureDirectoryAccess.open(bookmark)
+            defer { grant.stopAccessing() }
+            let url = try DataTaskRunner.exportPreviewReport(
+                for: task,
+                preview: task.dryRun(dialect: dataTaskDialect),
+                grant: grant
+            )
+            dataTaskError = nil
+            dataTaskMessage = L(.dataTaskExportVerifySucceeded, url.lastPathComponent)
+            return true
+        } catch {
+            dataTaskError = ErrorPresenter.message(for: error)
+            return false
+        }
+    }
+
+    /// 把新授权的书签记进 `directory-bookmarks.json`（同一目录就地更新，不重复堆积）。
+    private func rememberDirectoryBookmark(
+        from settings: DataTaskDefinition.ExportSettings,
+        displayName: String
+    ) async {
+        guard var bookmark = SecureDirectoryAccess.bookmark(from: settings, displayName: displayName) else {
+            return
+        }
+        if case .granted(let path, _) = SecureDirectoryAccess.status(for: bookmark) {
+            bookmark.lastKnownPath = path
+        }
+        if let existing = storedDirectoryBookmarks.first(where: {
+            $0.lastKnownPath != nil && $0.lastKnownPath == bookmark.lastKnownPath
+        }) {
+            bookmark.id = existing.id
+        }
+        try? await directoryBookmarkStore.save(bookmark)
+        storedDirectoryBookmarks = (try? await directoryBookmarkStore.all()) ?? storedDirectoryBookmarks
+    }
+
+    // MARK: 调度 tick 与执行（FR-AI-06）
+
+    /// 启动 App 侧调度 tick（幂等；在窗口出现时调用一次）。
+    ///
+    /// `TaskScheduler` 只做纯时间计算，这里负责「隔一会儿问一次」并把到点的任务送进审批流程。
+    func startDataTaskTicker() {
+        guard dataTaskTicker == nil else { return }
+        dataTaskTicker = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.tickDataTasks()
+                try? await Task.sleep(for: AppState.dataTaskTickInterval)
+            }
+        }
+    }
+
+    func stopDataTaskTicker() {
+        dataTaskTicker?.cancel()
+        dataTaskTicker = nil
+    }
+
+    /// 走一次调度判定：刷新界面状态，并把**到点**的任务按计划执行。
+    ///
+    /// 错过窗口（超过宽限）**不自动补跑**，只把 `.missed` 摆到界面上等用户确认。
+    func tickDataTasks() async {
+        guard !dataTasks.isEmpty else { return }
+        let now = Date()
+
+        for task in dataTasks {
+            let lastRun = dataTaskLastSuccessfulRuns[task.id]
+            let decision = TaskScheduler.decision(
+                for: task,
+                now: now,
+                lastRun: lastRun,
+                grace: Self.dataTaskGrace
+            )
+            dataTaskDecisions[task.id] = decision
+
+            guard case .due(let plannedAt) = decision else { continue }
+            // 同一个计划时刻只跑一次：审批被拒 / 执行失败都不会让它每 30 秒重试一遍。
+            if let attempted = dataTaskLastAttempts[task.id], attempted >= plannedAt { continue }
+            guard selectedConnection != nil else { continue }
+
+            // 到点的写语句要人工批准，而审批单需要宿主视图：面板没开时先把它带到前台，
+            // 下一个 tick（30 秒后，宽限 5 分钟足够）再提交，让审批单在面板里弹出来。
+            // 否则「提交了但用户看不到任何窗口」，等于把审批悬在半空。
+            guard isDataTaskPresented else {
+                isDataTaskPresented = true
+                statusMessage = L(.dataTaskDueNotice)
+                continue
+            }
+            // 已经有一张审批单摆在界面上时先不叠加：同一个时刻只会提交一次（`dataTaskLastAttempts`），
+            // 等用户处理完这张，下一个 tick 再推进其他到点任务。
+            guard agentApprovalRequest == nil else { continue }
+
+            dataTaskLastAttempts[task.id] = plannedAt
+            await requestDataTaskRun(task, plannedAt: plannedAt, startedAt: now)
+        }
+    }
+
+    /// 手动执行（「现在执行…」，包括错过窗口后用户确认执行）。
+    func runDataTaskNow(_ task: DataTaskDefinition, plannedAt: Date? = nil) async {
+        dataTaskMessage = nil
+        await requestDataTaskRun(task, plannedAt: plannedAt, startedAt: Date())
+    }
+
+    /// 提交一次任务执行：**写语句先进 `AgentActionGate`**（FR-AI-09 的同一套审批与审计），
+    /// 批准之前不会碰数据库。
+    private func requestDataTaskRun(
+        _ task: DataTaskDefinition,
+        plannedAt: Date?,
+        startedAt: Date
+    ) async {
+        guard selectedConnection != nil else {
+            dataTaskError = L(.dataTaskRunNotConnected)
+            return
+        }
+        guard task.isValid else {
+            dataTaskError = L(.dataTaskRunFailed, ErrorPresenter.message(for: DataTaskRunError.invalidDefinition(task.issues)))
+            return
+        }
+
+        let sql: String
+        do {
+            sql = try DataTaskRunner.writeStatementText(for: task, dialect: dataTaskDialect)
+        } catch {
+            dataTaskError = ErrorPresenter.message(for: error)
+            return
+        }
+
+        let submission = await submitAgentAction(sql)
+        let pending = PendingDataTaskRun(
+            task: task,
+            plannedAt: plannedAt,
+            startedAt: startedAt,
+            writeSQL: sql
+        )
+
+        switch submission {
+        case .denied:
+            // 只读模式 / 策略拒绝：**没有审批单**，但仍留一条失败记录（不静默）。
+            let reason = submission.message
+            dataTaskError = L(.dataTaskRunDenied, reason)
+            await recordDataTaskRun(
+                task: task,
+                plannedAt: plannedAt,
+                startedAt: startedAt,
+                status: .failed,
+                rowsWritten: nil,
+                message: reason
+            )
+
+        case .awaitingApproval(let approval):
+            // 审批单由 `submitAgentAction` 弹出（面板上挂着 `AgentApprovalSheet`）。
+            pendingDataTaskRuns[approval.id] = pending
+            dataTaskError = nil
+            dataTaskMessage = L(.dataTaskRunPending)
+
+        case .approved:
+            // 白名单等免审批出口：直接执行。
+            await executeApprovedDataTask(pending)
+        }
+    }
+
+    /// 执行一条已获批的任务写入，随后（若配了导出目录）把产物写进授权目录并记执行历史。
+    private func executeApprovedDataTask(_ pending: PendingDataTaskRun) async {
+        do {
+            let rowsWritten = try await executeApprovedAgentAction(pending.writeSQL)
+            await finishApprovedDataTaskRun(pending, rowsWritten: rowsWritten)
+        } catch {
+            await failDataTaskRun(pending, message: ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 读源表 → 按任务导出设置写进**授权目录**（目录来自书签解析，不硬编码）。
+    private func exportDataTaskArtifact(_ task: DataTaskDefinition) async throws -> String {
+        guard let settings = task.output,
+              let bookmark = SecureDirectoryAccess.bookmark(from: settings)
+        else { throw DataTaskRunError.missingExportSettings }
+        guard let configuration = selectedConnection else { throw AppError.notConnected }
+
+        let grant = try SecureDirectoryAccess.open(bookmark)
+        defer { grant.stopAccessing() }
+
+        let service = try await ensureService(
+            for: configuration,
+            database: queryDatabase(for: configuration)
+        )
+        let result = try await DataTaskRunner.read(
+            task,
+            on: service,
+            dialect: dataTaskDialect
+        )
+        let url = try DataTaskRunner.exportArtifact(result, for: task, grant: grant)
+        return url.lastPathComponent
+    }
+
+    private func failDataTaskRun(_ pending: PendingDataTaskRun, message: String) async {
+        dataTaskError = L(.dataTaskRunFailed, message)
+        await recordDataTaskRun(
+            task: pending.task,
+            plannedAt: pending.plannedAt,
+            startedAt: pending.startedAt,
+            status: .failed,
+            rowsWritten: nil,
+            message: message
+        )
+    }
+
+    private func skipDataTaskRun(_ pending: PendingDataTaskRun, message: String) async {
+        await recordDataTaskRun(
+            task: pending.task,
+            plannedAt: pending.plannedAt,
+            startedAt: pending.startedAt,
+            status: .skipped,
+            rowsWritten: nil,
+            message: message
+        )
+    }
+
+    /// 追加一条执行历史（先落内存让面板立刻看得见，再写 `task-runs.jsonl`）。
+    ///
+    /// 写盘失败必须说出来：执行历史是「有执行记录与失败记录」的依据，静默丢掉等于没做。
+    private func recordDataTaskRun(
+        task: DataTaskDefinition,
+        plannedAt: Date?,
+        startedAt: Date,
+        status: TaskRunRecord.Status,
+        rowsWritten: Int?,
+        message: String?
+    ) async {
+        let record = TaskRunRecord(
+            taskID: task.id,
+            plannedAt: plannedAt,
+            startedAt: startedAt,
+            finishedAt: Date(),
+            status: status,
+            rowsWritten: rowsWritten,
+            message: message
+        )
+        dataTaskRuns.append(record)
+        if status == .succeeded {
+            dataTaskLastSuccessfulRuns[task.id] = startedAt
+        }
+        do {
+            try await dataTaskStore.appendRun(record)
+        } catch {
+            dataTaskError = L(.dataTaskSaveFailed, ErrorPresenter.message(for: error))
+        }
     }
 
     // MARK: - 执行计划（FR-DIAG-01）

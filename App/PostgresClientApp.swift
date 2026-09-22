@@ -39,6 +39,13 @@ struct PostgresClientApp: App {
 
                 Divider()
 
+                Button(L(.menuDataTask)) {
+                    appState.isDataTaskPresented = true
+                }
+                .keyboardShortcut(AppShortcut.dataTask.key, modifiers: AppShortcut.dataTask.modifiers)
+
+                Divider()
+
                 Button(L(.menuAgentAudit)) {
                     appState.isAgentAuditPresented = true
                 }

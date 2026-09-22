@@ -265,6 +265,7 @@ struct QueryToolbar: View {
             (.safetySafeMode, .safeMode),
             (.safetyConfirmAllWrites, .confirmAllWrites),
             (.menuAgentAudit, .agentAudit),
+            (.menuDataTask, .dataTask),
             (.toolbarHelpHelp, .help)
         ]
     }

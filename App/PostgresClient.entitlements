@@ -8,5 +8,9 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- 沙箱下让 security-scoped bookmark 能跨启动解析（FR-AI-08 的「持久化书签」）：
+	     只有 user-selected 权限时，本次会话内可写，但下次启动解析书签会失败。 -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
 </dict>
 </plist>

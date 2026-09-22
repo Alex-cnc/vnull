@@ -327,6 +327,148 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentRiskElevated
     case agentRiskDestructive
 
+    // 数据任务（FR-AI-05 / FR-AI-06 / FR-AI-08）
+    case menuDataTask
+    case dataTaskTitle
+    case dataTaskName
+    case dataTaskNotExecutedHint
+    case dataTaskRefresh
+    case dataTaskNew
+    case dataTaskRevert
+    case dataTaskSave
+    case dataTaskDelete
+    case dataTaskDeleteConfirmTitle
+    case dataTaskDeleteConfirmMessage
+    case dataTaskDeleted
+    case dataTaskDeleteFailed
+    case dataTaskSaved
+    case dataTaskSaveFailed
+    case dataTaskLoadFailed
+    case dataTaskSearchPlaceholder
+    case dataTaskOnlyEnabled
+    case dataTaskListEmpty
+    case dataTaskNoSelection
+    case dataTaskSelectHint
+    case dataTaskEnabled
+    case dataTaskEnable
+    case dataTaskDisable
+    case dataTaskDisabledHint
+    case dataTaskSectionSpecs
+    case dataTaskSpecsHint
+    case dataTaskSectionSource
+    case dataTaskSchema
+    case dataTaskTable
+    case dataTaskSourceColumns
+    case dataTaskSourceColumnsHint
+    case dataTaskFilter
+    case dataTaskFilterHint
+    case dataTaskSectionTransformations
+    case dataTaskAddTransformation
+    case dataTaskRemoveTransformation
+    case dataTaskTransformationColumn
+    case dataTaskTransformationTargetColumn
+    case dataTaskTransformationExpression
+    case dataTaskTransformEmpty
+    case dataTaskSectionTarget
+    case dataTaskTargetTable
+    case dataTaskWriteMode
+    case dataTaskKeyColumns
+    case dataTaskKeyColumnsHint
+    case dataTaskSectionSchedule
+    case dataTaskScheduleKind
+    case dataTaskRunAt
+    case dataTaskIntervalSeconds
+    case dataTaskStartAt
+    case dataTaskDateHint
+    case dataTaskSectionExport
+    case dataTaskExportFormat
+    case dataTaskFileNameTemplate
+    case dataTaskFileNameHint
+    case dataTaskChooseDirectory
+    case dataTaskUseStoredDirectory
+    case dataTaskNoStoredDirectory
+    case dataTaskDirectoryGranted
+    case dataTaskDirectoryGrantedStale
+    case dataTaskDirectoryNotAuthorized
+    case dataTaskDirectoryMissing
+    case dataTaskDirectoryDenied
+    case dataTaskDirectoryResolutionFailed
+    case dataTaskDirectoryHintNotAuthorized
+    case dataTaskDirectoryHintMissing
+    case dataTaskDirectoryHintDenied
+    case dataTaskDirectoryHintResolutionFailed
+    case dataTaskExportVerify
+    case dataTaskExportVerifySucceeded
+    case dataTaskSectionPreview
+    case dataTaskDryRun
+    case dataTaskDryRunHint
+    case dataTaskPreviewSteps
+    case dataTaskPreviewSQL
+    case dataTaskPreviewWarnings
+    case dataTaskPreviewIssues
+    case dataTaskNoIssues
+    case dataTaskNeedDryRun
+    case dataTaskSaveBlocked
+    case dataTaskWriteStatement
+    case dataTaskGuardVerdict
+    case dataTaskSectionRuntime
+    case dataTaskStatusNotScheduled
+    case dataTaskStatusDisabled
+    case dataTaskStatusWaiting
+    case dataTaskStatusDue
+    case dataTaskStatusMissed
+    case dataTaskNextRun
+    case dataTaskPlannedAt
+    case dataTaskMissedNotice
+    case dataTaskRunNow
+    case dataTaskDueNotice
+    case dataTaskRunPending
+    case dataTaskRunDenied
+    case dataTaskRunSucceeded
+    case dataTaskRunSucceededNoArtifact
+    case dataTaskRunFailed
+    case dataTaskRunArtifactFailed
+    case dataTaskRunRejected
+    case dataTaskRunNotConnected
+    case dataTaskSectionHistory
+    case dataTaskHistoryEmpty
+    case dataTaskHistoryCount
+    case dataTaskHistoryColumnTime
+    case dataTaskHistoryColumnStatus
+    case dataTaskHistoryColumnRows
+    case dataTaskHistoryColumnDuration
+    case dataTaskHistoryColumnMessage
+    case dataTaskRunStatusRunning
+    case dataTaskRunStatusSucceeded
+    case dataTaskRunStatusFailed
+    case dataTaskRunStatusSkipped
+    case dataTaskSpecOpen
+    case dataTaskSpecTitle
+    case dataTaskSpecInput
+    case dataTaskSpecHints
+    case dataTaskSpecPayload
+    case dataTaskSpecGenerate
+    case dataTaskSpecApply
+    case dataTaskSpecFailed
+    case dataTaskSpecNotExecuted
+    case dataTaskSpecGenerated
+    case dataTaskSpecDisabled
+    case dataTaskSpecNoInput
+    case dataTaskSpecHint
+    case dataTaskTransformKindRename
+    case dataTaskTransformKindCast
+    case dataTaskTransformKindDerive
+    case dataTaskTransformKindDrop
+    case dataTaskTransformKindMask
+    case dataTaskWriteModeAppend
+    case dataTaskWriteModeOverwrite
+    case dataTaskWriteModeUpsert
+    case dataTaskScheduleKindManual
+    case dataTaskScheduleKindOnce
+    case dataTaskScheduleKindRecurring
+    case dataTaskOverwriteWarning
+    case dataTaskUpsertWarning
+
     // 高危语句保护（FR-EXEC-16）
     case toolbarSafety
     case safetySafeMode
@@ -908,5 +1050,147 @@ public enum LocalizedStrings {
         .createDatabaseConfirm: [.simplifiedChinese: "创建", .english: "Create"],
         .createDatabaseSucceeded: [.simplifiedChinese: "已创建数据库 %@", .english: "Database %@ created"],
         .createDatabaseFailed: [.simplifiedChinese: "创建数据库失败：%@", .english: "Failed to create database: %@"],
+
+        // 数据任务（FR-AI-05 / FR-AI-06 / FR-AI-08）
+        .menuDataTask: [.simplifiedChinese: "数据任务…", .english: "Data Tasks…"],
+        .dataTaskTitle: [.simplifiedChinese: "数据任务", .english: "Data Tasks"],
+        .dataTaskName: [.simplifiedChinese: "任务名", .english: "Task name"],
+        .dataTaskNotExecutedHint: [.simplifiedChinese: "试运行与保存都不会执行任务；真正执行时会先提交审批（只读模式下会被拒）。", .english: "Neither a dry run nor saving executes the task. A real run is submitted for approval first (and is denied in read-only mode)."],
+        .dataTaskRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .dataTaskNew: [.simplifiedChinese: "新建任务", .english: "New Task"],
+        .dataTaskRevert: [.simplifiedChinese: "放弃改动", .english: "Revert"],
+        .dataTaskSave: [.simplifiedChinese: "保存任务", .english: "Save Task"],
+        .dataTaskDelete: [.simplifiedChinese: "删除任务", .english: "Delete Task"],
+        .dataTaskDeleteConfirmTitle: [.simplifiedChinese: "删除数据任务？", .english: "Delete this data task?"],
+        .dataTaskDeleteConfirmMessage: [.simplifiedChinese: "将删除任务「%@」及其执行历史，该操作不可撤销。", .english: "This deletes the task “%@” and its run history. It cannot be undone."],
+        .dataTaskDeleted: [.simplifiedChinese: "已删除任务「%@」", .english: "Deleted task “%@”"],
+        .dataTaskDeleteFailed: [.simplifiedChinese: "删除任务失败：%@", .english: "Deleting the task failed: %@"],
+        .dataTaskSaved: [.simplifiedChinese: "已保存任务「%@」", .english: "Saved task “%@”"],
+        .dataTaskSaveFailed: [.simplifiedChinese: "保存任务失败：%@", .english: "Saving the task failed: %@"],
+        .dataTaskLoadFailed: [.simplifiedChinese: "读取数据任务失败：%@", .english: "Loading data tasks failed: %@"],
+        .dataTaskSearchPlaceholder: [.simplifiedChinese: "搜索任务（名称 / specs / 表名）", .english: "Search tasks (name, specs, table)"],
+        .dataTaskOnlyEnabled: [.simplifiedChinese: "只看启用", .english: "Enabled only"],
+        .dataTaskListEmpty: [.simplifiedChinese: "还没有数据任务。点「新建任务」把一段规格说明变成可执行任务。", .english: "No data tasks yet. Create one to turn a spec into an executable task."],
+        .dataTaskNoSelection: [.simplifiedChinese: "从左侧选择一个任务，或新建一个。", .english: "Select a task on the left, or create one."],
+        .dataTaskSelectHint: [.simplifiedChinese: "选中任务后可编辑定义、试运行预览并查看执行历史。", .english: "Pick a task to edit its definition, dry-run it and inspect run history."],
+        .dataTaskEnabled: [.simplifiedChinese: "启用（停用后不再排期）", .english: "Enabled (a disabled task is never scheduled)"],
+        .dataTaskEnable: [.simplifiedChinese: "恢复", .english: "Enable"],
+        .dataTaskDisable: [.simplifiedChinese: "停用", .english: "Disable"],
+        .dataTaskDisabledHint: [.simplifiedChinese: "该任务已停用：调度器不会为它排期，手动执行仍可用。", .english: "Disabled: the scheduler will not schedule it, but you can still run it manually."],
+        .dataTaskSectionSpecs: [.simplifiedChinese: "规格说明（specs）", .english: "Specification (specs)"],
+        .dataTaskSpecsHint: [.simplifiedChinese: "specs 与任务定义同时留存，都是可编辑文本；改完先试运行，再保存。", .english: "Both specs and the definition are kept as editable text. Dry-run before saving."],
+        .dataTaskSectionSource: [.simplifiedChinese: "数据来源", .english: "Source"],
+        .dataTaskSchema: [.simplifiedChinese: "模式（schema）", .english: "Schema"],
+        .dataTaskTable: [.simplifiedChinese: "表名", .english: "Table"],
+        .dataTaskSourceColumns: [.simplifiedChinese: "源列（逗号或换行分隔）", .english: "Columns (comma or newline separated)"],
+        .dataTaskSourceColumnsHint: [.simplifiedChinese: "留空表示全部列（*）；留空时无法使用「丢弃列」转换。", .english: "Empty means all columns (*); “drop column” cannot be used in that case."],
+        .dataTaskFilter: [.simplifiedChinese: "过滤条件（WHERE 之后）", .english: "Filter (after WHERE)"],
+        .dataTaskFilterHint: [.simplifiedChinese: "只写片段，不要带 WHERE 关键字与分号。", .english: "Fragment only — no WHERE keyword, no semicolon."],
+        .dataTaskSectionTransformations: [.simplifiedChinese: "转换", .english: "Transformations"],
+        .dataTaskAddTransformation: [.simplifiedChinese: "添加转换", .english: "Add transformation"],
+        .dataTaskRemoveTransformation: [.simplifiedChinese: "移除", .english: "Remove"],
+        .dataTaskTransformationColumn: [.simplifiedChinese: "源列", .english: "Column"],
+        .dataTaskTransformationTargetColumn: [.simplifiedChinese: "目标列", .english: "Target column"],
+        .dataTaskTransformationExpression: [.simplifiedChinese: "表达式", .english: "Expression"],
+        .dataTaskTransformEmpty: [.simplifiedChinese: "还没有转换步骤：源列会原样写入目标。", .english: "No transformations: source columns are written as-is."],
+        .dataTaskSectionTarget: [.simplifiedChinese: "写入目标", .english: "Target"],
+        .dataTaskTargetTable: [.simplifiedChinese: "目标表", .english: "Target table"],
+        .dataTaskWriteMode: [.simplifiedChinese: "写入模式", .english: "Write mode"],
+        .dataTaskKeyColumns: [.simplifiedChinese: "冲突键列", .english: "Conflict keys"],
+        .dataTaskKeyColumnsHint: [.simplifiedChinese: "更新插入（upsert）必须指定，用逗号分隔。", .english: "Required for upsert; comma separated."],
+        .dataTaskSectionSchedule: [.simplifiedChinese: "调度", .english: "Schedule"],
+        .dataTaskScheduleKind: [.simplifiedChinese: "调度方式", .english: "Schedule type"],
+        .dataTaskRunAt: [.simplifiedChinese: "执行时间", .english: "Run at"],
+        .dataTaskIntervalSeconds: [.simplifiedChinese: "间隔（秒）", .english: "Interval (seconds)"],
+        .dataTaskStartAt: [.simplifiedChinese: "首次执行时间", .english: "First run at"],
+        .dataTaskDateHint: [.simplifiedChinese: "时间格式：yyyy-MM-dd HH:mm（留空表示未设置）", .english: "Time format: yyyy-MM-dd HH:mm (empty means unset)"],
+        .dataTaskSectionExport: [.simplifiedChinese: "导出目录（安全作用域）", .english: "Export directory (security scoped)"],
+        .dataTaskExportFormat: [.simplifiedChinese: "产物格式", .english: "Artifact format"],
+        .dataTaskFileNameTemplate: [.simplifiedChinese: "文件名模板", .english: "File name template"],
+        .dataTaskFileNameHint: [.simplifiedChinese: "可用 {task} 与 {timestamp}；路径分隔符会被剥掉。", .english: "{task} and {timestamp} are available; path separators are stripped."],
+        .dataTaskChooseDirectory: [.simplifiedChinese: "选择目录…", .english: "Choose directory…"],
+        .dataTaskUseStoredDirectory: [.simplifiedChinese: "使用已授权目录", .english: "Use an authorized directory"],
+        .dataTaskNoStoredDirectory: [.simplifiedChinese: "还没有已授权目录", .english: "No authorized directory yet"],
+        .dataTaskDirectoryGranted: [.simplifiedChinese: "导出目录：%@", .english: "Export directory: %@"],
+        .dataTaskDirectoryGrantedStale: [.simplifiedChinese: "导出目录：%@（授权书签已过期，建议重新选择一次）", .english: "Export directory: %@ (the bookmark is stale; please re-select it)"],
+        .dataTaskDirectoryNotAuthorized: [.simplifiedChinese: "尚未授权导出目录。", .english: "No export directory authorized yet."],
+        .dataTaskDirectoryMissing: [.simplifiedChinese: "授权目录已不存在：%@", .english: "The authorized directory no longer exists: %@"],
+        .dataTaskDirectoryDenied: [.simplifiedChinese: "没有访问授权目录的权限：%@", .english: "No permission to access the authorized directory: %@"],
+        .dataTaskDirectoryResolutionFailed: [.simplifiedChinese: "授权书签无法解析：%@", .english: "The bookmark cannot be resolved: %@"],
+        .dataTaskDirectoryHintNotAuthorized: [.simplifiedChinese: "请选择一个目录并授权导出；也可以先不导出，只写库。", .english: "Choose a directory to authorize exports, or leave it unset and only write to the database."],
+        .dataTaskDirectoryHintMissing: [.simplifiedChinese: "目录可能被移动或所在磁盘未挂载，请重新选择。", .english: "The directory may have moved or its volume is unmounted; please re-select."],
+        .dataTaskDirectoryHintDenied: [.simplifiedChinese: "请在系统设置中授予文件访问权限，或改选其他目录。", .english: "Grant file access in System Settings, or choose another directory."],
+        .dataTaskDirectoryHintResolutionFailed: [.simplifiedChinese: "请重新选择目录以生成新的授权书签。", .english: "Re-select the directory to create a fresh bookmark."],
+        .dataTaskExportVerify: [.simplifiedChinese: "写入验证文件", .english: "Write a verification file"],
+        .dataTaskExportVerifySucceeded: [.simplifiedChinese: "已写入验证文件：%@", .english: "Verification file written: %@"],
+        .dataTaskSectionPreview: [.simplifiedChinese: "试运行与预览", .english: "Dry run & preview"],
+        .dataTaskDryRun: [.simplifiedChinese: "试运行", .english: "Dry run"],
+        .dataTaskDryRunHint: [.simplifiedChinese: "试运行只做预览：分步说明 + 预览语句（只取 10 行），绝不真正执行。", .english: "A dry run only previews: steps plus statements limited to 10 rows. Nothing is executed."],
+        .dataTaskPreviewSteps: [.simplifiedChinese: "执行步骤", .english: "Steps"],
+        .dataTaskPreviewSQL: [.simplifiedChinese: "预览语句", .english: "Preview statements"],
+        .dataTaskPreviewWarnings: [.simplifiedChinese: "告警", .english: "Warnings"],
+        .dataTaskPreviewIssues: [.simplifiedChinese: "问题（解决后才能保存）", .english: "Problems (fix before saving)"],
+        .dataTaskNoIssues: [.simplifiedChinese: "定义校验通过。", .english: "The definition passes validation."],
+        .dataTaskNeedDryRun: [.simplifiedChinese: "保存前必须先试运行一次。", .english: "Run a dry run before saving."],
+        .dataTaskSaveBlocked: [.simplifiedChinese: "定义还有问题，保存已禁用。", .english: "The definition still has problems; saving is disabled."],
+        .dataTaskWriteStatement: [.simplifiedChinese: "写入语句（真正执行时会先提交审批）", .english: "Write statement (submitted for approval before it runs)"],
+        .dataTaskGuardVerdict: [.simplifiedChinese: "护栏判定", .english: "Guardrail verdict"],
+        .dataTaskSectionRuntime: [.simplifiedChinese: "调度状态与执行", .english: "Schedule status & runs"],
+        .dataTaskStatusNotScheduled: [.simplifiedChinese: "未排期", .english: "Not scheduled"],
+        .dataTaskStatusDisabled: [.simplifiedChinese: "已停用", .english: "Disabled"],
+        .dataTaskStatusWaiting: [.simplifiedChinese: "等待", .english: "Waiting"],
+        .dataTaskStatusDue: [.simplifiedChinese: "到点", .english: "Due"],
+        .dataTaskStatusMissed: [.simplifiedChinese: "错过", .english: "Missed"],
+        .dataTaskNextRun: [.simplifiedChinese: "下次执行：%@", .english: "Next run: %@"],
+        .dataTaskPlannedAt: [.simplifiedChinese: "计划时间：%@", .english: "Planned at: %@"],
+        .dataTaskMissedNotice: [.simplifiedChinese: "晚了约 %d 分钟，请确认是否现在执行。", .english: "About %d minutes late — confirm whether to run it now."],
+        .dataTaskRunNow: [.simplifiedChinese: "现在执行…", .english: "Run now…"],
+        .dataTaskDueNotice: [.simplifiedChinese: "有数据任务已到点，正在按计划推进（写库前仍需批准）。", .english: "A data task is due and is being brought forward (it still needs approval before writing)."],
+        .dataTaskRunPending: [.simplifiedChinese: "已提交审批：批准之后才会真正写库。", .english: "Submitted for approval; it writes only after you approve it."],
+        .dataTaskRunDenied: [.simplifiedChinese: "安全护栏拒绝了这次执行：%@", .english: "The guardrail denied this run: %@"],
+        .dataTaskRunSucceeded: [.simplifiedChinese: "执行完成：写入 %d 行，产物已导出到 %@", .english: "Run finished: %d row(s) written, artifact exported to %@"],
+        .dataTaskRunSucceededNoArtifact: [.simplifiedChinese: "执行完成：写入 %d 行（该任务未配置导出目录）。", .english: "Run finished: %d row(s) written (no export directory configured)."],
+        .dataTaskRunFailed: [.simplifiedChinese: "执行失败：%@", .english: "Run failed: %@"],
+        .dataTaskRunArtifactFailed: [.simplifiedChinese: "写入已完成，但产物导出失败：%@", .english: "The write finished, but exporting the artifact failed: %@"],
+        .dataTaskRunRejected: [.simplifiedChinese: "本次执行未获批准，没有写库。", .english: "This run was not approved, so nothing was written."],
+        .dataTaskRunNotConnected: [.simplifiedChinese: "请先连接一个数据库再执行任务。", .english: "Connect to a database before running a task."],
+        .dataTaskSectionHistory: [.simplifiedChinese: "执行历史", .english: "Run history"],
+        .dataTaskHistoryEmpty: [.simplifiedChinese: "该任务还没有执行记录。", .english: "No runs recorded for this task yet."],
+        .dataTaskHistoryCount: [.simplifiedChinese: "共 %d 条", .english: "%d run(s)"],
+        .dataTaskHistoryColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
+        .dataTaskHistoryColumnStatus: [.simplifiedChinese: "状态", .english: "Status"],
+        .dataTaskHistoryColumnRows: [.simplifiedChinese: "行数", .english: "Rows"],
+        .dataTaskHistoryColumnDuration: [.simplifiedChinese: "耗时", .english: "Duration"],
+        .dataTaskHistoryColumnMessage: [.simplifiedChinese: "消息", .english: "Message"],
+        .dataTaskRunStatusRunning: [.simplifiedChinese: "执行中", .english: "Running"],
+        .dataTaskRunStatusSucceeded: [.simplifiedChinese: "成功", .english: "Succeeded"],
+        .dataTaskRunStatusFailed: [.simplifiedChinese: "失败", .english: "Failed"],
+        .dataTaskRunStatusSkipped: [.simplifiedChinese: "已跳过", .english: "Skipped"],
+        .dataTaskSpecOpen: [.simplifiedChinese: "由规格说明生成…", .english: "Generate from specs…"],
+        .dataTaskSpecTitle: [.simplifiedChinese: "由规格说明生成任务定义", .english: "Generate a task definition from specs"],
+        .dataTaskSpecInput: [.simplifiedChinese: "规格说明（自然语言）", .english: "Specification (natural language)"],
+        .dataTaskSpecHints: [.simplifiedChinese: "额外约束（可选）", .english: "Extra constraints (optional)"],
+        .dataTaskSpecPayload: [.simplifiedChinese: "将要外发给模型的内容", .english: "Content that will be sent to the model"],
+        .dataTaskSpecGenerate: [.simplifiedChinese: "生成定义", .english: "Generate definition"],
+        .dataTaskSpecApply: [.simplifiedChinese: "应用到编辑器", .english: "Apply to editor"],
+        .dataTaskSpecFailed: [.simplifiedChinese: "生成失败：%@", .english: "Generation failed: %@"],
+        .dataTaskSpecNotExecuted: [.simplifiedChinese: "生成结果只填进编辑器：不会保存，也不会执行。", .english: "The result only fills the editor: nothing is saved or executed."],
+        .dataTaskSpecGenerated: [.simplifiedChinese: "已生成定义（请核对后再保存）。", .english: "Definition generated — review it before saving."],
+        .dataTaskSpecDisabled: [.simplifiedChinese: "智能体总开关已关闭，不会外发任何内容。", .english: "The agent master switch is off; nothing will be sent."],
+        .dataTaskSpecNoInput: [.simplifiedChinese: "请先填写规格说明。", .english: "Enter a specification first."],
+        .dataTaskSpecHint: [.simplifiedChinese: "模型只给出定义草案，保存前仍要试运行预览。", .english: "The model only drafts a definition; still dry-run it before saving."],
+        .dataTaskTransformKindRename: [.simplifiedChinese: "重命名", .english: "Rename"],
+        .dataTaskTransformKindCast: [.simplifiedChinese: "类型转换", .english: "Cast"],
+        .dataTaskTransformKindDerive: [.simplifiedChinese: "派生列", .english: "Derive column"],
+        .dataTaskTransformKindDrop: [.simplifiedChinese: "丢弃列", .english: "Drop column"],
+        .dataTaskTransformKindMask: [.simplifiedChinese: "脱敏", .english: "Mask"],
+        .dataTaskWriteModeAppend: [.simplifiedChinese: "追加", .english: "Append"],
+        .dataTaskWriteModeOverwrite: [.simplifiedChinese: "覆盖", .english: "Overwrite"],
+        .dataTaskWriteModeUpsert: [.simplifiedChinese: "更新插入", .english: "Upsert"],
+        .dataTaskScheduleKindManual: [.simplifiedChinese: "手动", .english: "Manual"],
+        .dataTaskScheduleKindOnce: [.simplifiedChinese: "一次性", .english: "Once"],
+        .dataTaskScheduleKindRecurring: [.simplifiedChinese: "周期", .english: "Recurring"],
+        .dataTaskOverwriteWarning: [.simplifiedChinese: "覆盖模式会先清空目标表；真正执行时仍需逐次审批。", .english: "Overwrite truncates the target table first; the run still needs per-run approval."],
+        .dataTaskUpsertWarning: [.simplifiedChinese: "更新插入会改写目标表里已存在的行。", .english: "Upsert rewrites rows that already exist in the target table."],
     ]
 }

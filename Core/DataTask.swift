@@ -462,14 +462,38 @@ public extension DataTaskDefinition {
             issues.append("更新插入（upsert）必须指定冲突键列。")
         }
 
+        // 源列清单为空 = `SELECT *`：此时「丢弃列」挑不出列，更新插入也写不出冲突更新子句。
+        let explicitColumns = source.columns
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if explicitColumns.isEmpty {
+            if transformations.contains(where: { $0.kind == .drop }) {
+                issues.append("未指定源列清单时无法执行「丢弃列」转换（请先列出要读取的列）。")
+            }
+            if target.writeMode == .upsert {
+                issues.append("更新插入（upsert）需要明确的源列清单，不能使用全部列。")
+            }
+        }
+
         for transformation in transformations {
             if transformation.kind == .derive,
                (transformation.expression ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 issues.append("派生列转换缺少表达式。")
             }
+            if transformation.kind == .derive,
+               (transformation.targetColumn ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                issues.append("派生列转换缺少目标列名。")
+            }
             if transformation.kind != .derive,
                (transformation.column ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 issues.append("\(transformation.kind.displayName)转换缺少源列名。")
+            }
+            // 转换引用的列必须在读进来的源列里 —— 不然后面编译 SQL 时才发现，属于白填一遍。
+            if let rawColumn = transformation.column {
+                let column = rawColumn.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !column.isEmpty, !explicitColumns.isEmpty, !explicitColumns.contains(column) {
+                    issues.append("\(transformation.kind.displayName)转换引用的源列「\(column)」不在源列清单里。")
+                }
             }
             if let expression = transformation.expression, !expression.isEmpty,
                AgentGuardrail.detectsEmbeddedStatement(expression) {

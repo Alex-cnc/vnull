@@ -2,7 +2,7 @@ import Foundation
 import PostgresClientCore
 
 /// 把底层错误转成适合直接展示给用户的文本（按当前界面语言）。
-/// AppError 走本地化文案；其他错误保留反射详情，方便排查驱动层问题。
+/// AppError 走本地化文案；Core 的 `LocalizedError` 取它的可读说明；其他错误保留反射详情。
 enum ErrorPresenter {
     static func message(for error: Error) -> String {
         if let appError = error as? AppError {
@@ -20,6 +20,15 @@ enum ErrorPresenter {
             case .queryFailed(let message):
                 return L(.errorQueryFailed, message)
             }
+        }
+
+        // Core 里那些 `LocalizedError`（目录授权、任务执行、模型通道…）自带**可读说明**与
+        // 补救建议；不取它而走反射，界面上就会出现 `bookmarkCreationFailed(reason: "…")`
+        // 这种给不了用户任何帮助的东西。AppError 已在上面单独处理，不受影响。
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
         }
 
         let detail = String(reflecting: error)

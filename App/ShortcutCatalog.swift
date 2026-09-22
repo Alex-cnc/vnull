@@ -44,6 +44,9 @@ enum AppShortcut: CaseIterable {
     /// 智能体审批与审计面板（FR-AI-09）。
     case agentAudit
 
+    /// 数据任务面板（FR-AI-05 / FR-AI-06 / FR-AI-08）。
+    case dataTask
+
     case help
 
     var key: KeyEquivalent {
@@ -71,6 +74,7 @@ enum AppShortcut: CaseIterable {
         case .safeMode: return "s"
         case .confirmAllWrites: return "w"
         case .agentAudit: return "a"
+        case .dataTask: return "t"
         case .help: return "/"
         }
     }
@@ -81,7 +85,7 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .stop:
             return [.command]
-        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .help:
+        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .dataTask, .help:
             return [.command, .shift]
         case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
             return [.command, .option]

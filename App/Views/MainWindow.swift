@@ -74,6 +74,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentAuditPresented) {
             AgentAuditPanel()
         }
+        .sheet(isPresented: $appState.isDataTaskPresented) {
+            DataTaskPanel()
+        }
         .sheet(isPresented: $appState.isExecutionPlanPresented) {
             if let tab = appState.selectedTab {
                 ExecutionPlanPanel(tabID: tab.id)
@@ -84,6 +87,10 @@ struct MainWindow: View {
         }
         .task {
             await appState.loadAgentConfiguration()
+            // 数据任务需要在客户端运行期间一直被调度（FR-AI-06）：
+            // 启动时读一次任务与执行历史，然后由 App 侧的 tick 驱动 Core 的纯时间判定。
+            await appState.loadDataTasks()
+            appState.startDataTaskTicker()
         }
         .alert(
             L(.alertErrorTitle),
