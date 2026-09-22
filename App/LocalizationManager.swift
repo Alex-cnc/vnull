@@ -20,12 +20,25 @@ final class LocalizationManager: ObservableObject {
         } else {
             language = .systemDefault
         }
+        // 让 AppKit 自带的系统级菜单（文件 / 编辑 / 显示 / 窗口 / 帮助…）跟随同一语言。
+        // 注意：这个键**在进程启动时**才被读取，运行时改它对当前进程无效
+        // （实测 `Bundle.main.preferredLocalizations` 不会变）——只对下一次启动生效。
+        Self.syncAppleLanguages(language)
+    }
+
+    /// 同步 `AppleLanguages`：它控制 AppKit 自带的本地化（系统菜单 / 文件对话框 / 关于面板…）。
+    ///
+    /// 必须配合 `Info.plist` 的 `CFBundleLocalizations`（`Scripts/build-app.sh` 里声明了
+    /// en 与 zh-Hans）：不声明时 macOS 会忽略这个键、回退到系统区域，系统菜单就永远是系统语言。
+    private static func syncAppleLanguages(_ language: AppLanguage) {
+        UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
     }
 
     func setLanguage(_ newLanguage: AppLanguage) {
         guard newLanguage != language else { return }
         language = newLanguage
         UserDefaults.standard.set(newLanguage.rawValue, forKey: Self.storageKey)
+        Self.syncAppleLanguages(newLanguage)
 
         // 菜单栏要走两条路才能全变（详见 `Core/MenuLocalization.swift` 的实测记录）：
         // 标题由 SwiftUI 重建命令图时刷新；叶子项 SwiftUI 不管，得自己改 NSMenuItem.title。
