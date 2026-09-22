@@ -6,6 +6,10 @@ struct DoyahStudioApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var localization = LocalizationManager.shared
 
+    init() {
+        MainMenuLocalizer.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             MainWindow()

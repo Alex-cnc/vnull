@@ -820,7 +820,7 @@ public enum LocalizedStrings {
         .agentSaved: [.simplifiedChinese: "已保存智能体设置。", .english: "Agent settings saved."],
         .agentSaveFailed: [.simplifiedChinese: "保存智能体设置失败：%@", .english: "Saving agent settings failed: %@"],
         .agentInvalidHint: [.simplifiedChinese: "配置尚不完整，即使打开总开关也不会外发。", .english: "Configuration is incomplete; nothing will be sent even with the switch on."],
-        .menuAgentGenerateSQL: [.simplifiedChinese: "用自然语言生成 SQL…", .english: "Generate SQL from plain language…"],
+        .menuAgentGenerateSQL: [.simplifiedChinese: "文生 SQL…", .english: "Text-to-SQL…"],
         .agentSQLTitle: [.simplifiedChinese: "自然语言 → SQL", .english: "Plain language → SQL"],
         .agentSQLInstruction: [.simplifiedChinese: "你想要什么？", .english: "What do you want?"],
         .agentSQLInstructionPlaceholder: [.simplifiedChinese: "例如：统计每个客户近 30 天的下单总额，按金额倒序", .english: "e.g. total order amount per customer over the last 30 days, highest first"],
