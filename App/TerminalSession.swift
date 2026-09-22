@@ -37,7 +37,13 @@ final class TerminalSession {
     // MARK: 生命周期
 
     @discardableResult
-    func start(columns: Int, rows: Int, shell: String? = nil, loginShell: Bool = true) -> Bool {
+    func start(
+        columns: Int,
+        rows: Int,
+        shell: String? = nil,
+        loginShell: Bool = true,
+        workingDirectory: String? = nil
+    ) -> Bool {
         guard !isRunning else { return true }
         lastError = nil
 
@@ -52,7 +58,13 @@ final class TerminalSession {
         let pid = forkpty(&master, nil, nil, &window)
 
         if pid == 0 {
-            // ---- 子进程：fork 之后到 exec 之间只能用异步信号安全的调用 ----
+            // ---- 子进程：fork 之后到 exec 之间只用异步信号安全的调用 ----
+            // 不 chdir 的话会继承父进程 cwd —— 而应用被 LaunchServices 拉起时那是 `/`，
+            // 终端一进去就是根目录。启动目录由调用方按三级回退算好传进来。
+            if let workingDirectory, !workingDirectory.isEmpty {
+                _ = chdir(workingDirectory)
+                setenv("PWD", workingDirectory, 1)
+            }
             setenv("TERM", "xterm-256color", 1)
             setenv("COLORTERM", "truecolor", 1)
             setenv("TERM_PROGRAM", "DoyahStudio", 1)

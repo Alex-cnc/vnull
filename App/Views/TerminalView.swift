@@ -43,7 +43,7 @@ final class TerminalModel: ObservableObject {
             self.requestRedraw?()
         }
         screen.resize(columns: columns, rows: rows)
-        if session.start(columns: columns, rows: rows) {
+        if session.start(columns: columns, rows: rows, workingDirectory: Self.launchDirectory()) {
             isRunning = true
         } else {
             isRunning = false
@@ -77,6 +77,25 @@ final class TerminalModel: ObservableObject {
     func stop() {
         session.terminate()
         isRunning = false
+    }
+
+    /// 终端启动目录：工作区（待 Explorer 接入）＞ 有意义的启动目录 ＞ 家目录。
+    ///
+    /// 实测：Finder 双击 / `open` 拉起时 `currentDirectoryPath` 是 `/`，直接继承会让
+    /// 终端一进去就是根目录；从命令行直接跑才是真正的"启动目录"。
+    private static func launchDirectory() -> String {
+        let fileManager = FileManager.default
+        let isUsableDirectory: (String) -> Bool = { path in
+            var isDirectory: ObjCBool = false
+            let exists = fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+            return exists && isDirectory.boolValue && fileManager.isReadableFile(atPath: path)
+        }
+        return TerminalWorkingDirectory.resolve(
+            workspace: nil,
+            launchDirectory: fileManager.currentDirectoryPath,
+            home: fileManager.homeDirectoryForCurrentUser.path,
+            isUsableDirectory: isUsableDirectory
+        )
     }
 }
 
