@@ -307,6 +307,53 @@ final class AppState: ObservableObject {
         return selectedConnection
     }
 
+    // MARK: - 新建表（FR-DDL-03）
+
+    /// 按表设计生成并执行 `CREATE TABLE`。
+    ///
+    /// 与建库 / 删库同一套路：本地先校验 → 生成语句 → 执行 → 成功后 `metadataRevision += 1`
+    /// 让对象树把新表刷出来。**界面会先把 DDL 摊开给使用者看**，所以这里不再二次确认。
+    func createTable(
+        named rawName: String,
+        schema: String?,
+        columns: [TableColumnDefinition]
+    ) async -> Bool {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TableDesign.validate(tableName: name, columns: columns).isEmpty else {
+            errorMessage = L(.tableDesignInvalid)
+            return false
+        }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let trimmedSchema = schema?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sql = SQLGenerator.createTable(
+            table: name,
+            columns: columns,
+            schema: (trimmedSchema?.isEmpty ?? true) ? nil : trimmedSchema,
+            dialect: dialect
+        )
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: currentDatabaseName(for: configuration)
+            )
+            _ = try await runSingleQuery(sql, on: service)
+
+            statusMessage = L(.tableDesignCreated, name)
+            metadataRevision += 1
+            return true
+        } catch {
+            errorMessage = L(.tableDesignFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
     /// 清空当前下方面板页签对应的日志（Problem / Output 页签上的「清空」）。
     func clearLowerPaneLog(for tabID: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }

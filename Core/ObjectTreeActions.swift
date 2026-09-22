@@ -128,7 +128,7 @@ public enum ObjectTreeActions {
 
         case .viewDDL:
             guard !target.columns.isEmpty else { return nil }
-            return SQLGenerator.createTable(
+            return SQLGenerator.createTableDDL(
                 table: target.name,
                 columns: target.columns,
                 schema: target.schema,

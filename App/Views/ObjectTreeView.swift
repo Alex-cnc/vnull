@@ -22,6 +22,8 @@ struct ObjectTreeView: View {
     @State private var isLoadingRoot = false
     @State private var rootError: String?
     @State private var isCreateDatabasePresented = false
+    /// 「新建表」的目标节点（数据库或 schema 节点）；非 nil 时呈现表设计面板。
+    @State private var createTableTarget: DatabaseObject?
     /// 库属性 / 删除数据库（FR-SESS-05）。
     @State private var isPropertiesPresented = false
     @State private var isDropDatabasePresented = false
@@ -89,6 +91,14 @@ struct ObjectTreeView: View {
             )
         ) {
             await reloadRoot()
+        }
+        .sheet(item: $createTableTarget) { target in
+            CreateTableSheet(
+                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
+                initialSchema: target.kind == .schema ? target.name : target.schema
+            ) { name, schema, columns in
+                Task { _ = await appState.createTable(named: name, schema: schema, columns: columns) }
+            }
         }
         .sheet(isPresented: $isCreateDatabasePresented) {
             CreateDatabaseSheet { name in
@@ -362,6 +372,13 @@ struct ObjectTreeView: View {
             Divider()
 
             // 只生成语句、不执行；真要跑还会被 Safe Mode 拦一次。
+            if object.kind == .database || object.kind == .schema {
+                Divider()
+                Button(L(.tableDesignTitle)) {
+                    createTableTarget = object
+                }
+            }
+
             Button(L(.treeActionTruncate), role: .destructive) {
                 runTreeAction(.truncateTable, on: object)
             }

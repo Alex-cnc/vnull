@@ -41,6 +41,33 @@ public enum LKey: String, CaseIterable, Sendable {
     case menuNewQuery
     case menuLanguage
 
+    // 表设计（FR-DDL-03）
+    case tableDesignTitle
+    case tableDesignName
+    case tableDesignSchema
+    case tableDesignSchemaHint
+    case tableDesignColumns
+    case tableDesignAddColumn
+    case tableDesignColumnName
+    case tableDesignColumnType
+    case tableDesignColumnNullable
+    case tableDesignColumnPrimaryKey
+    case tableDesignColumnDefault
+    case tableDesignPreview
+    case tableDesignCreate
+    case tableDesignHint
+    case tableDesignCreated
+    case tableDesignFailed
+    case tableDesignInvalid
+    case tableDesignRemoveColumn
+    case tableIssueNameEmpty
+    case tableIssueNameInvalid
+    case tableIssueNoColumns
+    case tableIssueColumnNameEmpty
+    case tableIssueColumnNameInvalid
+    case tableIssueColumnNameDuplicate
+    case tableIssueColumnTypeEmpty
+
     // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）
     case lowerPaneProblem
     case lowerPaneOutput
@@ -670,6 +697,31 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
+        .tableDesignTitle: [.simplifiedChinese: "新建表", .english: "New Table"],
+        .tableDesignName: [.simplifiedChinese: "表名", .english: "Table name"],
+        .tableDesignSchema: [.simplifiedChinese: "模式（schema，可留空）", .english: "Schema (optional)"],
+        .tableDesignSchemaHint: [.simplifiedChinese: "留空表示用当前搜索路径里的模式。", .english: "Leave empty to use the current search path."],
+        .tableDesignColumns: [.simplifiedChinese: "列", .english: "Columns"],
+        .tableDesignAddColumn: [.simplifiedChinese: "添加列", .english: "Add column"],
+        .tableDesignColumnName: [.simplifiedChinese: "列名", .english: "Name"],
+        .tableDesignColumnType: [.simplifiedChinese: "类型", .english: "Type"],
+        .tableDesignColumnNullable: [.simplifiedChinese: "可空", .english: "Nullable"],
+        .tableDesignColumnPrimaryKey: [.simplifiedChinese: "主键", .english: "Primary key"],
+        .tableDesignColumnDefault: [.simplifiedChinese: "默认值", .english: "Default"],
+        .tableDesignPreview: [.simplifiedChinese: "将要执行的 DDL", .english: "DDL to be executed"],
+        .tableDesignCreate: [.simplifiedChinese: "创建", .english: "Create"],
+        .tableDesignHint: [.simplifiedChinese: "先核对下面的语句；点「创建」之前不会对数据库做任何事。", .english: "Review the statement below; nothing touches the database until you press Create."],
+        .tableDesignCreated: [.simplifiedChinese: "已创建表 %@。", .english: "Created table %@."],
+        .tableDesignFailed: [.simplifiedChinese: "创建表失败：%@", .english: "Creating the table failed: %@"],
+        .tableDesignInvalid: [.simplifiedChinese: "表定义还有问题，请按提示修正。", .english: "The table definition still has problems; fix the listed items."],
+        .tableDesignRemoveColumn: [.simplifiedChinese: "移除这一列", .english: "Remove this column"],
+        .tableIssueNameEmpty: [.simplifiedChinese: "请先填写表名。", .english: "Enter a table name first."],
+        .tableIssueNameInvalid: [.simplifiedChinese: "表名不合法：%@", .english: "Invalid table name: %@"],
+        .tableIssueNoColumns: [.simplifiedChinese: "至少要有一列。", .english: "At least one column is required."],
+        .tableIssueColumnNameEmpty: [.simplifiedChinese: "第 %d 列还没有名字。", .english: "Column %d has no name yet."],
+        .tableIssueColumnNameInvalid: [.simplifiedChinese: "列名不合法：%@", .english: "Invalid column name: %@"],
+        .tableIssueColumnNameDuplicate: [.simplifiedChinese: "列名重复：%@", .english: "Duplicate column name: %@"],
+        .tableIssueColumnTypeEmpty: [.simplifiedChinese: "列 %@ 还没有类型。", .english: "Column %@ has no type yet."],
         .lowerPaneProblem: [.simplifiedChinese: "问题", .english: "Problems"],
         .lowerPaneOutput: [.simplifiedChinese: "输出", .english: "Output"],
         .lowerPaneTerminal: [.simplifiedChinese: "终端", .english: "Terminal"],

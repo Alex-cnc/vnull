@@ -72,7 +72,7 @@ final class SQLGeneratorTests: XCTestCase {
             ColumnMeta(id: 0, name: "id", typeName: "integer", isNullable: false),
             ColumnMeta(id: 1, name: "name", typeName: "text", isNullable: true)
         ]
-        let sql = SQLGenerator.createTable(table: "users", columns: columns, schema: "public", dialect: pg)
+        let sql = SQLGenerator.createTableDDL(table: "users", columns: columns, schema: "public", dialect: pg)
 
         XCTAssertEqual(
             sql,
@@ -81,7 +81,7 @@ final class SQLGeneratorTests: XCTestCase {
     }
 
     func testCreateTableWithoutColumns() {
-        XCTAssertEqual(SQLGenerator.createTable(table: "t", columns: [], dialect: pg),
+        XCTAssertEqual(SQLGenerator.createTableDDL(table: "t", columns: [], dialect: pg),
                        "CREATE TABLE \"t\" ();")
     }
 

@@ -67,11 +67,14 @@ public enum SQLGenerator {
         return "SELECT \(columnList) FROM \(target);"
     }
 
-    /// 依据列定义生成 `CREATE TABLE`（FR-DDL-01）。
+    /// 依据**已存在表**的元数据反查 `CREATE TABLE`（FR-DDL-01），供「查看建表 DDL」使用。
     ///
-    /// 只覆盖「列名 + 类型 + 是否可空」这三项最基本的信息：
-    /// 主键、默认值、约束、索引需要更完整的元数据，当前不做（见任务清单）。
-    public static func createTable(
+    /// 只覆盖「列名 + 类型 + 是否可空」这三项 —— 元数据里也就这些。
+    /// 新建表的场景请用下面接受 `[TableColumnDefinition]` 的 `createTable`（支持主键与默认值）。
+    ///
+    /// 刻意**不叫** `createTable`：两者只差数组元素类型，重载会让 `columns: []` 这种空字面量
+    /// 产生歧义，按用途分开命名更不容易踩错。
+    public static func createTableDDL(
         table: String,
         columns: [ColumnMeta],
         schema: String? = nil,
@@ -89,6 +92,56 @@ public enum SQLGenerator {
             }
             return definition
         }
+
+        return "CREATE TABLE \(target) (\n    " + definitions.joined(separator: ",\n    ") + "\n);"
+    }
+
+    /// 依据**表设计**生成 `CREATE TABLE`（FR-DDL-03）。
+    ///
+    /// 与上面那个 `[ColumnMeta]` 版本的区别：这个支持主键与默认值 —— 那才是"新建一张表"
+    /// 需要的东西；`ColumnMeta` 版本只用于反查已存在的表结构（「查看建表 DDL」），保持不动。
+    ///
+    /// - 单列主键写成行内 `PRIMARY KEY`；多列主键写成表级 `PRIMARY KEY (a, b)`（复合主键）。
+    /// - 主键列强制 `NOT NULL`（即使使用者勾了可空，服务端也会这么要求）。
+    /// - `defaultValue` 按原样 SQL 表达式写进去，不做转义 —— 界面上有实时预览，
+    ///   看到什么就执行什么；这是使用者自己的库、自己填的内容。
+    public static func createTable(
+        table: String,
+        columns: [TableColumnDefinition],
+        schema: String? = nil,
+        dialect: any SQLDialect
+    ) -> String {
+        let target = qualifiedName(table: table, schema: schema, dialect: dialect)
+        guard !columns.isEmpty else {
+            return "CREATE TABLE \(target) ();"
+        }
+
+        let primaryKeys = columns
+            .filter(\.isPrimaryKey)
+            .map { dialect.quoteIdentifier($0.name) }
+        let singlePrimaryKey = primaryKeys.count == 1 ? primaryKeys[0] : nil
+
+        var definitions: [String] = columns.map { column -> String in
+            var definition = "\(dialect.quoteIdentifier(column.name)) \(column.typeName.trimmingCharacters(in: .whitespaces))"
+
+            if column.isPrimaryKey {
+                definition += " NOT NULL"
+                if primaryKeys.count == 1 { definition += " PRIMARY KEY" }
+            } else if !column.isNullable {
+                definition += " NOT NULL"
+            }
+
+            let defaultValue = column.defaultValue.trimmingCharacters(in: .whitespaces)
+            if !defaultValue.isEmpty {
+                definition += " DEFAULT \(defaultValue)"
+            }
+            return definition
+        }
+
+        if primaryKeys.count > 1 {
+            definitions.append("PRIMARY KEY (" + primaryKeys.joined(separator: ", ") + ")")
+        }
+        _ = singlePrimaryKey
 
         return "CREATE TABLE \(target) (\n    " + definitions.joined(separator: ",\n    ") + "\n);"
     }
