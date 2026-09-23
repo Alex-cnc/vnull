@@ -49,16 +49,26 @@ struct ResultTableView: View {
 
                     if result.columns.isEmpty {
                         emptyResultSet(result)
-                    } else if isRowDetailPresented {
-                        // 打开侧栏时改成左右分栏：左边表格 + 分页条，右边竖排的单行详情。
-                        // 子视图数量按分支写死（`HSplitView` 的分隔项必须在构建时固定）。
-                        HSplitView {
-                            gridSection(for: result, page: page)
-                                .frame(minWidth: RowDetailMetrics.minGridWidth)
-                            detailPanel(for: result, page: page)
-                        }
                     } else {
-                        gridSection(for: result, page: page)
+                        HStack(spacing: 0) {
+                            // `maxWidth: .infinity`：表格吃掉剩余宽度，侧栏只拿它自己那一段 ——
+                            // 不写的话两者的伸缩范围都不明确，分栏宽度会随内容飘。
+                            gridSection(for: result, page: page)
+                                .frame(minWidth: RowDetailMetrics.minGridWidth, maxWidth: .infinity)
+
+                            // 槽位 2 是恒定的 `_ConditionalContent`（关闭时是 EmptyView）：
+                            // 表格在槽位 1，它的**结构身份不随侧栏开关变化** —— 用户调过的列宽、
+                            // 表格滚动位置、当前高亮都留着。
+                            //
+                            // 这里刻意不用 `HSplitView`：它的子视图数量得在构建时固定（本仓
+                            // `QueryWorkspaceView` 为此把 VSplitView 的四种组合各写了一条），
+                            // 于是"开/关侧栏"只能整条换掉视图树，`ResultGrid` 跟着被重建，
+                            // 上面那些状态就一次全丢。可拖动分隔条换不回这个代价。
+                            if isRowDetailPresented {
+                                HairlineView(vertical: true)
+                                detailPanel(for: result, page: page)
+                            }
+                        }
                     }
                 }
                 // 换结果集（重新执行 / 切结果集页签）时把客户端视图归零：
@@ -238,12 +248,12 @@ struct ResultTableView: View {
     /// 否则侧栏显示的就是"另一行"。
     private func detailPanel(for result: QueryResult, page: ResultPage) -> some View {
         let selection = selectedDetailRow(in: page)
-        return RowDetailPanel(
+        let panel = RowDetailPanel(
             columns: result.columns,
             row: selection?.row,
             rowNumber: selection?.number
         )
-        .frame(
+        return panel.frame(
             minWidth: RowDetailMetrics.minPanelWidth,
             idealWidth: RowDetailMetrics.idealPanelWidth,
             maxWidth: RowDetailMetrics.maxPanelWidth
@@ -284,11 +294,12 @@ struct ResultTableView: View {
 ///
 /// 需求给的区间是 280~340，取中值 320 当默认：再窄，列名 + 类型名 + 复制按钮会挤到换行；
 /// 再宽，就从结果表手里抢横向空间了 —— 结果表本身就是宽表，横向空间比侧栏更值钱。
-/// 允许拖到 440：长 JSON 想看得舒服时用户自己拉宽。
+/// 上下限给到 280~440 的弹性区间（不是写死 320）：窗口窄的时候侧栏自己收窄，
+/// 不会把表格挤没；长 JSON 想看得舒服时也有更宽的档位。
 private enum RowDetailMetrics {
     static let minPanelWidth: CGFloat = 280
     static let idealPanelWidth: CGFloat = 320
     static let maxPanelWidth: CGFloat = 440
-    /// 左半边表格的最小宽度：分隔条不能被拖到把表格挤没（拖没之后想拖回来都找不到把手）。
+    /// 左半边表格的最小宽度：横向空间不够时先挤表格也不该被挤到看不见内容。
     static let minGridWidth: CGFloat = 240
 }
