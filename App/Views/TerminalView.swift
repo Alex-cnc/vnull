@@ -1,3 +1,5 @@
+// token-ok-file: 终端 ANSI 16 色板是**终端语义**（由 PTY 输出与 shell 期望决定），不是界面设计令牌；
+// 它必须与真实终端一致，不能改写成主题色。界面自身的颜色仍走 Theme。
 import AppKit
 import SwiftUI
 import DoyahCore

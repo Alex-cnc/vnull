@@ -7,10 +7,13 @@ import SwiftUI
 /// 选中行（淡填充 + 左侧 2pt 强调条）、主按钮（实心填充 + 白字）、焦点环，
 /// 这三个正是强调色在整个界面里**唯一**会出现的地方。
 /// 用户看到的就是以后每天看到的东西，选色不再是"凭想象"。
+///
+/// 本文件也是**令牌层的第一块迁移样板**：间距 / 圆角 / 字号 / 发丝线全部取自
+/// `Spacing` / `Radius` / `Theme`，没有任何裸数字与裸颜色
+/// （由 `Scripts/check-design-tokens.py` 的棘轮守着）。
 struct AppearanceSheet: View {
 
     @EnvironmentObject private var accent: AccentManager
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -27,24 +30,24 @@ struct AppearanceSheet: View {
     // MARK: 头部
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(L(.appearanceTitle))
-                .font(.system(size: 15, weight: .semibold))
+                .font(Theme.font(.title))
             Text(L(.appearanceThemeNote))
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
     }
 
     // MARK: 强调色
 
     private var accentSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.m) {
             Text(L(.appearanceAccentSection))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
 
             ForEach(AccentTheme.all) { theme in
                 AccentOptionRow(theme: theme, isSelected: theme == accent.theme) {
@@ -53,11 +56,11 @@ struct AppearanceSheet: View {
             }
 
             Text(L(.appearanceAccentHint))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
     }
 
     // MARK: 底部
@@ -68,8 +71,8 @@ struct AppearanceSheet: View {
             Button(L(.commonClose)) { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
     }
 }
 
@@ -88,61 +91,64 @@ private struct AccentOptionRow: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .center, spacing: Spacing.m) {
                 // 选中标记 + 色点 + 名称
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? accentColor : Color.secondary.opacity(0.5))
+                    .font(Theme.font(.body))
+                    .foregroundStyle(isSelected ? accentColor : Theme.text(.tertiary))
 
                 Circle()
                     .fill(accentColor)
                     .frame(width: 14, height: 14)
 
                 Text(L(theme.nameKey))
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .font(isSelected ? Theme.font(.bodyStrong) : Theme.font(.body))
                     .frame(width: 78, alignment: .leading)
 
                 preview
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, Spacing.m)
+            .padding(.vertical, Spacing.s)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .fill(isSelected ? tintColor : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isSelected ? accentColor.opacity(0.55) : Color.secondary.opacity(0.18), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? accentColor.opacity(0.55) : Theme.hairline(scheme),
+                        lineWidth: Metrics.hairline
+                    )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
     /// 三个真实场景：选中行 / 主按钮 / 焦点环。
     private var preview: some View {
-        HStack(spacing: 10) {
-            // 选中行：淡填充 + 左侧 2pt 强调条
-            HStack(spacing: 6) {
+        HStack(spacing: Spacing.s) {
+            // 选中行：淡填充 + 左侧强调条
+            HStack(spacing: Spacing.hair) {
                 Rectangle()
                     .fill(accentColor)
-                    .frame(width: 2, height: 14)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .frame(width: Spacing.hair, height: 14)
+                RoundedRectangle(cornerRadius: Radius.badge, style: .continuous)
                     .fill(tintColor)
                     .frame(width: 46, height: 14)
             }
 
             // 主按钮：实心填充 + 白字
             Text(L(theme.nameKey).prefix(2))
-                .font(.system(size: 10, weight: .semibold))
+                .font(Theme.font(.caption))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(fillColor))
+                .padding(.horizontal, Spacing.s)
+                .padding(.vertical, Spacing.hair)
+                .background(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).fill(fillColor))
 
             // 焦点环
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                 .strokeBorder(accentColor, lineWidth: 1.5)
                 .frame(width: 34, height: 18)
         }

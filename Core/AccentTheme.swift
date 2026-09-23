@@ -76,32 +76,23 @@ public struct AccentTheme: Equatable, Sendable, Identifiable {
         public static let key = "ui.accentTheme"
     }
 
-    // MARK: 色值与对比度（纯函数，便于单测）
+    // MARK: 色值与对比度
+    //
+    // 计算本身收在 `ColorContrast`（全工程唯一一份），这里只做转调 ——
+    // 避免"强调色"和"设计令牌"各算一套对比度、两套阈值。
 
     /// 把 `0xRRGGBB` 拆成 0...1 的分量。
     public static func components(_ hex: UInt32) -> (red: Double, green: Double, blue: Double) {
-        (
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255
-        )
+        ColorContrast.components(hex)
     }
 
     /// WCAG 相对亮度。
     public static func relativeLuminance(_ hex: UInt32) -> Double {
-        let (red, green, blue) = components(hex)
-        func linear(_ value: Double) -> Double {
-            value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        ColorContrast.relativeLuminance(hex)
     }
 
     /// WCAG 对比度（1...21）。
     public static func contrastRatio(_ lhs: UInt32, _ rhs: UInt32) -> Double {
-        let a = relativeLuminance(lhs)
-        let b = relativeLuminance(rhs)
-        let lighter = max(a, b)
-        let darker = min(a, b)
-        return (lighter + 0.05) / (darker + 0.05)
+        ColorContrast.ratio(lhs, rhs)
     }
 }
