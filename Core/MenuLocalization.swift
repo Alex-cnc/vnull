@@ -28,6 +28,7 @@ public enum MenuLocalization {
         .menuAgentGenerateSQL,
         .menuDataTask,
         .menuAgentAudit,
+        .menuEgressLog,
         .menuLanguage,
         .menuAppearance,
         .menuViewDatabase,

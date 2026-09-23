@@ -222,6 +222,11 @@ final class AppState: ObservableObject {
 
     /// 「审批与审计…」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentAuditPresented = false
+    /// 统一外发日志面板（NFR-SEC-08）。
+    @Published var isEgressLogPresented = false
+    @Published var egressEntries: [EgressEntry] = []
+    @Published var egressMessage: String?
+    @Published var egressError: String?
     /// 审计记录（读自本地 JSONL，顺序 = 写入顺序 = 时间顺序）。
     @Published var agentAuditRecords: [AgentActionRecord] = []
     @Published var isAgentAuditLoading = false
@@ -500,6 +505,7 @@ final class AppState: ObservableObject {
     private let agentKeyStore: AgentKeyStore = KeychainAgentKeyStore()
     /// 审计日志（追加式 JSONL）；导出前脱敏在 Core 里完成（NFR-AI-03）。
     private let agentAuditLog = AgentAuditLog.shared
+    private let egressLog = EgressLog.shared
 
 
     /// 连接缓存键：同一个「已保存连接」可以在多个数据库上各持有一条连接。
@@ -1268,6 +1274,61 @@ final class AppState: ObservableObject {
     /// `AgentAudit.redacted`），界面只负责选路径与写文件 —— 不在这里另拼一份导出，
     /// 否则「导出前脱敏」就成了看遵守不遵守的君子协定。
     @discardableResult
+    // MARK: - 统一外发日志（NFR-SEC-08）
+
+    /// 读取外发日志（新的在前）。
+    func refreshEgressLog() async {
+        do {
+            egressEntries = try await egressLog.entries()
+            egressError = nil
+        } catch {
+            egressError = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 清空外发日志（二次确认在界面上做）。
+    func clearEgressLog() async {
+        do {
+            try await egressLog.clear()
+            egressEntries = []
+            egressMessage = L(.egressCleared)
+            egressError = nil
+        } catch {
+            egressError = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 导出外发日志（JSON / CSV）。
+    func exportEgressLog(asCSV: Bool) async -> Bool {
+        guard !egressEntries.isEmpty else {
+            egressError = L(.egressExportEmpty)
+            return false
+        }
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        let baseName = asCSV ? "egress-log" : "egress-log"
+        let ext = asCSV ? "csv" : "json"
+        panel.nameFieldStringValue = "\(baseName).\(ext)"
+        if let type = UTType(filenameExtension: ext) {
+            panel.allowedContentTypes = [type]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+
+        do {
+            let data: Data = asCSV
+                ? Data(try await egressLog.exportCSV().utf8)
+                : try await egressLog.exportJSON()
+            try data.write(to: url, options: [.atomic])
+            egressError = nil
+            egressMessage = L(.egressExported, egressEntries.count, url.lastPathComponent)
+            return true
+        } catch {
+            egressError = L(.egressExportFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
     func exportAgentAudit(format: AgentAuditExportFormat) async -> Bool {
         guard !agentAuditRecords.isEmpty else {
             agentAuditError = L(.agentAuditExportEmpty)
@@ -1603,7 +1664,12 @@ final class AppState: ObservableObject {
                 // 只读模式 / 白名单来自配置（FR-AI-09），不再写死默认策略。
                 policy: agentGuardPolicy,
                 ledger: .empty,
-                client: OpenAICompatibleClient()
+                client: OpenAICompatibleClient(
+                    transport: EgressRecordingTransport(
+                        origin: "智能体 · 用自然语言生成 SQL",
+                        wrapped: URLSessionTransport()
+                    )
+                )
             )
             await recordAgentModelCall(summary: instruction, outcome: .generated, since: started)
             return result
@@ -1661,7 +1727,12 @@ final class AppState: ObservableObject {
                 // 只读模式 / 白名单来自配置（FR-AI-09），与其它智能体路径同一份策略。
                 policy: agentGuardPolicy,
                 ledger: .empty,
-                client: OpenAICompatibleClient()
+                client: OpenAICompatibleClient(
+                    transport: EgressRecordingTransport(
+                        origin: "智能体 · 数据任务规格",
+                        wrapped: URLSessionTransport()
+                    )
+                )
             )
             await recordAgentModelCall(summary: specs, outcome: .generated, since: started)
             return result

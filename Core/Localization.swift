@@ -366,6 +366,32 @@ public enum LKey: String, CaseIterable, Sendable {
 
     // 执行审批与审计（FR-AI-09 / NFR-AI-03）
     case menuAgentAudit
+    case menuEgressLog
+    case egressColumnTime
+    case egressColumnKind
+    case egressColumnTarget
+    case egressColumnOrigin
+    case egressColumnOutcome
+    case egressTitle
+    case egressSubtitle
+    case egressEmpty
+    case egressClear
+    case egressClearConfirmTitle
+    case egressClearConfirmMessage
+    case egressCleared
+    case egressExportCSV
+    case egressExportJSON
+    case egressExported
+    case egressExportEmpty
+    case egressExportFailed
+    case egressKindAgentModel
+    case egressKindBrowser
+    case egressKindExternalProgram
+    case egressKindUpdateCheck
+    case egressOutcomeAllowed
+    case egressOutcomeDenied
+    case egressOutcomeFailed
+    case egressCount
     case agentAuditTitle
     case agentAuditRefresh
     case agentAuditClear
@@ -1061,6 +1087,32 @@ public enum LocalizedStrings {
         .agentSQLDenied: [.simplifiedChinese: "安全护栏已拒绝：%@", .english: "Refused by the guardrail: %@"],
 
         .menuAgentAudit: [.simplifiedChinese: "审批与审计…", .english: "Approvals & Audit…"],
+        .menuEgressLog: [.simplifiedChinese: "外发日志…", .english: "Egress Log…"],
+        .egressColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
+        .egressColumnKind: [.simplifiedChinese: "类别", .english: "Kind"],
+        .egressColumnTarget: [.simplifiedChinese: "目标", .english: "Target"],
+        .egressColumnOrigin: [.simplifiedChinese: "触发来源", .english: "Origin"],
+        .egressColumnOutcome: [.simplifiedChinese: "结果", .english: "Outcome"],
+        .egressTitle: [.simplifiedChinese: "外发日志", .english: "Egress Log"],
+        .egressSubtitle: [.simplifiedChinese: "本机所有出网请求都会记在这里（智能体模型调用、内嵌浏览器、外部程序、更新检查）。默认零外发的承诺，靠它可查、可导出、可清空。", .english: "Every outbound request from this machine is recorded here (agent model calls, embedded browser, external tools, update checks). This is what makes the zero-egress promise verifiable."],
+        .egressEmpty: [.simplifiedChinese: "还没有任何出网记录 —— 这就是「默认零外发」的样子", .english: "No egress records yet — this is what zero egress looks like"],
+        .egressClear: [.simplifiedChinese: "清空", .english: "Clear"],
+        .egressClearConfirmTitle: [.simplifiedChinese: "清空外发日志？", .english: "Clear the egress log?"],
+        .egressClearConfirmMessage: [.simplifiedChinese: "清空后无法恢复。审计用的审批记录不受影响。", .english: "This cannot be undone. Approval audit records are not affected."],
+        .egressCleared: [.simplifiedChinese: "外发日志已清空", .english: "Egress log cleared"],
+        .egressExportCSV: [.simplifiedChinese: "导出 CSV", .english: "Export CSV"],
+        .egressExportJSON: [.simplifiedChinese: "导出 JSON", .english: "Export JSON"],
+        .egressExported: [.simplifiedChinese: "已导出 %d 条外发记录到 %@", .english: "Exported %d egress record(s) to %@"],
+        .egressExportEmpty: [.simplifiedChinese: "还没有可导出的外发记录", .english: "No egress records to export yet"],
+        .egressExportFailed: [.simplifiedChinese: "导出失败：%@", .english: "Export failed: %@"],
+        .egressKindAgentModel: [.simplifiedChinese: "智能体模型", .english: "Agent model"],
+        .egressKindBrowser: [.simplifiedChinese: "内嵌浏览器", .english: "Embedded browser"],
+        .egressKindExternalProgram: [.simplifiedChinese: "外部程序", .english: "External tool"],
+        .egressKindUpdateCheck: [.simplifiedChinese: "更新检查", .english: "Update check"],
+        .egressOutcomeAllowed: [.simplifiedChinese: "已发出", .english: "Sent"],
+        .egressOutcomeDenied: [.simplifiedChinese: "已拦下", .english: "Blocked"],
+        .egressOutcomeFailed: [.simplifiedChinese: "失败", .english: "Failed"],
+        .egressCount: [.simplifiedChinese: "共 %d 条", .english: "%d record(s)"],
         .agentAuditTitle: [.simplifiedChinese: "审批与审计", .english: "Approvals & Audit"],
         .agentAuditRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
         .agentAuditClear: [.simplifiedChinese: "清空审计…", .english: "Clear audit…"],

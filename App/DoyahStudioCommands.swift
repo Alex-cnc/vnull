@@ -68,6 +68,11 @@ struct DoyahStudioCommands: Commands {
                 appState.isAgentAuditPresented = true
             }
             .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
+
+            Button(L(.menuEgressLog)) {
+                appState.isEgressLogPresented = true
+            }
+            .keyboardShortcut(AppShortcut.egressLog.key, modifiers: AppShortcut.egressLog.modifiers)
         }
 
         // 「显示」菜单：下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）。

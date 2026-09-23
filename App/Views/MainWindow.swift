@@ -101,6 +101,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentAuditPresented) {
             AgentAuditPanel()
         }
+        .sheet(isPresented: $appState.isEgressLogPresented) {
+            EgressLogSheet()
+        }
         .sheet(isPresented: $appState.isDataTaskPresented) {
             DataTaskPanel()
         }

@@ -236,6 +236,19 @@ public enum DataTaskSpecGenerator {
     ) async throws -> Result {
         // ① 总开关与配置（AC-AI-01：关闭时连请求都不发）。
         let decision = AgentGate.decide(configuration: configuration, apiKey: apiKey)
+
+        // 被闸门拦下同样要留痕（NFR-SEC-08）：`denied` 记的是「想发但没发出去」，
+        // 它与「根本没想发」是两件事 —— 只记后者，"零外发"就无法被审计。
+        if case .allowed = decision {} else {
+            await EgressLog.shared.record(
+                kind: .agentModel,
+                target: configuration.endpoint,
+                origin: "智能体 · 数据任务规格",
+                outcome: .denied,
+                detail: "\(decision)"
+            )
+        }
+
         switch decision {
         case .disabled:
             throw LLMError.disabled
