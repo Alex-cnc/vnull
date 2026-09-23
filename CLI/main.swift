@@ -409,6 +409,90 @@ struct DoyahCLI {
         }
     }
 
+    /// 整表导出的 `SELECT`：不手写 SQL 也能导整张表（FR-IO-02）。
+    ///
+    /// 排序不指定 —— 大表上 `ORDER BY` 会让服务端先排完再吐，反而更慢也更吃内存。
+    static func tableSelect(_ table: String, schema: String?, dialect: PostgresDialect) -> String {
+        "SELECT * FROM " + SQLGenerator.qualifiedName(table: table, schema: schema, dialect: dialect)
+    }
+
+    /// 整库导出：把 schema 下每张表各导出一个文件。
+    ///
+    /// 逐表串行（不并发）：客户端与数据库的连接是共享的，并发导出只会互相抢带宽，
+    /// 还会让"导出到哪一步了"变得难说清。
+    static func exportAllTables(
+        schema: String?,
+        directory: String,
+        formatName: String,
+        fetchSize: Int,
+        service: any DatabaseService,
+        dialect: PostgresDialect
+    ) async -> Int32 {
+        let schemaName = schema ?? "public"
+        let listSQL = """
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = '\(schemaName.replacingOccurrences(of: "'", with: "''"))'
+          AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+        """
+        var tables: [String] = []
+        do {
+            for try await event in service.execute(listSQL, options: .default) {
+                if case .resultSet(let result) = event {
+                    tables = result.rows.compactMap { $0.first ?? nil }.filter { !$0.isEmpty }
+                }
+            }
+        } catch {
+            print("列出表失败：\(error.localizedDescription)")
+            return 66
+        }
+        guard !tables.isEmpty else {
+            print("\(schemaName) 下没有表可导出")
+            return 66
+        }
+
+        let directoryURL = URL(fileURLWithPath: directory, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        } catch {
+            print("创建目录失败：\(error.localizedDescription)")
+            return 66
+        }
+
+        let ext: String
+        switch formatName.lowercased() {
+        case "json": ext = "json"
+        case "tsv": ext = "tsv"
+        case "markdown", "md": ext = "md"
+        case "insert", "sql": ext = "sql"
+        default: ext = "csv"
+        }
+
+        print("整库导出：\(schemaName) 下 \(tables.count) 张表 → \(directoryURL.path)")
+        var failures = 0
+        for table in tables {
+            let file = directoryURL.appendingPathComponent("\(table).\(ext)")
+            let code = await exportQueryToFile(
+                query: tableSelect(table, schema: schema, dialect: dialect),
+                outputPath: file.path,
+                formatName: formatName,
+                fetchSize: fetchSize,
+                tableName: table,
+                service: service,
+                dialect: dialect,
+                quiet: false
+            )
+            if code != 0 { failures += 1 }
+        }
+
+        if failures > 0 {
+            print("完成但有 \(failures) 张表导出失败")
+            return 68
+        }
+        print("整库导出完成：\(tables.count) 张表")
+        return 0
+    }
+
     /// `import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]`
     ///
     /// 默认**不写库**：先打印列映射、未匹配的列、非法值样例与将执行的语句 ——
@@ -943,8 +1027,30 @@ struct DoyahCLI {
             return arguments[index + 1]
         }
 
-        guard let query = value(for: "--query") ?? value(for: "-c") else {
-            print("用法：export --query \"SELECT …\" --out <文件> [--format csv|json|tsv|markdown|insert] [--fetch-size N] [--table 名]")
+        let schema = value(for: "--schema")
+
+        // 模式一：**整库导出**（FR-IO-02）—— 指定 schema 下的每张表各导出一个文件。
+        if arguments.contains("--all-tables") {
+            guard let directory = value(for: "--out-dir") else {
+                print("整库导出需要 --out-dir <目录>")
+                return 64
+            }
+            return await exportAllTables(
+                schema: schema,
+                directory: directory,
+                formatName: value(for: "--format") ?? "csv",
+                fetchSize: Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize,
+                service: service,
+                dialect: dialect
+            )
+        }
+
+        // 模式二：**整表导出**（FR-IO-02）—— 不用手写 SELECT。
+        let explicitQuery = value(for: "--query") ?? value(for: "-c")
+        let tableName = value(for: "--table")
+        guard let query = explicitQuery ?? tableName.map({ tableSelect($0, schema: schema, dialect: dialect) }) else {
+            print("用法：export --query \"SELECT …\" | --table <表> | --all-tables --out-dir <目录>")
+            print("      --out <文件> [--format csv / json / tsv / markdown / insert] [--fetch-size N] [--schema S]")
             return 64
         }
         guard let outputPath = value(for: "--out") else {
@@ -952,8 +1058,36 @@ struct DoyahCLI {
             return 64
         }
 
+        // 每页行数（抽出函数时漏掉了这一行，编译当场报「cannot find 'fetchSize' in scope」）。
+        let fetchSize = Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize
+
+        return await exportQueryToFile(
+            query: query,
+            outputPath: outputPath,
+            formatName: value(for: "--format") ?? "csv",
+            fetchSize: fetchSize,
+            tableName: tableName ?? "table_name",
+            service: service,
+            dialect: dialect,
+            quiet: false
+        )
+    }
+
+    /// 把一条查询用**服务端游标**逐页取、**流式**写进文件（FR-RES-13 / FR-IO-02 共用的那条路）。
+    ///
+    /// 抽成函数的原因：整库导出要按表重复调用它 —— 复制一遍就等于两处各自演化。
+    static func exportQueryToFile(
+        query: String,
+        outputPath: String,
+        formatName: String,
+        fetchSize: Int,
+        tableName: String,
+        service: any DatabaseService,
+        dialect: PostgresDialect,
+        quiet: Bool
+    ) async -> Int32 {
         let format: ResultExportFormat
-        switch (value(for: "--format") ?? "csv").lowercased() {
+        switch formatName.lowercased() {
         case "csv": format = .csv
         case "json": format = .json
         case "tsv": format = .tsv
@@ -963,8 +1097,6 @@ struct DoyahCLI {
             print("不支持的格式（csv / json / tsv / markdown / insert）")
             return 64
         }
-
-        let fetchSize = Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize
         guard fetchSize > 0 else {
             print("--fetch-size 必须大于 0")
             return 64
@@ -972,27 +1104,19 @@ struct DoyahCLI {
 
         let plan: CursorPagingPlan
         switch CursorPaging.plan(query: query, pageSize: fetchSize) {
-        case .success(let value):
-            plan = value
+        case .success(let value): plan = value
         case .failure(let error):
             print("无法导出：\(error.localizedDescription)")
             return 65
         }
 
-        /// 单条语句执行到底，取最后的结果集（`BEGIN` / `DECLARE` 这类没有结果集，返回空壳）。
         func run(_ sql: String) async throws -> QueryResult {
             var last: QueryResult?
             for try await event in service.execute(sql, options: .default) {
                 if case .resultSet(let result) = event { last = result }
             }
-            return last ?? QueryResult(
-                columns: [],
-                rows: [],
-                affectedRows: nil,
-                executionTime: 0,
-                isTruncated: false,
-                truncationLimit: nil
-            )
+            return last ?? QueryResult(columns: [], rows: [], affectedRows: nil, executionTime: 0,
+                                       isTruncated: false, truncationLimit: nil)
         }
 
         let url = URL(fileURLWithPath: outputPath)
@@ -1001,11 +1125,9 @@ struct DoyahCLI {
 
         do {
             try await fetcher.open()
-
-            // 列信息要**第一页**才有（游标不会提前告诉我们列是什么），所以 writer 在这里才建。
             guard let first = try await fetcher.nextPage() else {
-                print("没有取到任何结果集")
                 await fetcher.close()
+                if !quiet { print("没有取到任何结果集") }
                 return 66
             }
 
@@ -1013,26 +1135,28 @@ struct DoyahCLI {
                 targetURL: url,
                 format: format,
                 columns: first.columns,
-                tableName: value(for: "--table") ?? "table_name",
+                tableName: tableName,
                 dialect: dialect
             )
             writer = streamWriter
             try streamWriter.begin()
             try streamWriter.write(first.rows)
-
             while let page = try await fetcher.nextPage() {
                 try streamWriter.write(page.rows)
             }
-
             let report = try streamWriter.finish()
-            print("导出完成：\(report.rowCount) 行 / \(report.byteCount) 字节 / \(await fetcher.pageCount) 页")
-            print("文件：\(url.path)")
-            print("取数方式：服务端游标逐页（每页 \(fetchSize) 行），内存占用与总行数无关")
+            if quiet {
+                print("  · \(url.lastPathComponent)：\(report.rowCount) 行 / \(report.byteCount) 字节 / \(await fetcher.pageCount) 页")
+            } else {
+                print("导出完成：\(report.rowCount) 行 / \(report.byteCount) 字节 / \(await fetcher.pageCount) 页")
+                print("文件：\(url.path)")
+                print("取数方式：服务端游标逐页（每页 \(fetchSize) 行），内存占用与总行数无关")
+            }
             return 0
         } catch {
             writer?.abort()
             await fetcher.close()
-            print("导出失败：\(error.localizedDescription)")
+            print("导出失败（\(url.lastPathComponent)）：\(error.localizedDescription)")
             return 67
         }
     }
