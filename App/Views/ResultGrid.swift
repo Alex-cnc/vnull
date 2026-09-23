@@ -53,6 +53,22 @@ struct ResultGrid: NSViewRepresentable {
         let copyItem = NSMenuItem(title: L(.commonCopy), action: #selector(CopyableTableView.copy(_:)), keyEquivalent: "c")
         copyItem.target = tableView
         menu.addItem(copyItem)
+
+        // 「复制为…」（FR-RES-12）：贴表格用 TSV、贴文档用 Markdown、贴 SQL 用 INSERT。
+        let copyAsItem = NSMenuItem(title: L(.resultCopyAs), action: nil, keyEquivalent: "")
+        let copyAsMenu = NSMenu()
+        for format in ResultClipboard.Format.allCases {
+            let item = NSMenuItem(
+                title: format.displayName,
+                action: #selector(CopyableTableView.copyAs(_:)),
+                keyEquivalent: ""
+            )
+            item.target = tableView
+            item.representedObject = format.rawValue
+            copyAsMenu.addItem(item)
+        }
+        copyAsItem.submenu = copyAsMenu
+        menu.addItem(copyAsItem)
         tableView.menu = menu
 
         let scrollView = NSScrollView()
@@ -286,26 +302,36 @@ struct ResultGrid: NSViewRepresentable {
 
         // MARK: 复制
 
+        /// 默认复制（⌘C）：TSV。实际渲染交给 Core 的 `ResultClipboard` ——
+        /// 多格式必须共用一处实现，否则"TSV 的转义与 Markdown 的转义"迟早各自演化。
         func copySelection(from tableView: NSTableView) {
+            copySelection(from: tableView, as: ResultClipboard.defaultFormat)
+        }
+
+        /// 按指定格式复制选中的行（FR-RES-12）。
+        ///
+        /// **行为变化（有意，已记进变更记录）**：TSV 里的 NULL 以前写成字面量 `NULL`，
+        /// 现在与导出层一致 —— TSV / CSV 留空（贴进电子表格不该多出一列"NULL"文字），
+        /// Markdown / INSERT 仍写 `NULL`（文档与 SQL 里必须看得出是空值）。
+        func copySelection(from tableView: NSTableView, as format: ResultClipboard.Format) {
             guard let result else { return }
             let selectedRows = tableView.selectedRowIndexes.sorted()
             guard !selectedRows.isEmpty else { return }
 
-            var lines: [String] = [result.columns.map { $0.name }.joined(separator: "\t")]
-            for rowIndex in selectedRows {
-                // 用**当前显示的行**：分页 / 筛选之后，索引指向的是显示顺序。
-                guard rows.indices.contains(rowIndex) else { continue }
-                let row = rows[rowIndex]
-                let cells = (0..<result.columns.count).map { index -> String in
-                    guard row.indices.contains(index) else { return "" }
-                    return row[index] ?? "NULL"
-                }
-                lines.append(cells.joined(separator: "\t"))
+            // 用**当前显示的行**：分页 / 筛选之后，索引指向的是显示顺序。
+            let selected = selectedRows.compactMap { index -> [String?]? in
+                rows.indices.contains(index) ? rows[index] : nil
             }
+            let text = ResultClipboard.text(
+                rows: selected,
+                columns: result.columns,
+                format: format
+            )
+            guard !text.isEmpty else { return }
 
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
+            pasteboard.setString(text, forType: .string)
         }
 
         private func columnIndex(from column: NSTableColumn) -> Int? {
@@ -390,11 +416,22 @@ private final class ResultHeaderCell: NSTableHeaderCell {
 
 private protocol ResultGridCopying: AnyObject {
     func copySelection(from tableView: NSTableView)
+    func copySelection(from tableView: NSTableView, as format: ResultClipboard.Format)
 }
 
 /// 让 ⌘C 与右键菜单能复制选中的单元格（TSV 格式）。
 private final class CopyableTableView: NSTableView {
     @objc func copy(_ sender: Any?) {
         (dataSource as? ResultGridCopying)?.copySelection(from: self)
+    }
+
+    /// 「复制为…」子菜单的入口：格式经 `representedObject` 传进来，**不靠标题反查**
+    /// （标题会本地化，用它做分派等于把动作绑在文案上）。
+    @objc func copyAs(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let raw = item.representedObject as? String,
+              let format = ResultClipboard.Format(rawValue: raw)
+        else { return }
+        (dataSource as? ResultGridCopying)?.copySelection(from: self, as: format)
     }
 }

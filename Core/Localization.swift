@@ -253,6 +253,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultEmptyDescription
 
     // 结果区：表头排序（FR-RES-08）
+    case resultCopyAs
     case resultSortHelp
     case resultSortClear
 
@@ -1186,6 +1187,7 @@ public enum LocalizedStrings {
         .resultEmptyTitle: [.simplifiedChinese: "暂无结果", .english: "No Results"],
         .resultEmptyDescription: [.simplifiedChinese: "执行 SQL 后，结果会显示在这里", .english: "Run a query to see results here"],
 
+        .resultCopyAs: [.simplifiedChinese: "复制为…", .english: "Copy As…"],
         .resultSortHelp: [.simplifiedChinese: "点击排序：升序 → 降序 → 取消；按住 Shift 点击可加为次要排序键", .english: "Click to sort: ascending → descending → off; Shift-click to add a secondary sort key"],
         .resultSortClear: [.simplifiedChinese: "清除排序", .english: "Clear Sort"],
 

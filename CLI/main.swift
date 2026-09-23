@@ -1134,6 +1134,15 @@ struct DoyahCLI {
         // 每页行数（抽出函数时漏掉了这一行，编译当场报「cannot find 'fetchSize' in scope」）。
         let fetchSize = Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize
 
+        // `insert` 格式必须有目标表名：否则会生成 `INSERT INTO "table_name"` —— 引用一张
+        // 不存在的表（本轮实测踩到：脚本照着"看着对的 SQL"执行，报 relation "table_name" does not exist）。
+        // **宁可现在报错，也不要产出坏 SQL**。
+        if (value(for: "--format") ?? "csv").lowercased().hasPrefix("insert") || (value(for: "--format") ?? "") == "sql",
+           tableName == nil {
+            print("insert 格式需要 --table <目标表>（否则生成的是引用 `table_name` 的坏 SQL）")
+            return 64
+        }
+
         return await exportQueryToFile(
             query: query,
             outputPath: outputPath,
