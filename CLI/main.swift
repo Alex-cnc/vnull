@@ -294,6 +294,16 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // search-objects：全库对象搜索（FR-META-12）。一次元数据查询 + 客户端匹配。
+        if arguments.first == "search-objects" {
+            let code = await runObjectSearchCommand(
+                arguments: Array(arguments.dropFirst()),
+                service: service
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         // import：CSV / JSON 导入（FR-IO-03）。默认**只做映射与预检、打印语句**，`--write` 才真写库。
         if arguments.first == "import" {
             let code = await runImportCommand(
@@ -491,6 +501,69 @@ struct DoyahCLI {
         }
         print("整库导出完成：\(tables.count) 张表")
         return 0
+    }
+
+    /// `search-objects <关键词> [--schema S] [--limit N] [--kind table|view|column|function]`
+    ///
+    /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
+    /// 而不是靠人在界面里看一眼。
+    private static func runObjectSearchCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        let flagsWithValue: Set<String> = ["--schema", "--limit", "--kind"]
+        var query: String?
+        var skipNext = false
+        for argument in arguments {
+            if skipNext { skipNext = false; continue }
+            if flagsWithValue.contains(argument) { skipNext = true; continue }
+            if argument.hasPrefix("--") { continue }
+            query = argument
+            break
+        }
+        guard let query, !query.isEmpty else {
+            print("用法：search-objects <关键词> [--schema S] [--limit N] [--kind table|view|column|function]")
+            return 64
+        }
+
+        let limit = Int(value(for: "--limit") ?? "") ?? 200
+        guard let sql = ObjectSearch.query(schema: value(for: "--schema")) else {
+            print("该数据库类型不支持对象搜索")
+            return 65
+        }
+
+        var hits: [ObjectSearch.Hit] = []
+        do {
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let result) = event {
+                    hits = ObjectSearch.hits(from: result)
+                    // 元数据上限（R-11）：到顶了要**说出来**，不假装搜遍了全库。
+                    if result.rows.count >= ObjectSearch.defaultLimit {
+                        print("提示：元数据已达 \(ObjectSearch.defaultLimit) 行上限，结果可能不完整")
+                    }
+                }
+            }
+        } catch {
+            print("搜索失败：\(error.localizedDescription)")
+            return 66
+        }
+
+        var matches = ObjectSearch.search(query, in: hits, limit: limit)
+        if let kindFilter = value(for: "--kind")?.lowercased() {
+            matches = matches.filter { $0.hit.kind.rawValue == kindFilter }
+        }
+
+        print("在 \(hits.count) 个对象里搜「\(query)」：命中 \(matches.count) 条")
+        for match in matches {
+            let detail = match.hit.detail.map { "  [\($0)]" } ?? ""
+            print("  \(match.hit.kind.rawValue)\t\(match.hit.qualifiedName)\(detail)")
+        }
+        return matches.isEmpty ? 1 : 0
     }
 
     /// `import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]`
