@@ -226,20 +226,33 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     private func read<T>(_ body: (Store) -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
+
+        // 三种结局要分清楚，混在一起就会出一个用户看不懂、还挡住好数据的错误：
+        //  · 读得到且解得出 → 用它（正常）
+        //  · 读得到但解不出 → **内容损坏**，这是真问题，最后要响
+        //  · 读不到      → 环境不匹配（沙箱构建读项目内那份会被拒），换下一个候选
+        var corrupt: [String] = []
         for fileURL in fileURLs {
             guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+            let data: Data
             do {
-                let data = try Data(contentsOf: fileURL)
-                guard !data.isEmpty else { continue }
+                data = try Data(contentsOf: fileURL)
+            } catch {
+                // 沙箱里读项目内那份就是这条路；读不到不等于"坏了"，继续看下一份。
+                continue
+            }
+            guard !data.isEmpty else { continue }
+            do {
                 return body(try JSONDecoder().decode(Store.self, from: data))
             } catch {
-                // 损坏要**如实抛错**：静默返回 nil 会让"密码怎么没了"变成无解悬案。
-                // 同时把路径说出来 —— 多候选之后，不说路径就没法判断读的是哪一份。
-                throw AppError.persistence(
-                    "口令文件读取失败（\(fileURL.path)）：\(error.localizedDescription)"
-                )
+                corrupt.append("\(fileURL.path)（\(error.localizedDescription)）")
             }
         }
+        guard corrupt.isEmpty else {
+            // 有内容却解不开：可能正在丢口令，必须如实报，并说清是哪一份。
+            throw AppError.persistence("口令文件损坏：" + corrupt.joined(separator: "；"))
+        }
+        // 全都读不到（或压根没有候选文件）= 这个环境里没存过口令，交给上层当"没密码"处理。
         return body(Store())
     }
 
@@ -249,6 +262,7 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
 
         // 以第一份**可读**的为准（保证多份之间以它为基础合并），没有就从空开始。
         var store = Store()
+        // 以第一份**读得到且解得出**的为准；读不到（沙箱）或坏掉的跳过，从空开始也能写。
         for fileURL in fileURLs where FileManager.default.fileExists(atPath: fileURL.path) {
             if let data = try? Data(contentsOf: fileURL), !data.isEmpty,
                let decoded = try? JSONDecoder().decode(Store.self, from: data) {

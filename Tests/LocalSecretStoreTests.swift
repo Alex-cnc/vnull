@@ -8,7 +8,9 @@ import XCTest
 ///   · 文件里**不得出现明文**；
 ///   · 同一个口令两次写入密文**不同**（每个条目独立随机盐）；
 ///   · 权限 0600；
-///   · 损坏要**如实报错**（静默返回 nil 会让"密码怎么没了"变成无解悬案）。
+///   · 损坏要**如实报错**（静默返回 nil 会让"密码怎么没了"变成无解悬案）；
+///   · 但"**读不到**"（沙箱里读项目内那份会被拒）只能算跳过，不能当损坏 —— 那是环境不匹配，
+///     把它报成错误的结果就是：沙箱应用明明容器里有好数据，却因为项目那份而连不上库。
 final class LocalSecretStoreTests: XCTestCase {
 
     private var directory: URL!
@@ -106,8 +108,71 @@ final class LocalSecretStoreTests: XCTestCase {
             _ = try store.password(for: UUID())
             XCTFail("损坏文件应当抛错")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("口令文件读取失败"))
+            XCTAssertTrue(error.localizedDescription.contains("口令文件损坏"), error.localizedDescription)
+            // 报错要说清**是哪一份**，多候选之后不说路径就没法定位。
+            XCTAssertTrue(error.localizedDescription.contains("credentials.json"))
         }
+    }
+
+    /// **回归**：沙箱应用读项目内那份会拿到权限错误（The file couldn't be opened because you
+    /// don't have permission）。这不是"文件损坏"，不能因此挡住容器里那份好数据。
+    ///
+    /// 用"把候选路径做成目录"来制造一个确定性的不可读候选（Data(contentsOf:) 必失败），
+    /// 不依赖权限位，测试在任何身份下都可复现。
+    func testUnreadableFirstCandidateFallsBackInsteadOfThrowing() throws {
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        let id = UUID()
+        try FileSecretStore(fileURL: second).setPassword("survives-sandbox", for: id)
+
+        let store = FileSecretStore(fileURLs: [first, second])
+        XCTAssertEqual(try store.password(for: id), "survives-sandbox")
+    }
+
+    /// 全都读不到 = 这个环境里没存过口令，应当安静地当"没有密码"，而不是弹一个用户看不懂的错误。
+    func testAllCandidatesUnreadableMeansNoPassword() throws {
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: second, withIntermediateDirectories: true)
+
+        let store = FileSecretStore(fileURLs: [first, second])
+        XCTAssertNil(try store.password(for: UUID()), "读不到不该抛错，应视为未保存")
+    }
+
+    /// **回归（需求提出者实测场景）**：项目内那份被沙箱拒绝读取（`Permission denied`）时，
+    /// 必须安静地换用容器那份 —— 旧代码在第一个候选上抛错，于是"容器里明明有口令却连不上库"。
+    func testPermissionDeniedCandidateIsSkipped() throws {
+        try XCTSkipIf(getuid() == 0, "root 无视权限位，此用例无意义")
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        try FileManager.default.createDirectory(
+            at: first.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let id = UUID()
+        try FileSecretStore(fileURL: second).setPassword("from-container", for: id)
+        try FileSecretStore(fileURL: first).setPassword("shadowed", for: id)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: first.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: first.path) }
+
+        let store = FileSecretStore(fileURLs: [first, second])
+        XCTAssertEqual(try store.password(for: id), "from-container")
+    }
+
+    /// 某一份坏了、但另一份是好的：用好的那份（镜像写入会遇到"其中一份被截断"的情况）。
+    func testCorruptCandidateFallsBackToHealthyOne() throws {
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        try FileManager.default.createDirectory(
+            at: first.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try Data("这不是 JSON".utf8).write(to: first)
+        let id = UUID()
+        try FileSecretStore(fileURL: second).setPassword("healthy", for: id)
+
+        let store = FileSecretStore(fileURLs: [first, second])
+        XCTAssertEqual(try store.password(for: id), "healthy")
     }
 
     // MARK: - 混淆算法本身
