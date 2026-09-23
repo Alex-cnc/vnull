@@ -297,6 +297,14 @@ final class AppState: ObservableObject {
     /// 归档根目录的来源：单独指定 / 跟随工作区 / 没有（FR-EDIT-32 衔接）。
     @Published private(set) var sqlArchiveSource: ArchiveLocation.Source = .none
 
+    /// 查询记忆索引（FR-AI-13 S2）：**纯派生缓存**，事实源始终是归档 `.sql` 文件。
+    ///
+    /// 删掉重建即可、不丢任何数据 —— 所以这里不需要任何持久化，也不必为它做迁移。
+    @Published private(set) var queryMemoryIndex = QueryMemory.Index()
+
+    /// 索引正在后台重建：避免一次执行后又触发一次重建（同一条 SQL 只该索引一遍）。
+    private var isBuildingQueryMemoryIndex = false
+
     /// 工作区路径的提供者（由 App 层注入；AppState 不该直接依赖工作区存储）。
     var workspacePathProvider: (() -> String?)?
 
@@ -776,6 +784,12 @@ final class AppState: ObservableObject {
 
     /// 读取归档目录书签并刷新状态（界面打开归档面板时调用）。
     func refreshSQLArchiveStatus() async {
+        await resolveSQLArchiveStatus()
+        // 归档位置可能刚变（换目录 / 工作区切换）—— 记忆索引跟着重算（FR-AI-13 S2）。
+        await refreshQueryMemoryIndex()
+    }
+
+    private func resolveSQLArchiveStatus() async {
         do {
             let bookmark = try await sqlArchiveBookmarks.all().first
             let chosenStatus = bookmark.map { MacDirectoryAccess.status(for: $0) }
@@ -822,6 +836,60 @@ final class AppState: ObservableObject {
         sqlArchiveStatus?.path
     }
 
+    /// 打开归档的 `queries/` 目录，并把授权范围交回调用方释放。
+    ///
+    /// 「单独指定 > 跟随工作区」的判定只在 `ArchiveLocation` 里写一次：
+    /// 写入归档和重建记忆索引都走这里，免得两处各写一遍（补必漏）。
+    private func openQueriesDirectory() async throws -> (url: URL, grant: DirectoryGrant?)? {
+        var grant: DirectoryGrant?
+        var chosenPath: String?
+        if let bookmark = try await sqlArchiveBookmarks.all().first {
+            let opened = try MacDirectoryAccess.open(bookmark)
+            grant = opened
+            chosenPath = opened.url.path
+        }
+        guard let resolved = ArchiveLocation.queriesDirectory(
+            chosenPath: chosenPath,
+            workspacePath: workspacePathProvider?()
+        ) else {
+            grant?.stopAccessing()
+            return nil
+        }
+        return (resolved.url, grant)
+    }
+
+    /// 重建查询记忆索引（FR-AI-13 S2）。
+    ///
+    /// 三条纪律：
+    /// 1. **纯派生** —— 事实源是归档文件，这里只重算缓存，失败就退回空索引（补全退回只有关键字）；
+    /// 2. **不上主线程** —— 归档按天一个文件，一年就是几百个，解析放后台；
+    /// 3. **失败不打扰用户** —— 记忆只是补全的加分项，出错不该弹任何东西。
+    func refreshQueryMemoryIndex() async {
+        guard isSQLArchiveEnabled else {
+            queryMemoryIndex = QueryMemory.Index()
+            return
+        }
+        // 一次执行刚写完归档又立刻重建，不如让前一次重建覆盖它 —— 索引始终是派生的，晚一点不影响正确性。
+        guard !isBuildingQueryMemoryIndex else { return }
+        isBuildingQueryMemoryIndex = true
+        defer { isBuildingQueryMemoryIndex = false }
+
+        do {
+            guard let opened = try await openQueriesDirectory() else {
+                queryMemoryIndex = QueryMemory.Index()
+                return
+            }
+            defer { opened.grant?.stopAccessing() }
+            let directory = opened.url
+            let index = await Task.detached(priority: .utility) {
+                QueryMemory.buildIndex(directory: directory)
+            }.value
+            queryMemoryIndex = index
+        } catch {
+            queryMemoryIndex = QueryMemory.Index()
+        }
+    }
+
     /// 把一次执行写进当天归档。
     ///
     /// **归档失败绝不影响执行结果** —— 只把可读原因写进状态栏：
@@ -852,23 +920,16 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                // 单独指定过归档目录就用它；否则跟随工作区（判定见 ArchiveLocation）。
-                var grant: DirectoryGrant?
-                defer { grant?.stopAccessing() }
-                var chosenPath: String?
-                if let bookmark = try await self.sqlArchiveBookmarks.all().first {
-                    let opened = try MacDirectoryAccess.open(bookmark)
-                    grant = opened
-                    chosenPath = opened.url.path
-                }
-                guard let resolved = ArchiveLocation.queriesDirectory(
-                    chosenPath: chosenPath,
-                    workspacePath: self.workspacePathProvider?()
-                ) else { return }
+                // 「单独指定 > 跟随工作区」的解析与记忆索引用同一个入口，不写两遍。
+                guard let opened = try await self.openQueriesDirectory() else { return }
+                defer { opened.grant?.stopAccessing() }
+                let directory = opened.url
 
                 // 归档落在 queries/ 子目录，避免和数据任务产物、以及工作区里的代码混在一起。
-                let count = try await self.sqlArchiveWriter.append(entry, in: resolved.url)
-                self.statusMessage = L(.archiveSaved, resolved.url.deletingLastPathComponent().lastPathComponent, count)
+                let count = try await self.sqlArchiveWriter.append(entry, in: directory)
+                self.statusMessage = L(.archiveSaved, directory.deletingLastPathComponent().lastPathComponent, count)
+                // 刚写进去的这条应该马上可用于补全（FR-AI-13 S4）；重建在后台、失败也不影响执行结果。
+                await self.refreshQueryMemoryIndex()
             } catch {
                 self.statusMessage = L(.archiveFailed, ErrorPresenter.message(for: error))
             }

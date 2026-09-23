@@ -87,6 +87,8 @@ text = sys.argv[1]
 start = text.index("[")
 payload = json.loads(text[start:])
 assert payload, payload
+# 验收标准⑤：记忆出口的键**只有** sql/score/runs —— 结构上就没有承载结果集行数据的地方
+assert all(set(item) == {"sql", "score", "runs"} for item in payload), payload
 assert "orders" in payload[0]["sql"]
 assert payload[0]["runs"] == 19, payload[0]   # 12 + 2 + 5
 print("  ✅ JSON 可解析、字段稳定、次数正确（12+2+5=19）")
@@ -94,8 +96,74 @@ PY
 [ $? -eq 0 ] || fail=1
 
 echo ""
+echo "== 8) 编辑器补全链路（S4）：关键字在前、空前缀不刷屏、长句不灌光标 =="
+# 这一节核对的是**编辑器里实际会看到的候选**（`--completion` 与 UI 走同一个 QueryCompletion）。
+LONG_SQL="SELECT '$(python3 -c 'print("a" * 600, end="")')' AS big"
+archive_add "$LONG_SQL" 长句库 3 2026-09-22T12:00:00Z
+
+COMPLETION_FILE="$DIR/completion.txt"
+"$CLI" memory --dir "$DIR" --prefix "sel" --connection 生产库 --completion >"$COMPLETION_FILE" 2>&1
+head -8 "$COMPLETION_FILE" | sed 's/^/  /'
+python3 - "$COMPLETION_FILE" <<'PY'
+import re, sys
+lines = [l for l in open(sys.argv[1], encoding="utf-8").read().splitlines()
+         if re.match(r"\s+\d+\. \[", l)]
+assert lines, "没有任何候选"
+sources = [re.search(r"\[(关键字|记忆)\]", l).group(1) for l in lines]
+assert len(lines) <= 20, "候选超过上限：%d" % len(lines)
+# 关键字必须**全部排在**记忆之前：记忆不许顶掉、也不许插队
+first_memory = sources.index("记忆") if "记忆" in sources else len(sources)
+assert all(s == "关键字" for s in sources[:first_memory]), sources
+assert "记忆" in sources, "该前缀下应出现生产库记忆：%s" % sources
+print("  ✅ %d 条候选：%d 个关键字在前、%d 条记忆在后（上限 20）"
+      % (len(lines), sources.count("关键字"), sources.count("记忆")))
+PY
+[ $? -eq 0 ] || fail=1
+
+# 空前缀：只给关键字，不给记忆（打开补全先看到 SELECT，不是历史）
+"$CLI" memory --dir "$DIR" --prefix "" --completion >"$DIR/empty.txt" 2>&1
+# 前提：确实出了候选 —— 否则"没有记忆"可能只是因为它整个没跑起来（假通过）
+grep -q "编辑器补全" "$DIR/empty.txt" && grep -q "\[关键字\]" "$DIR/empty.txt" && EMPTY_RAN=0 || EMPTY_RAN=1
+check "空前缀确实给出了关键字候选（否定式断言的前提）" "$EMPTY_RAN"
+grep -q "\[记忆\]" "$DIR/empty.txt" && check "空前缀不该出现记忆（不刷屏）" 1 || check "空前缀只给关键字" 0
+# 候选上限在真实路径上也成立：空前缀恰好给满 20 条关键字
+EMPTY_COUNT="$(grep -cE "^ +[0-9]+\. \[" "$DIR/empty.txt" || true)"
+[ "$EMPTY_COUNT" = "20" ] && check "候选上限生效（空前缀 $EMPTY_COUNT 条关键字）" 0 \
+    || check "候选上限（期望 20 条，实际 $EMPTY_COUNT）" 1
+
+# 超长 SQL（600 字符）不入补全：补全是替换光标处的半个词，不是往光标里灌报表
+"$CLI" memory --dir "$DIR" --prefix "SELECT '" --completion --connection 长句库 >"$DIR/long.txt" 2>&1
+LONG_RAN=0
+grep -q "编辑器补全" "$DIR/long.txt" || LONG_RAN=1
+grep -q "\[记忆\]" "$DIR/long.txt" && check "超长 SQL 不该进补全" 1 || check "超长 SQL 被挡在补全外" 0
+[ "$LONG_RAN" -eq 0 ] || check "长句库那条补全确实跑过（前提）" 1
+# 但它照样是一条记忆（只是不参与补全）—— 别把"不补全"误做成"丢掉"
+"$CLI" memory --dir "$DIR" --prefix "SELECT '" --connection 长句库 >"$DIR/longmem.txt" 2>&1
+grep -q "big" "$DIR/longmem.txt" && check "超长 SQL 仍作为记忆存在（只是不补全）" 0 || check "超长记忆仍在" 1
+
+# 越界检查：补齐策略不能把连接隔离搞丢（补全链路上再验一次）
+"$CLI" memory --dir "$DIR" --prefix "select" --completion --connection 测试库 >"$DIR/staging.txt" 2>&1
+grep -q "orders" "$DIR/staging.txt" && check "补全也必须按连接隔离" 1 || check "补全链路上连接隔离仍生效" 0
+
+echo ""
+echo "== 9) 补全的 JSON 出口（脚本可断言来源）=="
+"$CLI" memory --dir "$DIR" --prefix "sel" --connection 生产库 --completion --json >"$DIR/cjson.txt" 2>&1
+python3 - "$DIR/cjson.txt" <<'PY'
+import json, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+payload = json.loads(text[text.index("["):])
+assert payload, payload
+assert all(set(item) == {"text", "source"} for item in payload), payload
+sources = [item["source"] for item in payload]
+assert "memory" in sources, sources
+print("  ✅ 补全 JSON 可解析、来源字段稳定（dialect %d / memory %d）"
+      % (sources.count("dialect"), sources.count("memory")))
+PY
+[ $? -eq 0 ] || fail=1
+
+echo ""
 if [ "$fail" -eq 0 ]; then
-    echo "通过：记忆层聚类 / 频次 / 跨天 / 连接隔离 / 纯派生缓存（搬目录等价）/ 坏文件容错都成立"
+    echo "通过：记忆层聚类 / 频次 / 跨天 / 连接隔离 / 纯派生缓存（搬目录等价）/ 坏文件容错 / 补全合并策略都成立"
 else
     echo "有失败项，见上"
 fi

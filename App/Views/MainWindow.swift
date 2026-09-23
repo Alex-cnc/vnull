@@ -154,6 +154,9 @@ struct MainWindow: View {
             // 启动时读一次任务与执行历史，然后由 App 侧的 tick 驱动 Core 的纯时间判定。
             await appState.loadDataTasks()
             appState.startDataTaskTicker()
+            // 归档目录状态与查询记忆索引（FR-AI-13 S2）：启动就读一次，
+            // 否则要等用户打开归档面板之后补全才有记忆。
+            await appState.refreshSQLArchiveStatus()
         }
         .alert(
             L(.alertErrorTitle),

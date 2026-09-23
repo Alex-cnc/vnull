@@ -12,6 +12,10 @@ struct SQLEditorView: NSViewRepresentable {
     let diagnostics: [SQLDiagnostic]
     /// 命令通道只对当前页签生效。
     let tabID: UUID
+    /// 查询记忆索引（FR-AI-13 S4）：默认空索引 —— 无记忆时补全行为与历史版本一致。
+    var memoryIndex = QueryMemory.Index()
+    /// 记忆的隔离键（连接名）；nil 表示不按连接过滤。
+    var memoryConnection: String?
 
     @ObservedObject private var commandCenter = EditorCommandCenter.shared
 
@@ -202,7 +206,8 @@ struct SQLEditorView: NSViewRepresentable {
         // MARK: - 补全（FR-EDIT-09）
 
         /// NSTextView 标准补全回调：F5 / Esc / ⌃Space 触发。
-        /// 候选项来自方言层（关键字 + 内置函数），与语法高亮共用同一份定义。
+        /// 候选项来自方言层（关键字 + 内置函数，与语法高亮共用同一份定义）；
+        /// **接上查询记忆后**，当前连接跑过的语句按前缀排在关键字之后（FR-AI-13 S4）。
         func textView(
             _ textView: NSTextView,
             completions words: [String],
@@ -212,7 +217,9 @@ struct SQLEditorView: NSViewRepresentable {
             let prefix = (textView.string as NSString).substring(with: charRange)
             let suggestions = SQLCompleter.suggestions(
                 for: prefix,
-                dialect: SQLDialectFactory.make(for: parent.databaseType)
+                dialect: SQLDialectFactory.make(for: parent.databaseType),
+                memory: parent.memoryIndex,
+                connection: parent.memoryConnection
             )
             index?.pointee = suggestions.isEmpty ? -1 : 0
             return suggestions

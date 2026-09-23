@@ -752,7 +752,7 @@ struct DoyahCLI {
         }
 
         guard let directory = value(for: "--dir") else {
-            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--json]")
+            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect postgresql|gbase8a]] [--json]")
             return 64
         }
 
@@ -763,6 +763,43 @@ struct DoyahCLI {
         print("从 \(index.parsedEntryCount) 条归档记录派生出 \(index.memories.count) 条记忆")
 
         if let prefix = value(for: "--prefix") {
+            // `--completion`：输出**编辑器里实际会看到的候选**（方言关键字 + 当前连接的记忆），
+            // 顺序就是 UI 里的顺序 —— 让「记忆会不会顶掉关键字」这类规则可以被脚本核对（FR-AI-13 S4）。
+            if arguments.contains("--completion") {
+                let dialect = SQLDialectFactory.make(
+                    for: value(for: "--dialect") == "gbase8a" ? .gbase8a : .postgresql
+                )
+                let connection = value(for: "--connection")
+                let candidates = QueryCompletion.suggestions(
+                    prefix: prefix,
+                    dialect: dialect,
+                    memory: index,
+                    connection: connection
+                )
+                if arguments.contains("--json") {
+                    let dialectKeys = Set(
+                        QueryCompletion.dialectMatches(prefix: prefix, dialect: dialect).map { $0.lowercased() }
+                    )
+                    let payload = candidates.map { candidate -> [String: Any] in
+                        ["text": candidate, "source": dialectKeys.contains(candidate.lowercased()) ? "dialect" : "memory"]
+                    }
+                    if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                       let text = String(data: data, encoding: .utf8) {
+                        print(text)
+                        return candidates.isEmpty ? 1 : 0
+                    }
+                }
+                print("编辑器补全（前缀「\(prefix)」\(connection.map { "，连接「\($0)」" } ?? "")，方言 \(dialect.databaseType.rawValue)）：\(candidates.count) 条")
+                let dialectKeys = Set(
+                    QueryCompletion.dialectMatches(prefix: prefix, dialect: dialect).map { $0.lowercased() }
+                )
+                for (position, candidate) in candidates.enumerated() {
+                    let source = dialectKeys.contains(candidate.lowercased()) ? "关键字" : "记忆"
+                    print("  \(position + 1). [\(source)] \(candidate.replacingOccurrences(of: "\n", with: " "))")
+                }
+                return candidates.isEmpty ? 1 : 0
+            }
+
             let suggestions = QueryMemory.suggestions(
                 prefix: prefix,
                 in: index,

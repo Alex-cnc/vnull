@@ -236,7 +236,12 @@ struct QueryEditorView: View {
                 ),
                 databaseType: appState.connection(for: tab)?.dbType ?? .postgresql,
                 diagnostics: diagnostics,
-                tabID: tab.id
+                tabID: tab.id,
+                // 查询记忆（FR-AI-13 S4）：索引来自归档，按**连接名**隔离 ——
+                // 生产库跑过的语句不会跑到测试库的补全里。
+                memoryIndex: appState.queryMemoryIndex,
+                memoryConnection: appState.connection(for: tab)?
+                    .displayTitle(untitled: L(.connectionUntitled))
             )
 
             if !diagnostics.isEmpty {
