@@ -2,95 +2,141 @@
   "comment": "设计令牌棘轮基线：违规数只能降不能升（--update-baseline 下调）",
   "files": {
     "App/Views/AgentApprovalSheet.swift": {
-      "bare-spacing": 2
+      "bare-foreground": 5,
+      "bare-spacing": 2,
+      "bare-textstyle": 7
     },
     "App/Views/AgentAuditPanel.swift": {
-      "bare-spacing": 8
+      "bare-foreground": 18,
+      "bare-spacing": 8,
+      "bare-textstyle": 26
     },
     "App/Views/AgentSQLPanel.swift": {
       "bare-color": 1,
-      "bare-spacing": 4
+      "bare-foreground": 6,
+      "bare-spacing": 4,
+      "bare-textstyle": 13
     },
     "App/Views/AgentSettingsSheet.swift": {
-      "bare-spacing": 2
+      "bare-foreground": 3,
+      "bare-spacing": 2,
+      "bare-textstyle": 7
     },
     "App/Views/ConnectionFormView.swift": {
-      "bare-color": 1
+      "bare-color": 1,
+      "bare-foreground": 1,
+      "bare-textstyle": 2
     },
     "App/Views/ConnectionListView.swift": {
       "bare-color": 1,
-      "bare-spacing": 1
+      "bare-foreground": 2,
+      "bare-spacing": 1,
+      "bare-textstyle": 3
     },
     "App/Views/CreateDatabaseSheet.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 1,
+      "bare-spacing": 1,
+      "bare-textstyle": 3
     },
     "App/Views/DataTaskPanel.swift": {
       "bare-color": 2,
-      "bare-spacing": 11
+      "bare-foreground": 29,
+      "bare-spacing": 11,
+      "bare-textstyle": 53
     },
     "App/Views/DataTaskSpecSheet.swift": {
       "bare-color": 2,
-      "bare-spacing": 2
+      "bare-foreground": 6,
+      "bare-spacing": 2,
+      "bare-textstyle": 16
     },
     "App/Views/DatabasePropertiesSheet.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 2,
+      "bare-spacing": 1,
+      "bare-textstyle": 4
     },
     "App/Views/DropDatabaseSheet.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 2,
+      "bare-spacing": 1,
+      "bare-textstyle": 5
     },
     "App/Views/ExecutionPlanPanel.swift": {
-      "bare-spacing": 3
+      "bare-foreground": 5,
+      "bare-spacing": 3,
+      "bare-textstyle": 13
     },
     "App/Views/LockPanel.swift": {
-      "bare-spacing": 3
+      "bare-foreground": 6,
+      "bare-spacing": 3,
+      "bare-textstyle": 10
     },
     "App/Views/LowerPaneView.swift": {
       "bare-color": 1,
-      "bare-spacing": 6
+      "bare-foreground": 3,
+      "bare-spacing": 6,
+      "bare-textstyle": 10
     },
     "App/Views/ObjectTreeView.swift": {
       "bare-color": 1,
       "bare-font": 1,
-      "bare-spacing": 4
+      "bare-foreground": 7,
+      "bare-spacing": 4,
+      "bare-textstyle": 11
     },
     "App/Views/PrivilegePanel.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 4,
+      "bare-spacing": 1,
+      "bare-textstyle": 10
     },
     "App/Views/QueryContextBar.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 3,
+      "bare-spacing": 1,
+      "bare-textstyle": 4
     },
     "App/Views/QueryToolbar.swift": {
       "bare-font": 2,
-      "bare-spacing": 3
+      "bare-foreground": 7,
+      "bare-spacing": 3,
+      "bare-textstyle": 9
     },
     "App/Views/QueryWorkspaceView.swift": {
       "bare-color": 3,
+      "bare-foreground": 2,
       "bare-radius": 1,
-      "bare-spacing": 8
+      "bare-spacing": 8,
+      "bare-textstyle": 4
     },
     "App/Views/RelaunchPromptSheet.swift": {
-      "bare-spacing": 2
-    },
-    "App/Views/ResultTableView.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 1,
+      "bare-spacing": 2,
+      "bare-textstyle": 1
     },
     "App/Views/SQLArchiveSheet.swift": {
-      "bare-spacing": 3
+      "bare-foreground": 5,
+      "bare-spacing": 3,
+      "bare-textstyle": 7
     },
     "App/Views/SafeModeConfirmSheet.swift": {
-      "bare-spacing": 1
+      "bare-foreground": 1,
+      "bare-spacing": 1,
+      "bare-textstyle": 3
     },
     "App/Views/SaveQuerySheet.swift": {
-      "bare-spacing": 2
+      "bare-spacing": 2,
+      "bare-textstyle": 4
     },
     "App/Views/TableDesignSheet.swift": {
-      "bare-spacing": 5
+      "bare-foreground": 10,
+      "bare-spacing": 5,
+      "bare-textstyle": 15
     }
   },
   "totals": {
     "bare-color": 12,
     "bare-font": 3,
+    "bare-foreground": 129,
     "bare-radius": 1,
-    "bare-spacing": 76
+    "bare-spacing": 75,
+    "bare-textstyle": 240
   }
 }

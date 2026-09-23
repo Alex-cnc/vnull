@@ -184,7 +184,7 @@ struct ResultGrid: NSViewRepresentable {
             header.alignment = isNumeric ? .right : .left
             column.headerCell = header
             column.headerToolTip = "\(meta.name) · \(meta.typeName)"
-            column.minWidth = 40
+            column.minWidth = Metrics.minColumnWidth
             column.width = estimatedWidth(for: meta, index: index, result: result)
             return column
         }
@@ -192,13 +192,13 @@ struct ResultGrid: NSViewRepresentable {
         private static func estimatedWidth(for meta: ColumnMeta, index: Int, result: QueryResult) -> CGFloat {
             let font = font(isNumeric: ColumnAlignment.isNumeric(typeName: meta.typeName))
             var width = measuredWidth(meta.name, font: Theme.nsFont(.caption)) + Spacing.xl
-            let sampleCount = min(result.rows.count, 100)
+            let sampleCount = min(result.rows.count, Metrics.columnWidthSampleRows)
             for rowIndex in 0..<sampleCount {
                 guard result.rows[rowIndex].indices.contains(index) else { continue }
                 let value = result.rows[rowIndex][index] ?? "NULL"
                 width = max(width, measuredWidth(value, font: font) + Spacing.l)
             }
-            return min(max(width, 60), 420)
+            return min(max(width, Metrics.minColumnWidth), Metrics.maxColumnWidth)
         }
 
         private static func measuredWidth(_ text: String, font: NSFont) -> CGFloat {
@@ -251,10 +251,10 @@ private final class ResultRowView: NSTableRowView {
         Theme.nsColor(Surface.content).setFill()
         bounds.fill()
 
-        // 斑马纹：极淡（深色 2% / 浅色 1.5%），只在长表里帮助横向追行
+        // 斑马纹：极淡（透明度取自 `Overlay.Zebra`），只在长表里帮助横向追行
         if rowIndex % 2 == 1 {
-            let alpha: CGFloat = Theme.isDarkAppearance ? 0.02 : 0.015
-            Theme.nsColor(TextTone.primary).withAlphaComponent(alpha).setFill()
+            let alpha = Theme.isDarkAppearance ? Overlay.Zebra.darkAlpha : Overlay.Zebra.lightAlpha
+            Theme.nsColor(TextTone.primary).withAlphaComponent(CGFloat(alpha)).setFill()
             bounds.fill()
         }
 

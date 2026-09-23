@@ -178,6 +178,29 @@ final class DesignTokensTests: XCTestCase {
 
     // MARK: 与强调色的边界
 
+    /// 选中态与斑马纹的透明度必须在一个"看得出但不糊"的区间里。
+    ///
+    /// 这条守的是手滑：写成 0.4 会让选中行糊成一块，写成 0.02 又完全看不出，
+    /// 而这两种都不会有任何编译错误或崩溃 —— 只能靠断言。
+    func testOverlayAlphasAreInASaneRange() {
+        for alpha in [Overlay.Selection.darkAlpha, Overlay.Selection.lightAlpha] {
+            XCTAssertGreaterThanOrEqual(alpha, 0.06, "选中淡填充太淡，看不出来")
+            XCTAssertLessThanOrEqual(alpha, 0.20, "选中淡填充太重，会糊成一块")
+        }
+        // 浅色底的对比本来就弱，浅色档的透明度应当**不高于**深色档
+        XCTAssertLessThanOrEqual(Overlay.Selection.lightAlpha, Overlay.Selection.darkAlpha)
+        for alpha in [Overlay.Zebra.darkAlpha, Overlay.Zebra.lightAlpha] {
+            XCTAssertGreaterThan(alpha, 0, "斑马纹不能为 0（等于没有）")
+            XCTAssertLessThanOrEqual(alpha, 0.06, "斑马纹太重会像表格有底色")
+        }
+    }
+
+    func testResultColumnWidthBoundsAreSane() {
+        XCTAssertLessThan(Metrics.minColumnWidth, Metrics.maxColumnWidth)
+        XCTAssertGreaterThanOrEqual(Metrics.minColumnWidth, 24, "太窄会把列头截没")
+        XCTAssertGreaterThan(Metrics.columnWidthSampleRows, 0)
+    }
+
     /// 强调色**不属于**令牌层：它由用户配置（`AccentTheme`）。
     /// 这条测试是防"有人图省事把强调色写死进 DesignTokens"。
     func testAccentIsNotHardCodedInTokens() {

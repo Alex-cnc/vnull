@@ -66,6 +66,29 @@ public enum Metrics {
     public static let activityBarWidth: CGFloat = 46
     /// 活动栏图标边长。
     public static let activityIconSize: CGFloat = 20
+    /// 结果表列的宽度上下限（估算出来的宽度会被夹在这个区间里）。
+    public static let minColumnWidth: CGFloat = 40
+    public static let maxColumnWidth: CGFloat = 420
+    /// 列宽估算时采样多少行（再多也不影响判断，白花时间）。
+    public static let columnWidthSampleRows: Int = 100
+}
+
+/// 叠加层的透明度：**选中态与斑马纹的深浅只在这里定义一次**。
+///
+/// 原先它们散在视图里当魔法数字（`0.14` / `0.02`…），改了主题色也不会跟着动；
+/// 而且"选中态该多重"是个需要统一的口径 —— 活动栏、侧栏、结果表必须是同一个值，
+/// 否则同样的"选中"在三处看起来深浅不一。`DesignTokensTests` 会守住合理区间，
+/// 防止手滑写成 0.4 那种一眼就"糊"了的程度。
+public enum Overlay {
+    public enum Selection {
+        public static let darkAlpha: Double = 0.14
+        public static let lightAlpha: Double = 0.10
+    }
+
+    public enum Zebra {
+        public static let darkAlpha: Double = 0.02
+        public static let lightAlpha: Double = 0.015
+    }
 }
 
 // MARK: - 颜色语义

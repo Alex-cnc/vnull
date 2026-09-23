@@ -18,7 +18,11 @@
     bare-font     裸字号（.font(.system(size: 14)) / NSFont.systemFont(ofSize: 14)…）
     bare-spacing  裸间距（.padding(6) / VStack(spacing: 3)…）
     bare-radius   裸圆角（cornerRadius: 5）
-    bare-hairline 裸发丝线（写死 0.5 / 1.0 的线宽）—— 目前只警告不计入基线
+    bare-textstyle 系统文本样式（.font(.headline) / .font(.caption)…）—— 不在字号刻度上
+    bare-foreground 系统语义前景色（.foregroundStyle(.secondary)…）—— 不在色板里
+
+    刻意**不**校验 `Divider()`：菜单里的分隔线用它是正确的，按情况迁移更好；
+    而"分隔用发丝线"这条规矩在逐屏替换时按屏落实。
 
 豁免：行尾加 `// token-ok` 注释即可跳过该行（必须在注释里写明理由）。
 
@@ -62,6 +66,16 @@ PADDING = re.compile(r"\.padding\(\s*(?:\.\w+\s*,\s*)?([0-9.]+)\s*\)")
 STACK_SPACING = re.compile(r"\b(?:VStack|HStack|LazyVStack|LazyHStack|Grid)\([^)]*spacing:\s*([0-9.]+)")
 FRAME_SPACING = re.compile(r"\.padding\(\s*\.\w+\s*,\s*([0-9.]+)\s*\)|\.offset\([^)]*[xy]:\s*([0-9.]+)")
 CORNER = re.compile(r"cornerRadius:\s*([0-9.]+)|RoundedRectangle\(cornerRadius:\s*([0-9.]+)")
+# 系统文本样式：**不在我们的字号刻度里**（我们的刻度是 11/12/13/15/17 + 等宽档），
+# 用了它就会出现"标题比别处大一点点"。`(?<!Theme)` 是为了放过 `Theme.font(.body)`。
+BARE_TEXT_STYLE = re.compile(
+    r"(?<!Theme)\.font\(\.(?:body|headline|caption2?|callout|subheadline|footnote|largeTitle|title[23]?)\)"
+)
+# 系统的语义前景色：设计令牌里有对应的 TextTone，混用会让"次要文字"比别处灰一点点。
+BARE_FOREGROUND = re.compile(
+    r"\.foregroundStyle\(\.(?:secondary|tertiary|quaternary)\)"
+    r"|\.foregroundColor\(\.(?:secondaryLabelColor|tertiaryLabelColor)\)"
+)
 HAIRLINE = re.compile(r"lineWidth:\s*([0-9.]+)|\.frame\(height:\s*0?\.5\b")
 
 
@@ -95,6 +109,12 @@ def scan_file(path: pathlib.Path) -> dict[str, int]:
 
         if any(value not in RADIUS_SCALE for value in numbers(CORNER.search(raw))):
             bump("bare-radius")
+
+        if BARE_TEXT_STYLE.search(raw):
+            bump("bare-textstyle")
+
+        if BARE_FOREGROUND.search(raw):
+            bump("bare-foreground")
 
     return counts
 

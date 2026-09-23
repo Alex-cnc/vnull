@@ -86,9 +86,9 @@ enum Theme {
 
     static var accentNSColor: NSColor { AccentManager.shared.accentNSColor }
 
-    /// 选中行的淡填充（与活动栏、侧栏同一套语言）。
+    /// 选中行的淡填充（与活动栏、侧栏同一套语言；透明度取自 `Overlay.Selection`）。
     static var accentTintNSColor: NSColor {
-        AccentManager.shared.accentNSColor.withAlphaComponent(isDarkAppearance ? 0.14 : 0.10)
+        AccentManager.shared.accentNSColor.withAlphaComponent(isDarkAppearance ? Overlay.Selection.darkAlpha : Overlay.Selection.lightAlpha)
     }
 
     /// 发丝线颜色（叠加在表面上，故用低透明度而不是不透明灰）。
@@ -124,5 +124,26 @@ enum Theme {
     static func nsColor(hex: UInt32) -> NSColor {
         let (red, green, blue) = ColorContrast.components(hex)
         return NSColor(srgbRed: red, green: green, blue: blue, alpha: 1)
+    }
+}
+
+/// 发丝线视图：**替代系统 `Divider()`**（名字带 View 是为了不与 `Core.Hairline` 的透明度令牌重名）。
+///
+/// 系统分隔线在深浅两套外观下各是一个固定灰，与我们的表面令牌不总是一致；
+/// 而"分隔"这件事在整个界面里出现几十次，差一点点就很显眼。
+/// 用 1 物理像素 + 低透明度叠加在任意表面上都成立。
+struct HairlineView: View {
+
+    var vertical: Bool = false
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Rectangle()
+            .fill(Theme.hairline(scheme))
+            .frame(
+                width: vertical ? Metrics.hairline : nil,
+                height: vertical ? nil : Metrics.hairline
+            )
     }
 }

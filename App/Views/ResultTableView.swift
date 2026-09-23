@@ -1,6 +1,12 @@
 import SwiftUI
 import DoyahCore
 
+/// 结果区：结果表的**外壳**（标题、结果集选择器、导出、无结果集状态）。
+///
+/// 与 `ResultGrid`（表格本体）是一整块，所以外观必须同一套令牌：
+/// 系统文本样式（`.headline` / `.caption`）与 `.secondary` 这类语义色
+/// **不在我们的字号刻度与色板里**，混着用就会出现"标题比别处大一点点、
+/// 次要文字比别处灰一点点"——单看不觉得，整屏看就是不精致。
 struct ResultTableView: View {
     let result: QueryResult?
     var resultCount: Int = 0
@@ -14,81 +20,24 @@ struct ResultTableView: View {
         Group {
             if let result {
                 VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text(L(.resultTitle))
-                            .font(.headline)
+                    toolbar(for: result)
 
-                        if resultCount > 1 {
-                            Picker("", selection: Binding(
-                                get: { selectedIndex },
-                                set: { onSelectResult?($0) }
-                            )) {
-                                ForEach(0..<resultCount, id: \.self) { index in
-                                    Text(L(.resultPickerItem, index + 1)).tag(index)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(maxWidth: 180)
-                        }
-
-                        Spacer()
-
-                        if let onExport, ResultExporter.hasExportableContent(result) {
-                            Menu {
-                                Button(L(.exportCSV)) { onExport(.csv) }
-                                Button(L(.exportJSON)) { onExport(.json) }
-                                Divider()
-                                Button(L(.exportTSV)) { onExport(.tsv) }
-                                Button(L(.exportMarkdown)) { onExport(.markdown) }
-                                Button(L(.exportSQLInsert)) { onExport(.sqlInsert) }
-                            } label: {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                            .menuStyle(.borderlessButton)
-                            .menuIndicator(.hidden)
-                            .fixedSize()
-                            .help(L(.resultExport))
-                        }
-
-                        if result.columnCount > 0 {
-                            Text(L(.resultSize, result.rowCount, result.columnCount))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if result.executionTime > 0 {
-                            Text("· \(String(format: "%.3f", result.executionTime))s")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-
-                    Divider()
+                    // 发丝线而不是系统 Divider：后者在两种外观下各是一个固定灰，
+                    // 与我们的表面令牌不总一致。
+                    HairlineView()
 
                     if result.columns.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle")
-                                .font(.largeTitle)
-                                .foregroundStyle(.green)
-                            Text(L(.resultNoResultSet))
-                                .foregroundStyle(.secondary)
-                            if let affected = result.affectedRows {
-                                Text(L(.resultAffectedRows, affected))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        emptyResultSet(result)
                     } else {
                         ResultGrid(result: result)
                     }
                 }
             } else if isExecuting {
-                VStack(spacing: 10) {
+                VStack(spacing: Spacing.m) {
                     ProgressView()
                     Text(L(.resultExecuting))
-                        .foregroundStyle(.secondary)
+                        .font(Theme.font(.body))
+                        .foregroundStyle(Theme.text(.secondary))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -97,6 +46,80 @@ struct ResultTableView: View {
                     systemImage: "tablecells",
                     description: Text(L(.resultEmptyDescription))
                 )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: 顶部一行
+
+    private func toolbar(for result: QueryResult) -> some View {
+        HStack(spacing: Spacing.s) {
+            Text(L(.resultTitle))
+                .font(Theme.font(.title))
+
+            if resultCount > 1 {
+                Picker("", selection: Binding(
+                    get: { selectedIndex },
+                    set: { onSelectResult?($0) }
+                )) {
+                    ForEach(0..<resultCount, id: \.self) { index in
+                        Text(L(.resultPickerItem, index + 1)).tag(index)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 180)
+            }
+
+            Spacer()
+
+            if let onExport, ResultExporter.hasExportableContent(result) {
+                Menu {
+                    Button(L(.exportCSV)) { onExport(.csv) }
+                    Button(L(.exportJSON)) { onExport(.json) }
+                    Divider()
+                    Button(L(.exportTSV)) { onExport(.tsv) }
+                    Button(L(.exportMarkdown)) { onExport(.markdown) }
+                    Button(L(.exportSQLInsert)) { onExport(.sqlInsert) }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(L(.resultExport))
+            }
+
+            if result.columnCount > 0 {
+                Text(L(.resultSize, result.rowCount, result.columnCount))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+            }
+            if result.executionTime > 0 {
+                // 耗时用等宽数字：否则每次执行的小数位跳动会让这一小块"抖"
+                Text("· \(String(format: "%.3f", result.executionTime))s")
+                    .font(Theme.font(.data))
+                    .foregroundStyle(Theme.text(.secondary))
+            }
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
+    }
+
+    // MARK: 没有结果集的语句（DDL / DML）
+
+    private func emptyResultSet(_ result: QueryResult) -> some View {
+        VStack(spacing: Spacing.s) {
+            Image(systemName: "checkmark.circle")
+                .imageScale(.large)
+                .foregroundStyle(Theme.status(.success))
+            Text(L(.resultNoResultSet))
+                .font(Theme.font(.body))
+                .foregroundStyle(Theme.text(.secondary))
+            if let affected = result.affectedRows {
+                Text(L(.resultAffectedRows, affected))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
