@@ -527,6 +527,27 @@ public enum SQLGenerator {
             + "REFERENCES \(referenced) (\(referencedColumns))\(actions);"
     }
 
+    /// 生成 `ALTER TABLE … ADD CONSTRAINT …`（UNIQUE / CHECK 等，FR-DDL-03 扩写）；输入非法返回 `nil`。
+    ///
+    /// `definition` 是**约束定义文本**（如 `UNIQUE (email)` / `CHECK (age > 0)`）—— 与"默认值"同一个原则：
+    /// 方言差异太大，交给使用者写，界面上有实时预览。但**含分号一律拒绝**：那意味着想塞第二条语句。
+    public static func addConstraint(
+        name: String,
+        table: String,
+        schema: String? = nil,
+        definition: String,
+        dialect: any SQLDialect
+    ) -> String? {
+        guard PrivilegeProbe.isValidIdentifier(name),
+              let target = qualifiedNameChecked(table: table, schema: schema, dialect: dialect)
+        else { return nil }
+
+        let trimmed = definition.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(";") else { return nil }
+
+        return "ALTER TABLE \(target) ADD CONSTRAINT \(dialect.quoteIdentifier(trimmedSQLIdentifier(name))) \(trimmed);"
+    }
+
     /// 生成 `ALTER TABLE … DROP CONSTRAINT`；输入非法返回 `nil`。
     public static func dropConstraint(
         name: String,

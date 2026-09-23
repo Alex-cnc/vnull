@@ -68,6 +68,13 @@ public protocol SQLDialect: Sendable {
     /// 函数 / 存储过程定义查询（FR-META-13）；nil = 该方言不支持。
     func functionDDLQuery(function: String, schema: String?) -> String?
 
+    /// 已存在索引的查询（FR-DDL-03 的「删索引」要先看得见）；nil = 不支持。
+    /// 结果约定：第 1 列索引名、第 2 列定义文本。
+    func tableIndexesQuery(table: String, schema: String?) -> String?
+    /// 已存在约束的查询（主键 / 唯一 / 外键 / CHECK）；nil = 不支持。
+    /// 结果约定：第 1 列约束名、第 2 列类型代码（p/u/f/c）、第 3 列定义文本。
+    func tableConstraintsQuery(table: String, schema: String?) -> String?
+
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -92,6 +99,8 @@ public extension SQLDialect {
     func tableStructureQuery(table: String, schema: String?) -> String? { nil }
     func viewDDLQuery(view: String, schema: String?) -> String? { nil }
     func functionDDLQuery(function: String, schema: String?) -> String? { nil }
+    func tableIndexesQuery(table: String, schema: String?) -> String? { nil }
+    func tableConstraintsQuery(table: String, schema: String?) -> String? { nil }
     func lockWaitingQuery() -> String? { nil }
 }
 
@@ -352,6 +361,33 @@ public struct PostgresDialect: SQLDialect {
         return sql + "\n ORDER BY p.oid"
     }
 
+    /// 索引：`pg_indexes.indexdef` 就是一条现成的 `CREATE INDEX …`，直接展示即可，
+    /// 不必自己从 `pg_index` 拼 —— 拼出来的东西迟早与真实定义有出入。
+    public func tableIndexesQuery(table: String, schema: String?) -> String? {
+        let schemaName = schema ?? "public"
+        return """
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = \(literal(schemaName)) AND tablename = \(literal(table))
+        ORDER BY indexname
+        """
+    }
+
+    /// 约束：`pg_get_constraintdef` 给出定义体；类型代码照抄 `pg_constraint.contype`（p/u/f/c）。
+    public func tableConstraintsQuery(table: String, schema: String?) -> String? {
+        let schemaName = schema ?? "public"
+        return """
+        SELECT con.conname, con.contype, pg_get_constraintdef(con.oid)
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = \(literal(schemaName))
+          AND c.relname = \(literal(table))
+          AND con.contype IN ('p', 'u', 'f', 'c')
+        ORDER BY con.conname
+        """
+    }
+
     private func literal(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
@@ -462,6 +498,17 @@ public struct GBaseDialect: SQLDialect {
     /// 同上：`SHOW CREATE FUNCTION` 给出完整定义。
     public func functionDDLQuery(function: String, schema: String?) -> String? {
         "SHOW CREATE FUNCTION \(SQLGenerator.qualifiedName(table: function, schema: schema, dialect: self))"
+    }
+
+    /// GBase 8a 兼容 MySQL：`SHOW INDEX FROM <表>` / `SHOW CREATE TABLE` 里含索引与约束。
+    public func tableIndexesQuery(table: String, schema: String?) -> String? {
+        "SHOW INDEX FROM \(SQLGenerator.qualifiedName(table: table, schema: schema, dialect: self))"
+    }
+
+    public func tableConstraintsQuery(table: String, schema: String?) -> String? {
+        // MySQL 语法没有"约束清单"这类视图；`information_schema` 可用，但列语义与 PG 不同，
+        // 与其给一个半对的实现，不如返回 nil 让界面明说"该库类型暂不支持读约束"。
+        nil
     }
 
     public var builtinFunctions: [String] {

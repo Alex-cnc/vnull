@@ -21,8 +21,9 @@ struct TableDesignSheet: View {
     var initialSchema: String?
     /// 编辑模式下读取原始结构；新建模式为 nil。
     var loadStructure: (() async throws -> [TableColumnDefinition])?
-    /// (表名, schema, 原始结构, 编辑后的结构)。新建模式下原始结构为空数组。
-    let onSubmit: (String, String?, [TableColumnDefinition], [TableColumnDefinition]) -> Void
+    /// 编辑模式下读取既有索引与约束；不支持 / 新建模式为 nil。
+    var loadExtras: (() async throws -> (indexes: [TableIndexInfo], constraints: [TableConstraintInfo]))?
+    let onSubmit: (TableDesignSubmission) -> Void
 
     @State private var tableName = ""
     @State private var schema = ""
@@ -32,6 +33,15 @@ struct TableDesignSheet: View {
     @State private var original: [TableColumnDefinition] = []
     @State private var isLoading = false
     @State private var loadError: String?
+
+    // 索引 / 外键 / 约束（FR-DDL-03 扩写）
+    @State private var existingIndexes: [TableIndexInfo] = []
+    @State private var existingConstraints: [TableConstraintInfo] = []
+    @State private var droppedIndexes: Set<String> = []
+    @State private var droppedConstraints: Set<String> = []
+    @State private var newIndexes: [TableDesignExtrasSection.IndexDraft] = []
+    @State private var newForeignKeys: [TableDesignExtrasSection.ForeignKeyDraft] = []
+    @State private var newConstraints: [TableConstraintDraft] = []
 
     private var isEditing: Bool {
         if case .alter = mode { return true }
@@ -99,6 +109,18 @@ struct TableDesignSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            TableDesignExtrasSection(
+                indexes: existingIndexes,
+                constraints: existingConstraints,
+                isLoading: isLoading,
+                droppedIndexes: $droppedIndexes,
+                droppedConstraints: $droppedConstraints,
+                newIndexes: $newIndexes,
+                newForeignKeys: $newForeignKeys,
+                newConstraints: $newConstraints,
+                isEditing: isEditing
+            )
+
             if !issues.isEmpty {
                 issuesList
             }
@@ -131,7 +153,11 @@ struct TableDesignSheet: View {
                 Button(L(.commonCancel)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(isEditing ? L(.tableDesignApply) : L(.tableDesignCreate)) {
-                    onSubmit(tableName, schema, original, columns)
+                    onSubmit(TableDesignSubmission(
+                        name: tableName,
+                        schema: trimmedSchema,
+                        changeSet: changeSet
+                    ))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -221,32 +247,103 @@ struct TableDesignSheet: View {
         TableDesign.columnChanges(original: original, edited: columns)
     }
 
+    /// 编辑模式要执行的语句：**列 + 索引 + 外键 + 约束一起排**，顺序由 Core 决定
+    /// （删约束 → 删索引 → 列变更 → 新索引 → 新外键 → 新约束）。
     private var statements: [String] {
-        SQLGenerator.alterTableStatements(
+        TableDesignChangeSet.statements(
+            for: changeSet,
             table: tableName.isEmpty ? "table_name" : tableName,
             schema: trimmedSchema,
-            changes: changes,
             dialect: SQLDialectFactory.make(for: databaseType)
         )
     }
 
+    /// 破坏性语句：删列 / 改类型 / 删索引 / 删约束 —— 都要在提交前醒目列出。
+    ///
+    /// 按**语句内容**判定，而不是与 `changes` 逐个 zip：变更集里现在还有索引与约束语句，
+    /// 下标早就对不上了（错位的结果要么把无害语句标成破坏性，要么反过来 —— 后者会真出事）。
     private var destructiveChanges: [String] {
         guard isEditing else { return [] }
-        let changes = changes
-        let statements = statements
-        return zip(changes, statements).filter { $0.0.isDestructive }.map(\.1)
+        return statements.filter { statement in
+            statement.hasPrefix("DROP INDEX")
+                || statement.contains("DROP CONSTRAINT")
+                || statement.contains("DROP COLUMN")
+                || statement.contains("ALTER COLUMN")
+        }
+    }
+
+    /// 完整变更集（列 + 索引 + 外键 + 约束）：**预览与提交共用同一份**，
+    /// 避免"预览看着对、提交的却是另一批语句"。
+    private var changeSet: TableDesignChangeSet {
+        TableDesignChangeSet(
+            originalColumns: original,
+            editedColumns: columns,
+            newIndexes: newIndexes.compactMap { draft in
+                let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let parsedColumns = draft.columns
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                guard !name.isEmpty, !parsedColumns.isEmpty else { return nil }
+                let whereClause = draft.whereClause.trimmingCharacters(in: .whitespacesAndNewlines)
+                return SQLGenerator.IndexDefinition(
+                    name: name,
+                    table: tableName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    schema: trimmedSchema,
+                    columns: parsedColumns,
+                    isUnique: draft.isUnique,
+                    whereClause: whereClause.isEmpty ? nil : whereClause
+                )
+            },
+            droppedIndexes: Array(droppedIndexes),
+            newForeignKeys: newForeignKeys.compactMap { draft in
+                let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let parsedColumns = draft.columns.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                let referencedTable = draft.referencedTable.trimmingCharacters(in: .whitespacesAndNewlines)
+                let parsedReferenced = draft.referencedColumns.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                guard !referencedTable.isEmpty, !parsedColumns.isEmpty, !parsedReferenced.isEmpty else { return nil }
+                return SQLGenerator.ForeignKeyDefinition(
+                    name: name.isEmpty ? nil : name,
+                    table: tableName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    schema: trimmedSchema,
+                    columns: parsedColumns,
+                    referencedTable: referencedTable,
+                    referencedColumns: parsedReferenced,
+                    onDelete: draft.onDelete,
+                    onUpdate: draft.onUpdate
+                )
+            },
+            newConstraints: newConstraints.filter {
+                !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !$0.definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            },
+            droppedConstraints: Array(droppedConstraints)
+        )
     }
 
     private var previewText: String {
         guard isEditing else {
-            return SQLGenerator.createTable(
-                table: tableName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? "table_name"
-                    : tableName,
+            // 新建：先建表，再把它带的索引 / 约束按同一份顺序补上（都是独立语句）。
+            let target = tableName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "table_name"
+                : tableName
+            let create = SQLGenerator.createTable(
+                table: target,
                 columns: columns,
                 schema: trimmedSchema,
                 dialect: SQLDialectFactory.make(for: databaseType)
             )
+            let extras = TableDesignChangeSet.statements(
+                for: TableDesignChangeSet(
+                    newIndexes: changeSet.newIndexes,
+                    newForeignKeys: changeSet.newForeignKeys,
+                    newConstraints: changeSet.newConstraints
+                ),
+                table: target,
+                schema: trimmedSchema,
+                dialect: SQLDialectFactory.make(for: databaseType)
+            )
+            return ([create] + extras).joined(separator: "\n")
         }
         return statements.isEmpty ? L(.tableDesignNoChanges) : statements.joined(separator: "\n")
     }
@@ -258,7 +355,8 @@ struct TableDesignSheet: View {
 
     private var canSubmit: Bool {
         guard !isLoading, loadError == nil, issues.isEmpty else { return false }
-        if isEditing { return !changes.isEmpty }
+        // 编辑模式：改了列、或动了索引 / 约束，都算"有东西可提交"。
+        if isEditing { return changeSet.hasChanges }
         return true
     }
 
@@ -289,6 +387,12 @@ struct TableDesignSheet: View {
             let loaded = try await loadStructure()
             original = loaded
             columns = loaded
+            // 索引 / 约束读取失败**不该挡住改列**：分开处理，读不到就明说"暂不支持读取"。
+            if let loadExtras {
+                let extras = try await loadExtras()
+                existingIndexes = extras.indexes
+                existingConstraints = extras.constraints
+            }
         } catch {
             loadError = L(.tableDesignLoadFailed, ErrorPresenter.message(for: error))
         }

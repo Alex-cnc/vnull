@@ -101,8 +101,15 @@ struct ObjectTreeView: View {
                 mode: .create,
                 databaseType: appState.selectedConnection?.dbType ?? .postgresql,
                 initialSchema: target.kind == .schema ? target.name : target.schema
-            ) { name, schema, columns, _ in
-                Task { _ = await appState.createTable(named: name, schema: schema, columns: columns) }
+            ) { submission in
+                Task {
+                    _ = await appState.createTable(
+                        named: submission.name,
+                        schema: submission.schema,
+                        columns: submission.changeSet.editedColumns,
+                        extras: submission.changeSet
+                    )
+                }
             }
         }
         .sheet(item: $browseRowsTarget) { target in
@@ -116,9 +123,10 @@ struct ObjectTreeView: View {
                 mode: .alter(tableName: target.name),
                 databaseType: appState.selectedConnection?.dbType ?? .postgresql,
                 initialSchema: target.schema,
-                loadStructure: { try await appState.tableStructure(of: target) }
-            ) { _, _, original, edited in
-                Task { _ = await appState.alterTable(target, from: original, to: edited) }
+                loadStructure: { try await appState.tableStructure(of: target) },
+                loadExtras: { try await appState.tableExtras(of: target) }
+            ) { submission in
+                Task { _ = await appState.alterTable(target, changeSet: submission.changeSet) }
             }
         }
         .sheet(isPresented: $isCreateDatabasePresented) {

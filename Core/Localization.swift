@@ -104,6 +104,37 @@ public enum LKey: String, CaseIterable, Sendable {
     case tableDesignNoChanges
     case tableDesignDestructive
     case tableDesignPrimaryKeyLocked
+    case tableDesignIndexes
+    case tableDesignAddIndex
+    case tableDesignIndexName
+    case tableDesignIndexColumns
+    case tableDesignIndexUnique
+    case tableDesignIndexWhere
+    case tableDesignNoIndexes
+    case tableDesignConstraints
+    case tableDesignAddConstraint
+    case tableDesignAddForeignKey
+    case tableDesignConstraintName
+    case tableDesignConstraintDefinition
+    case tableDesignForeignKeyColumns
+    case tableDesignForeignKeyTable
+    case tableDesignOnDelete
+    case tableDesignOnUpdate
+    case tableDesignNoConstraints
+    case tableDesignPrimaryKeyKept
+    case tableDesignWillDrop
+    case tableDesignExtrasHint
+    case referentialActionNone
+    case referentialActionNoAction
+    case referentialActionRestrict
+    case referentialActionCascade
+    case referentialActionSetNull
+    case referentialActionSetDefault
+    case constraintKindPrimaryKey
+    case constraintKindUnique
+    case constraintKindForeignKey
+    case constraintKindCheck
+    case constraintKindOther
     case tableDesignLoading
     case tableDesignLoadFailed
     case tableDesignAltered
@@ -926,6 +957,37 @@ public enum LocalizedStrings {
         .tableDesignNoChanges: [.simplifiedChinese: "没有改动。", .english: "No changes."],
         .tableDesignDestructive: [.simplifiedChinese: "以下变更会动到已有数据（删列 / 改类型），请确认：", .english: "These changes affect existing data (dropping a column or changing a type):"],
         .tableDesignPrimaryKeyLocked: [.simplifiedChinese: "主键在「编辑表结构」里只读：改主键要先删约束再重建，容易误伤数据，留待后续版本。", .english: "Primary keys are read-only while editing: changing one means dropping and recreating a constraint, which is easy to get wrong. Deferred to a later version."],
+        .tableDesignIndexes: [.simplifiedChinese: "索引", .english: "Indexes"],
+        .tableDesignAddIndex: [.simplifiedChinese: "加索引", .english: "Add index"],
+        .tableDesignIndexName: [.simplifiedChinese: "索引名", .english: "Index name"],
+        .tableDesignIndexColumns: [.simplifiedChinese: "列（逗号分隔）", .english: "Columns (comma separated)"],
+        .tableDesignIndexUnique: [.simplifiedChinese: "唯一", .english: "Unique"],
+        .tableDesignIndexWhere: [.simplifiedChinese: "条件（可选）", .english: "WHERE (optional)"],
+        .tableDesignNoIndexes: [.simplifiedChinese: "没有读取到索引（或该库类型不支持读取）", .english: "No indexes were read (or this database type does not support reading them)"],
+        .tableDesignConstraints: [.simplifiedChinese: "外键与约束", .english: "Foreign keys and constraints"],
+        .tableDesignAddConstraint: [.simplifiedChinese: "加约束（UNIQUE / CHECK）", .english: "Add constraint (UNIQUE / CHECK)"],
+        .tableDesignAddForeignKey: [.simplifiedChinese: "加外键", .english: "Add foreign key"],
+        .tableDesignConstraintName: [.simplifiedChinese: "约束名", .english: "Constraint name"],
+        .tableDesignConstraintDefinition: [.simplifiedChinese: "定义（如 UNIQUE (email) / CHECK (age > 0)）", .english: "Definition (e.g. UNIQUE (email) / CHECK (age > 0))"],
+        .tableDesignForeignKeyColumns: [.simplifiedChinese: "本表列", .english: "Local columns"],
+        .tableDesignForeignKeyTable: [.simplifiedChinese: "引用表", .english: "Referenced table"],
+        .tableDesignOnDelete: [.simplifiedChinese: "删除时", .english: "On delete"],
+        .tableDesignOnUpdate: [.simplifiedChinese: "更新时", .english: "On update"],
+        .tableDesignNoConstraints: [.simplifiedChinese: "没有读取到约束（或该库类型不支持读取）", .english: "No constraints were read (or this database type does not support reading them)"],
+        .tableDesignPrimaryKeyKept: [.simplifiedChinese: "主键不在此处删除（请用 SQL）", .english: "Primary keys are not dropped here (use SQL)"],
+        .tableDesignWillDrop: [.simplifiedChinese: "将删除", .english: "will be dropped"],
+        .tableDesignExtrasHint: [.simplifiedChinese: "索引与外键在改列之后创建；删除既有对象请在左侧取消勾选。留空的行提交时会被忽略", .english: "Indexes and foreign keys are created after column changes; uncheck an existing object to drop it. Empty rows are ignored on submit"],
+        .referentialActionNone: [.simplifiedChinese: "不指定", .english: "Not specified"],
+        .referentialActionNoAction: [.simplifiedChinese: "NO ACTION（不动作）", .english: "NO ACTION"],
+        .referentialActionRestrict: [.simplifiedChinese: "RESTRICT（禁止）", .english: "RESTRICT"],
+        .referentialActionCascade: [.simplifiedChinese: "CASCADE（级联）", .english: "CASCADE"],
+        .referentialActionSetNull: [.simplifiedChinese: "SET NULL（置空）", .english: "SET NULL"],
+        .referentialActionSetDefault: [.simplifiedChinese: "SET DEFAULT（置默认值）", .english: "SET DEFAULT"],
+        .constraintKindPrimaryKey: [.simplifiedChinese: "主键", .english: "Primary key"],
+        .constraintKindUnique: [.simplifiedChinese: "唯一", .english: "Unique"],
+        .constraintKindForeignKey: [.simplifiedChinese: "外键", .english: "Foreign key"],
+        .constraintKindCheck: [.simplifiedChinese: "检查", .english: "Check"],
+        .constraintKindOther: [.simplifiedChinese: "其他", .english: "Other"],
         .tableDesignLoading: [.simplifiedChinese: "正在读取表结构…", .english: "Loading table structure…"],
         .tableDesignLoadFailed: [.simplifiedChinese: "读取表结构失败：%@", .english: "Loading the table structure failed: %@"],
         .tableDesignAltered: [.simplifiedChinese: "已更新表 %@（%@ 项变更）。", .english: "Updated table %@ (%@ changes)."],

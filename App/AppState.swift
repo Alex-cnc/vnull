@@ -387,24 +387,56 @@ final class AppState: ObservableObject {
     ///
     /// 逐条执行而不是拼成一整段：失败时能指出是第几条，使用者知道"改到哪儿断了"。
     /// 已经执行的语句**不回滚**（DDL 在多数方言里本就不可回滚），这一点在界面提示里讲清楚。
-    func alterTable(
-        _ object: DatabaseObject,
-        from original: [TableColumnDefinition],
-        to edited: [TableColumnDefinition]
-    ) async -> Bool {
+    /// 读取一张表既有的索引与约束（FR-DDL-03 的「删」要先看得见）。
+    ///
+    /// 方言不支持时**返回空数组**，界面据此显示"暂不支持读取" ——
+    /// 不能让人以为"这张表没有索引"。
+    func tableExtras(of object: DatabaseObject) async throws -> (indexes: [TableIndexInfo], constraints: [TableConstraintInfo]) {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let database = object.database ?? currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+
+        var indexes: [TableIndexInfo] = []
+        if let query = dialect.tableIndexesQuery(table: object.name, schema: object.schema) {
+            indexes = TableDesignChangeSet.indexes(from: try await runSingleQuery(query, on: service))
+        }
+
+        var constraints: [TableConstraintInfo] = []
+        if let query = dialect.tableConstraintsQuery(table: object.name, schema: object.schema) {
+            constraints = TableDesignChangeSet.constraints(from: try await runSingleQuery(query, on: service))
+        }
+
+        return (indexes, constraints)
+    }
+
+    /// 应用一份表设计变更（列 + 索引 + 外键 + 约束）。
+    ///
+    /// 语句顺序由 Core 决定（删约束 → 删索引 → 列变更 → 新索引 → 新外键 → 新约束）；
+    /// 中间失败时**指明第几条**并让对象树刷新（前面的语句可能已生效），绝不谎报成功。
+    func alterTable(_ object: DatabaseObject, changeSet: TableDesignChangeSet) async -> Bool {
         guard let configuration = selectedConnection else {
             errorMessage = L(.stateSelectConnectionFirst)
             return false
         }
 
-        let changes = TableDesign.columnChanges(original: original, edited: edited)
-        let statements = SQLGenerator.alterTableStatements(
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let statements = TableDesignChangeSet.statements(
+            for: changeSet,
             table: object.name,
             schema: object.schema,
-            changes: changes,
-            dialect: SQLDialectFactory.make(for: configuration.dbType)
+            dialect: dialect
         )
-        guard !statements.isEmpty else { return true }
+        // 非空变更集却生成不出语句 = 某条输入非法（Core 整批返回空），必须说出来。
+        guard !statements.isEmpty else {
+            if changeSet.hasChanges {
+                errorMessage = L(.tableDesignInvalid)
+                return false
+            }
+            return true
+        }
 
         do {
             let database = object.database ?? currentDatabaseName(for: configuration)
@@ -419,7 +451,7 @@ final class AppState: ObservableObject {
                 }
             }
 
-            statusMessage = L(.tableDesignAltered, object.name, "\(changes.count)")
+            statusMessage = L(.tableDesignAltered, object.name, "\(statements.count)")
             metadataRevision += 1
             return true
         } catch {
@@ -437,7 +469,8 @@ final class AppState: ObservableObject {
     func createTable(
         named rawName: String,
         schema: String?,
-        columns: [TableColumnDefinition]
+        columns: [TableColumnDefinition],
+        extras: TableDesignChangeSet? = nil
     ) async -> Bool {
         guard let configuration = selectedConnection else {
             errorMessage = L(.stateSelectConnectionFirst)
@@ -465,6 +498,24 @@ final class AppState: ObservableObject {
                 database: currentDatabaseName(for: configuration)
             )
             _ = try await runSingleQuery(sql, on: service)
+
+            // 建表带的索引 / 约束：建表成功后按同一份顺序补上（各自独立语句）。
+            // 中途失败要**说清第几条**并让对象树刷新 —— 表已经建出来了，不能让人以为什么都没发生。
+            let extraStatements = TableDesignChangeSet.statements(
+                for: extras ?? TableDesignChangeSet(),
+                table: name,
+                schema: (trimmedSchema?.isEmpty ?? true) ? nil : trimmedSchema,
+                dialect: dialect
+            )
+            for (index, statement) in extraStatements.enumerated() {
+                do {
+                    _ = try await runSingleQuery(statement, on: service)
+                } catch {
+                    errorMessage = L(.tableDesignAlterFailed, index + 1, ErrorPresenter.message(for: error))
+                    metadataRevision += 1
+                    return false
+                }
+            }
 
             statusMessage = L(.tableDesignCreated, name)
             metadataRevision += 1
