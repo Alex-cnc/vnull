@@ -94,6 +94,22 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // agent-sql：无界面地跑一遍「自然语言 → SQL」通道（NFR-AI-06 的本地端点验证入口）。
+        // 为什么 CLI 要有它：**"指向本地端点即零外发"这件事必须能被脚本验证** ——
+        // 图形界面里点一下不算证据，能跑脚本、能核对统一外发日志才算。
+        if arguments.first == "agent-sql" {
+            let code = await runAgentSQLCommand(
+                arguments: Array(arguments.dropFirst()),
+                client: OpenAICompatibleClient(
+                    transport: EgressRecordingTransport(
+                        origin: "CLI · 自然语言生成 SQL",
+                        wrapped: URLSessionTransport()
+                    )
+                )
+            )
+            exit(code)
+        }
+
         let host = environment["PGHOST"] ?? "127.0.0.1"
         let port = Int(environment["PGPORT"] ?? "5432") ?? 5432
         let username = environment["PGUSER"] ?? "postgres"
@@ -332,6 +348,106 @@ struct DoyahCLI {
             print(String(reflecting: error))
             await service.disconnect()
             exit(2)
+        }
+    }
+
+    /// `agent-sql --endpoint http://127.0.0.1:11434 --model qwen2.5:7b "指令" [--schema t1,t2] [--api-key K] [--show-egress]`
+    ///
+    /// 输出：模型的 SQL、解释、护栏判定、配额账本，以及（可选）统一外发日志里刚记下的条目 ——
+    /// 后者是"零外发 / 最小外发"的**可核对证据**，而不是一句承诺。
+    private static func runAgentSQLCommand(
+        arguments: [String],
+        client: any LLMClient
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let endpoint = value(for: "--endpoint") else {
+            print("用法：agent-sql --endpoint <OpenAI 兼容端点> --model <模型名> \"指令\" [--schema 表1,表2] [--api-key K] [--show-egress]")
+            return 64
+        }
+        guard let model = value(for: "--model") else {
+            print("缺少 --model")
+            return 64
+        }
+        // 指令是第一个不以 `--` 开头的自由参数。
+        let flagsWithValue: Set<String> = ["--endpoint", "--model", "--schema", "--api-key"]
+        var instruction: String?
+        var skipNext = false
+        for argument in arguments {
+            if skipNext { skipNext = false; continue }
+            if flagsWithValue.contains(argument) { skipNext = true; continue }
+            if argument.hasPrefix("--") { continue }
+            instruction = argument
+            break
+        }
+        guard let instruction, !instruction.isEmpty else {
+            print("缺少指令文本")
+            return 64
+        }
+
+        let tables = (value(for: "--schema") ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        // `--disabled` 用来验证 NFR-AI-02 / AC-AI-01 的那条硬承诺：
+        // **总开关关闭时一个请求都不发**（不是"发了再报错"）。
+        let isEnabled = !arguments.contains("--disabled")
+        let configuration = AgentConfiguration(
+            isEnabled: isEnabled,
+            endpoint: endpoint,
+            model: model,
+            guardPolicy: .readOnlyDefault
+        )
+        let apiKey = value(for: "--api-key")
+
+        print("端点：\(endpoint)")
+        print("本地端点判定：\(configuration.requiresAPIKey ? "否（需要 API Key）" : "是（免 API Key）")")
+        print("")
+
+        do {
+            let result = try await AgentSQLGenerator.generate(
+                request: AgentSQLGenerator.Request(
+                    instruction: instruction,
+                    schema: AgentSQLGenerator.SchemaSummary(tables: tables.map {
+                        AgentSQLGenerator.SchemaSummary.Table(name: $0, columns: [])
+                    }),
+                    currentStatement: nil
+                ),
+                configuration: configuration,
+                apiKey: apiKey,
+                policy: .readOnlyDefault,
+                ledger: .empty,
+                client: client
+            )
+
+            print("SQL：")
+            print(result.sql)
+            if let explanation = result.explanation, !explanation.isEmpty {
+                print("")
+                print("解释：")
+                print(explanation)
+            }
+            print("")
+            print("护栏判定：\(result.guardAssessment.verdict)")
+            print("配额账本：请求 \(result.quotaLedger.requestCount) 次 / \(result.quotaLedger.totalTokens) token")
+            print("是否已执行：\(result.isExecuted ? "是（不该发生）" : "否")")
+
+            if arguments.contains("--show-egress") {
+                let entries = (try? await EgressLog.shared.entries(limit: 5)) ?? []
+                print("")
+                print("统一外发日志（最近 \(entries.count) 条）：")
+                for entry in entries {
+                    print("  \(entry.kind.rawValue) → \(entry.target) [\(entry.outcome.rawValue)] \(entry.origin)")
+                }
+            }
+            return 0
+        } catch {
+            print("生成失败：\(error.localizedDescription)")
+            return 67
         }
     }
 

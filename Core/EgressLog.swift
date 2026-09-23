@@ -107,6 +107,13 @@ public actor EgressLog {
         let baseURL: URL
         if let directoryURL {
             baseURL = directoryURL
+        } else if let override = ProcessInfo.processInfo.environment["DOYAH_EGRESS_LOG_DIR"],
+                  !override.trimmingCharacters(in: .whitespaces).isEmpty {
+            // 目录可覆盖（与口令文件同一思路）：**沙箱 / 受限环境里要能验证"日志真的写下来了"**。
+            // 本轮实测踩到过：CLI 在受限 shell 里写 `~/Library/Application Support` 被拒，
+            // 于是"外发日志"这条证据拿不到 —— 日志写入失败本身只打一行警告（不该让主流程失败），
+            // 但**验证脚本必须能指定一个可写目录**。
+            baseURL = URL(fileURLWithPath: override, isDirectory: true)
         } else {
             let applicationSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory,
