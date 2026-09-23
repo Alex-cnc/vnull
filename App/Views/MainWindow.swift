@@ -71,6 +71,9 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAgentSettingsPresented) {
             AgentSettingsSheet()
         }
+        .sheet(isPresented: $appState.isAppearancePresented) {
+            AppearanceSheet()
+        }
         .sheet(isPresented: $appState.isAgentSQLPresented) {
             AgentSQLPanel()
         }

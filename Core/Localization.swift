@@ -41,6 +41,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case menuNewQuery
     case menuLanguage
 
+    // 外观（FR-EDIT-33）
+    case menuAppearance
+    case appearanceTitle
+    case appearanceAccentSection
+    case appearanceAccentHint
+    case appearanceThemeNote
+    case accentWhaleBlue
+    case accentDeepTeal
+    case accentWhaleMagenta
+
     // 表设计（FR-DDL-03）
     case tableDesignTitle
     case tableDesignName
@@ -719,6 +729,14 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
+        .menuAppearance: [.simplifiedChinese: "外观…", .english: "Appearance…"],
+        .appearanceTitle: [.simplifiedChinese: "外观", .english: "Appearance"],
+        .appearanceAccentSection: [.simplifiedChinese: "强调色", .english: "Accent Color"],
+        .appearanceAccentHint: [.simplifiedChinese: "强调色只用在选中态、主按钮与焦点环上，其余保持中性。", .english: "Used only for selections, the primary button and focus rings; everything else stays neutral."],
+        .appearanceThemeNote: [.simplifiedChinese: "主题跟随系统外观：浅色走原生精致，深色走专业暗色。", .english: "Theme follows the system appearance: refined native in light, pro dark in dark."],
+        .accentWhaleBlue: [.simplifiedChinese: "鲸鱼蓝", .english: "Whale Blue"],
+        .accentDeepTeal: [.simplifiedChinese: "深海青", .english: "Deep Teal"],
+        .accentWhaleMagenta: [.simplifiedChinese: "鲸心品红", .english: "Whale Magenta"],
         .tableDesignAlterTitle: [.simplifiedChinese: "编辑表结构", .english: "Edit Table Structure"],
         .tableDesignApply: [.simplifiedChinese: "应用变更", .english: "Apply changes"],
         .tableDesignNoChanges: [.simplifiedChinese: "没有改动。", .english: "No changes."],

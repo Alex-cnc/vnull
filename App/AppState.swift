@@ -186,6 +186,9 @@ final class AppState: ObservableObject {
     @Published var hasAgentAPIKey = false
     /// 「智能体设置…」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentSettingsPresented = false
+
+    /// 「外观」面板（FR-EDIT-33：强调色可配置）。
+    @Published var isAppearancePresented = false
     // MARK: 执行计划（FR-DIAG-01）
 
     /// 执行计划面板的呈现开关。

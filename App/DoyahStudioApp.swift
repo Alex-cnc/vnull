@@ -8,6 +8,8 @@ struct DoyahStudioApp: App {
     /// 终端会话放在 App 层而不是面板里：最大化 / 恢复、以及切换语言导致的整树重建
     /// 都不该把正在跑的 shell（比如一个 dsh 会话）杀掉。
     @StateObject private var terminal = TerminalModel()
+    /// 强调色（FR-EDIT-33）：可配置，通过根视图 `.tint` 下发到所有系统控件。
+    @StateObject private var accent = AccentManager.shared
 
     init() {
         MainMenuLocalizer.start()
@@ -19,6 +21,8 @@ struct DoyahStudioApp: App {
                 .environmentObject(appState)
                 .environmentObject(localization)
                 .environmentObject(terminal)
+                .environmentObject(accent)
+                .tint(accent.accentColor)
                 .frame(minWidth: 1_100, minHeight: 700)
                 // 语言切换时整棵视图树重建，保证所有文案立即刷新。
                 .id(localization.language)

@@ -72,6 +72,12 @@ struct DoyahStudioCommands: Commands {
 
         // 「显示」菜单：下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）。
         CommandGroup(after: .sidebar) {
+            Button(L(.menuAppearance)) {
+                appState.isAppearancePresented = true
+            }
+
+            Divider()
+
             Button(L(.lowerPaneToggle)) {
                 appState.isLowerPaneVisible.toggle()
             }
