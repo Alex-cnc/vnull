@@ -14,12 +14,14 @@ struct DoyahStudioApp: App {
     @StateObject private var workspace = WorkspaceStore.shared
 
     init() {
-        // **单实例保护**：同一个 bundle 永远只允许一个进程在跑。
+        // **单实例保护**：同一个 bundle 通常只允许一个进程在跑。
         //
-        // 为什么必须有：重启（守望者竞态）、双击图标、`open -n` 都会造出第二个进程，
-        // 而用户看到的是「怎么又多了一个窗口、旧的还在」，关掉哪一个都不确定。
-        // 这里让后启动的那个把先启动的激活、自己退出 —— 窗口只会有一个。
-        if let existing = Self.otherRunningInstance() {
+        // 但有一个例外必须放行：**重启时被旧实例主动拉起来的那一个**。
+        // 否则就会变成"新实例把旧的激活、自己退出，旧的随后也退出" —— 用户点重启后
+        // 什么都不会发生（这正是 R-36 第二版踩的坑）。
+        // 接替启动优先判断：它会等旧实例真的退出，并把交接单消费掉。
+        let isTakeover = AppRelauncher.claimHandoffIfPresent()
+        if !isTakeover, let existing = Self.otherRunningInstance() {
             existing.activate()
             exit(0)
         }
@@ -34,6 +36,8 @@ struct DoyahStudioApp: App {
             .runningApplications(withBundleIdentifier: bundleID)
             .first { $0.processIdentifier != currentPID }
     }
+
+
 
     var body: some Scene {
         WindowGroup {
@@ -66,3 +70,5 @@ struct DoyahStudioApp: App {
         }
     }
 }
+
+

@@ -369,6 +369,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case agentApprovalConnectionMismatch
     case menuNewBrowserTab
     case browserTitle
+    case relaunchBlocked
     case browserRestoredTitle
     case browserRestoredHint
     case browserAddressPlaceholder
@@ -1103,7 +1104,7 @@ public enum LocalizedStrings {
         .menuEgressLog: [.simplifiedChinese: "外发日志…", .english: "Egress Log…"],
         .menuNewBrowserTab: [.simplifiedChinese: "新建浏览器页签", .english: "New Browser Tab"],
         .browserTitle: [.simplifiedChinese: "浏览器", .english: "Browser"],
-        .browserRestoredTitle: [.simplifiedChinese: "已恢复的页签（尚未加载）", .english: "Restored tab (not loaded yet)"],
+        .relaunchBlocked: [.simplifiedChinese: "还有未保存的查询，已取消重启 —— 请先保存再换语言。", .english: "There are unsaved queries, so the restart was cancelled — save them first, then switch language."],        .browserRestoredTitle: [.simplifiedChinese: "已恢复的页签（尚未加载）", .english: "Restored tab (not loaded yet)"],
         .browserRestoredHint: [.simplifiedChinese: "恢复会话不会自动发起请求 —— 点「刷新」才会真正加载。", .english: "Restoring a session never fires a request by itself — press Reload to actually load it."],        .browserAddressPlaceholder: [.simplifiedChinese: "输入地址后回车（默认不加载任何远程内容）", .english: "Type an address and press Return (nothing remote loads by default)"],
         .browserBack: [.simplifiedChinese: "后退", .english: "Back"],
         .browserForward: [.simplifiedChinese: "前进", .english: "Forward"],
