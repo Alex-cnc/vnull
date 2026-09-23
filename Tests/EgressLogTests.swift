@@ -214,3 +214,58 @@ private actor CountingTransport: HTTPTransport {
         return (Data("{}".utf8), response)
     }
 }
+
+/// 筛选条件（NFR-SEC-08）：面板 / 导出将来共用同一份实现，所以它必须自己先被测住。
+final class EgressFilterTests: XCTestCase {
+
+    private func entry(
+        _ kind: EgressKind,
+        _ outcome: EgressOutcome,
+        target: String = "https://api.example/v1",
+        origin: String = "智能体 · 生成 SQL",
+        detail: String? = nil
+    ) -> EgressEntry {
+        EgressEntry(kind: kind, target: target, origin: origin, outcome: outcome, detail: detail)
+    }
+
+    private var sample: [EgressEntry] {
+        [
+            entry(.agentModel, .allowed),
+            entry(.agentModel, .denied, detail: "总开关关闭"),
+            entry(.browser, .allowed, target: "https://docs.example/page", origin: "浏览器 · 页签"),
+            entry(.externalProgram, .failed, target: "pg_dump", origin: "导出", detail: "退出码 1")
+        ]
+    }
+
+    func testEmptyFilterKeepsEverything() {
+        let filter = EgressFilter()
+        XCTAssertFalse(filter.isActive)
+        XCTAssertEqual(filter.apply(to: sample).count, 4)
+    }
+
+    /// 浏览器与智能体共用一份日志：能按类别分开看，才不会互相淹没。
+    func testKindFilter() {
+        XCTAssertEqual(EgressFilter(kind: .browser).apply(to: sample).count, 1)
+        XCTAssertEqual(EgressFilter(kind: .agentModel).apply(to: sample).count, 2)
+    }
+
+    /// 「只看被拦下的」是最常用的一档：它回答"有没有想发但没发出去的"。
+    func testOutcomeFilterFindsDenied() {
+        let denied = EgressFilter(outcome: .denied).apply(to: sample)
+        XCTAssertEqual(denied.count, 1)
+        XCTAssertEqual(denied.first?.detail, "总开关关闭")
+    }
+
+    func testKeywordMatchesTargetOriginAndDetail() {
+        XCTAssertEqual(EgressFilter(keyword: "docs.example").apply(to: sample).count, 1)
+        XCTAssertEqual(EgressFilter(keyword: "浏览器").apply(to: sample).count, 1)
+        XCTAssertEqual(EgressFilter(keyword: "退出码").apply(to: sample).count, 1)
+        XCTAssertEqual(EgressFilter(keyword: "PG_DUMP").apply(to: sample).count, 1, "关键词不区分大小写")
+    }
+
+    func testCombinedFilter() {
+        let filtered = EgressFilter(kind: .agentModel, outcome: .allowed).apply(to: sample)
+        XCTAssertEqual(filtered.count, 1)
+        XCTAssertEqual(filtered.first?.outcome, .allowed)
+    }
+}

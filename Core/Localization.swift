@@ -384,6 +384,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case egressColumnOrigin
     case egressColumnOutcome
     case egressTitle
+    case egressFilterAll
+    case egressFilterHint
     case egressSubtitle
     case egressEmpty
     case egressClear
@@ -1114,7 +1116,8 @@ public enum LocalizedStrings {
         .egressColumnOrigin: [.simplifiedChinese: "触发来源", .english: "Origin"],
         .egressColumnOutcome: [.simplifiedChinese: "结果", .english: "Outcome"],
         .egressTitle: [.simplifiedChinese: "外发日志", .english: "Egress Log"],
-        .egressSubtitle: [.simplifiedChinese: "本机所有出网请求都会记在这里（智能体模型调用、内嵌浏览器、外部程序、更新检查）。默认零外发的承诺，靠它可查、可导出、可清空。", .english: "Every outbound request from this machine is recorded here (agent model calls, embedded browser, external tools, update checks). This is what makes the zero-egress promise verifiable."],
+        .egressFilterAll: [.simplifiedChinese: "全部", .english: "All"],
+        .egressFilterHint: [.simplifiedChinese: "（已筛选）", .english: "(filtered)"],        .egressSubtitle: [.simplifiedChinese: "本机所有出网请求都会记在这里（智能体模型调用、内嵌浏览器、外部程序、更新检查）。默认零外发的承诺，靠它可查、可导出、可清空。", .english: "Every outbound request from this machine is recorded here (agent model calls, embedded browser, external tools, update checks). This is what makes the zero-egress promise verifiable."],
         .egressEmpty: [.simplifiedChinese: "还没有任何出网记录 —— 这就是「默认零外发」的样子", .english: "No egress records yet — this is what zero egress looks like"],
         .egressClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .egressClearConfirmTitle: [.simplifiedChinese: "清空外发日志？", .english: "Clear the egress log?"],

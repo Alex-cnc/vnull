@@ -305,3 +305,39 @@ enum EgressDiagnostics {
         FileHandle.standardError.write(Data("[egress] \(message)\n".utf8))
     }
 }
+
+/// 外发日志的筛选条件（纯值类型，便于单测）。
+///
+/// 为什么筛选要放在 Core：面板、导出、"只看被拦下的请求"这些入口将来会有多个，
+/// 各写一份筛选就会出现"同一个条件在不同地方结果不同"。放这里只有一份实现。
+public struct EgressFilter: Equatable, Sendable {
+    /// `nil` = 不限类别。
+    public var kind: EgressKind?
+    /// `nil` = 不限结果。
+    public var outcome: EgressOutcome?
+    /// 关键词：匹配目标 / 触发来源 / 补充说明（不区分大小写）。
+    public var keyword: String
+
+    public init(kind: EgressKind? = nil, outcome: EgressOutcome? = nil, keyword: String = "") {
+        self.kind = kind
+        self.outcome = outcome
+        self.keyword = keyword
+    }
+
+    public var isActive: Bool {
+        kind != nil || outcome != nil || !keyword.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    public func apply(to entries: [EgressEntry]) -> [EgressEntry] {
+        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return entries.filter { entry in
+            if let kind, entry.kind != kind { return false }
+            if let outcome, entry.outcome != outcome { return false }
+            guard !trimmed.isEmpty else { return true }
+            let haystack = [entry.target, entry.origin, entry.detail ?? ""]
+                .joined(separator: " ")
+                .lowercased()
+            return haystack.contains(trimmed)
+        }
+    }
+}

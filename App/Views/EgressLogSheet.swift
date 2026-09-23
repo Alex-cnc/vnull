@@ -17,6 +17,12 @@ struct EgressLogSheet: View {
     @EnvironmentObject private var appState: AppState
 
     @State private var isClearConfirmPresented = false
+    @State private var filter = EgressFilter()
+
+    /// 应用筛选后的记录（新的在前）。
+    private var visibleEntries: [EgressEntry] {
+        filter.apply(to: appState.egressEntries)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.l) {
@@ -39,10 +45,34 @@ struct EgressLogSheet: View {
                 Text(L(.egressTitle))
                     .font(Theme.font(.title))
                     .foregroundStyle(Theme.text(.primary))
-                Text(L(.egressCount, appState.egressEntries.count))
+                Text(L(.egressCount, visibleEntries.count))
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.text(.tertiary))
+                if filter.isActive {
+                    Text(L(.egressFilterHint))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.tertiary))
+                }
                 Spacer()
+
+                // 按类别筛选：浏览器与智能体共用一份日志，能分开看才不会互相淹没。
+                Picker("", selection: $filter.kind) {
+                    Text(L(.egressFilterAll)).tag(EgressKind?.none)
+                    ForEach(EgressKind.allCases, id: \.self) { kind in
+                        Text(kindLabel(kind)).tag(EgressKind?.some(kind))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 160)
+
+                Picker("", selection: $filter.outcome) {
+                    Text(L(.egressFilterAll)).tag(EgressOutcome?.none)
+                    Text(L(.egressOutcomeAllowed)).tag(EgressOutcome?.some(.allowed))
+                    Text(L(.egressOutcomeDenied)).tag(EgressOutcome?.some(.denied))
+                    Text(L(.egressOutcomeFailed)).tag(EgressOutcome?.some(.failed))
+                }
+                .labelsHidden()
+                .frame(maxWidth: 140)
                 Button(L(.egressExportJSON)) {
                     Task { await appState.exportEgressLog(asCSV: false) }
                 }
@@ -63,14 +93,14 @@ struct EgressLogSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        if appState.egressEntries.isEmpty {
+        if visibleEntries.isEmpty {
             emptyState
         } else {
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 columnHeader
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(appState.egressEntries) { entry in
+                        ForEach(visibleEntries) { entry in
                             entryRow(entry)
                             HairlineView()
                         }
