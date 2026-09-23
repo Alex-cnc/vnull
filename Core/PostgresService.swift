@@ -35,6 +35,24 @@ public actor PostgresService: DatabaseService {
         )
         self.connection = newConnection
 
+        // 建连之后的任何一步失败（版本查询、当前库、当前用户、后端 PID），
+        // 都必须把**已经建立的连接关掉**再抛（R-33 ①）：
+        // 原来是直接抛出去，`self.connection` 还挂着一条没人管的连接 ——
+        // debug 构建会踩 PostgresNIO 的 deinit 断言崩溃，release 则泄漏 socket。
+        do {
+            return try await finishConnect(on: newConnection)
+        } catch {
+            logger.warning("连接建立后初始化失败，已关闭该连接：\(String(describing: error))")
+            try? await newConnection.close()
+            self.connection = nil
+            self.backendPID = nil
+            throw error
+        }
+    }
+
+    /// 建连后的初始化查询（版本 / 当前库 / 当前用户 / 后端 PID）。
+    private func finishConnect(on newConnection: PostgresConnection) async throws -> ServerInfo {
+
         let version = try await firstString(
             on: newConnection,
             sql: "SHOW server_version"
@@ -67,7 +85,12 @@ public actor PostgresService: DatabaseService {
 
     public func disconnect() async {
         if let connection {
-            try? await connection.close()
+            do {
+                try await connection.close()
+            } catch {
+                // 关失败也要看得见：静默吞掉会让人以为连接已经干净地断了（R-33 ②）。
+                logger.warning("关闭连接失败：\(String(describing: error))")
+            }
         }
         connection = nil
         backendPID = nil

@@ -152,6 +152,10 @@ public final class ResultStreamWriter {
         // 目标目录必须存在：导出路径由保存面板给出，父目录不存在属于调用方错误。
         FileManager.default.createFile(atPath: partialURL.path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: partialURL.path) else {
+            // 打不开就别把半成品留在磁盘上（R-34 后半）：
+            // 此时 state 还是 `.idle`，`deinit` 的清理条件（`.writing`）不成立，
+            // 于是那个隐藏文件会一直躺在用户目录里，谁也说不清它是什么。
+            try? FileManager.default.removeItem(at: partialURL)
             throw CocoaError(.fileWriteUnknown)
         }
         self.handle = handle

@@ -107,6 +107,45 @@ def check(path: pathlib.Path) -> list[str]:
     return problems
 
 
+def check_section_heading_counts() -> list[str]:
+    """校验小节标题里的「（N 条）」与本节实际需求行数一致。
+
+    为什么补这条：§10.1 的总数与能力规划的数字早有校验，但**小节标题里的条数一直没人管**，
+    实测已经漂了两处 —— §3.2 写「44 条」实际 50 行、§3.10 写「8 条」实际 9 行。
+    这类"手工维护的数字"正是本脚本存在的理由，所以把它也纳入。
+    """
+    srs = pathlib.Path("Docs/需求规范书.md")
+    if not srs.exists():
+        return [f"{srs}: 文件不存在"]
+
+    lines = srs.read_text().splitlines()
+    heading = re.compile(r"^(#{3,4}) (\d+\.\d*)\s*.*?（(\d+) 条）")
+    problems: list[str] = []
+
+    for index, line in enumerate(lines):
+        match = heading.match(line)
+        if match is None:
+            continue
+        declared = int(match.group(3))
+        level = len(match.group(1))
+        actual = 0
+        cursor = index + 1
+        while cursor < len(lines):
+            following = lines[cursor]
+            if following.startswith("#"):
+                # 同级或更高级标题即为本节结束
+                if len(following) - len(following.lstrip("#")) <= level:
+                    break
+            elif re.match(r"^\| (FR|NFR|DR|IR|AC)-", following):
+                actual += 1
+            cursor += 1
+        if declared != actual:
+            problems.append(
+                f"{srs}:{index + 1}: 标题写「{declared} 条」，本节实际 {actual} 行 -> {line.strip()[:60]}"
+            )
+    return problems
+
+
 def check_requirement_counts() -> list[str]:
     """校验需求计数与索引实际行数一致（防止"手工维护的数字"再次漂移）。"""
     srs = pathlib.Path("Docs/需求规范书.md")
@@ -222,6 +261,7 @@ def main() -> int:
         problems.extend(check(path))
 
     problems.extend(check_requirement_counts())
+    problems.extend(check_section_heading_counts())
 
     if problems:
         print(f"❌ 表格校验失败（{len(problems)} 处）：")
