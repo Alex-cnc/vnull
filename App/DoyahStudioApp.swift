@@ -14,7 +14,25 @@ struct DoyahStudioApp: App {
     @StateObject private var workspace = WorkspaceStore.shared
 
     init() {
+        // **单实例保护**：同一个 bundle 永远只允许一个进程在跑。
+        //
+        // 为什么必须有：重启（守望者竞态）、双击图标、`open -n` 都会造出第二个进程，
+        // 而用户看到的是「怎么又多了一个窗口、旧的还在」，关掉哪一个都不确定。
+        // 这里让后启动的那个把先启动的激活、自己退出 —— 窗口只会有一个。
+        if let existing = Self.otherRunningInstance() {
+            existing.activate()
+            exit(0)
+        }
         MainMenuLocalizer.start()
+    }
+
+    /// 找出**已经在本机运行的另一个自己**（不含当前进程）。
+    private static func otherRunningInstance() -> NSRunningApplication? {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        return NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleID)
+            .first { $0.processIdentifier != currentPID }
     }
 
     var body: some Scene {
