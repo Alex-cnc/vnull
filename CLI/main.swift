@@ -294,6 +294,16 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // import：CSV / JSON 导入（FR-IO-03）。默认**只做映射与预检、打印语句**，`--write` 才真写库。
+        if arguments.first == "import" {
+            let code = await runImportCommand(
+                arguments: Array(arguments.dropFirst()),
+                service: service
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         // synth：合成数据（FR-AI-07）。默认**只导出 SQL 到 stdout**，`--write` 才真写库。
         if arguments.first == "synth" {
             let code = await runSynthCommand(
@@ -397,6 +407,157 @@ struct DoyahCLI {
             await service.disconnect()
             exit(2)
         }
+    }
+
+    /// `import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]`
+    ///
+    /// 默认**不写库**：先打印列映射、未匹配的列、非法值样例与将执行的语句 ——
+    /// 导入是"一次性把大批数据写进去"的动作，先让人看一眼值得。
+    private static func runImportCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let table = value(for: "--table") else {
+            print("用法：import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]")
+            return 64
+        }
+        guard let path = value(for: "--file") else {
+            print("缺少 --file <文件>")
+            return 64
+        }
+
+        let text: String
+        do {
+            text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+        } catch {
+            print("读取文件失败：\(error.localizedDescription)")
+            return 65
+        }
+
+        let format = (value(for: "--format") ?? "csv").lowercased()
+        let hasHeader = !arguments.contains("--no-header")
+        let delimiter = (value(for: "--delimiter") ?? ",").first ?? ","
+        let batchSize = Int(value(for: "--batch") ?? "") ?? TableImport.defaultBatchSize
+        let dialect = PostgresDialect()
+        let schema = value(for: "--schema")
+
+        let parsed: DelimitedTextReader.Result
+        do {
+            if format == "json" {
+                parsed = try DelimitedTextReader.readJSON(text)
+            } else {
+                parsed = DelimitedTextReader.read(
+                    text,
+                    options: DelimitedTextReader.Options(delimiter: delimiter, hasHeader: hasHeader)
+                )
+            }
+        } catch {
+            print("解析失败：\(error.localizedDescription)")
+            return 65
+        }
+
+        // 目标列：读表结构（与 synth 同一口径）。
+        guard let query = dialect.tableStructureQuery(table: table, schema: schema) else {
+            print("该数据库类型不支持读表结构，无法做列映射")
+            return 65
+        }
+        var targetColumns: [TableImport.TargetColumn] = []
+        do {
+            for try await event in service.execute(query, options: .default) {
+                if case .resultSet(let result) = event {
+                    targetColumns = result.rows.compactMap { row -> TableImport.TargetColumn? in
+                        guard row.indices.contains(0), let name = row[0], !name.isEmpty else { return nil }
+                        return TableImport.TargetColumn(
+                            name: name,
+                            typeName: row.indices.contains(1) ? (row[1] ?? "text") : "text",
+                            isNullable: (row.indices.contains(2) ? (row[2] ?? "YES") : "YES").uppercased() != "NO"
+                        )
+                    }
+                }
+            }
+        } catch {
+            print("读表结构失败：\(error.localizedDescription)")
+            return 66
+        }
+        guard !targetColumns.isEmpty else {
+            print("读不到 \(table) 的列结构（表不存在？）")
+            return 66
+        }
+
+        let plan = TableImport.plan(
+            table: table,
+            schema: schema,
+            sourceHeader: parsed.header,
+            targetColumns: targetColumns,
+            batchSize: batchSize
+        )
+
+        print("文件：\(path)（\(format)，\(parsed.rows.count) 行数据）")
+        print("列映射：")
+        for mapping in plan.mappings {
+            let source = mapping.sourceName ?? "—"
+            print("  \(source) → \(mapping.targetName)  [\(plan.valueTypes[mapping.targetName]?.displayName ?? "text")]"
+                  + (mapping.sourceIndex == nil ? "  (文件里没有，走默认值 / NULL)" : ""))
+        }
+        if !plan.unknownSourceColumns.isEmpty {
+            print("文件里有、表里没有的列（**会被忽略**）：\(plan.unknownSourceColumns.joined(separator: "、"))")
+        }
+        if !parsed.warnings.isEmpty {
+            print("解析告警（前 3 条）：")
+            for warning in parsed.warnings.prefix(3) { print("  · \(warning)") }
+        }
+
+        guard !plan.isEmpty else {
+            print("没有任何列能映射到目标表，导入中止")
+            return 67
+        }
+        // 必填列缺失 → 提前拒绝（继续写必然失败，且可能写进去一半）。
+        if !plan.missingRequiredColumns.isEmpty {
+            print("这些必填列在文件里没有对应列：\(plan.missingRequiredColumns.joined(separator: "、"))——导入中止")
+            return 67
+        }
+        let invalid = TableImport.invalidValues(rows: parsed.rows, plan: plan)
+        if !invalid.isEmpty {
+            print("这些值无法按目标列类型转换（前几条）：")
+            for problem in invalid.prefix(5) { print("  · \(problem)") }
+            print("（这些单元格会写成 NULL；如不想这样，请先修数据）")
+        }
+
+        let batches = TableImport.batches(parsed.rows, size: plan.batchSize)
+        print("共 \(parsed.rows.count) 行，分 \(batches.count) 批（每批 \(plan.batchSize) 行）")
+
+        if !arguments.contains("--write") {
+            if let first = batches.first, let sql = TableImport.insertStatement(rows: first, plan: plan, dialect: dialect) {
+                print("")
+                print("（未加 --write，只输出第一批语句的前几行）")
+                print(sql.split(separator: "\n").prefix(3).joined(separator: "\n"))
+            }
+            return 0
+        }
+
+        var written = 0
+        for (index, batch) in batches.enumerated() {
+            guard let sql = TableImport.insertStatement(rows: batch, plan: plan, dialect: dialect) else {
+                print("第 \(index + 1) 批生成语句失败，中止（已写入 \(written) 行）")
+                return 68
+            }
+            do {
+                for try await event in service.execute(sql, options: .default) {
+                    if case .resultSet(let result) = event { written += result.affectedRows ?? 0 }
+                }
+            } catch {
+                print("第 \(index + 1) 批写入失败：\(error.localizedDescription)")
+                print("已写入 \(written) 行（**前面的批次已生效**，请按需清理）")
+                return 68
+            }
+        }
+        print("导入完成：写入 \(written) 行")
+        return 0
     }
 
     /// `synth --table <表> [--schema S] --rows N [--seed S] [--write] [--overwrite] [--preview N] [--spec 文件.json]`
