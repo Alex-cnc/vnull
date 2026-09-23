@@ -26,13 +26,16 @@ public enum ResultStreamError: Error, Equatable, LocalizedError {
 /// 调用方按页喂行（`write(_:)`），内部只保留一个受 `flushByteLimit` 约束的待写缓冲，
 /// 超过阈值立即落盘，内存占用与总行数无关。
 ///
-/// 两个保证：
+/// 三个保证：
 /// - **逐字节一致**：CSV / TSV / Markdown / INSERT 按块写出的文件，与
 ///   `ResultExporter.text(for:format:)` 一次成型的文本完全一致（共用同一套行渲染），
 ///   所以「分块」不会改变导出结果；JSON 例外，见 `begin()` 说明；
-/// - **中断清理**：先写隐藏的 `.partial-<uuid>` 临时文件，`finish()` 成功才原子移动
+/// - **中断清理**：先写隐藏的 `.partial-<uuid>` 临时文件，`finish()` 成功才移动
 ///   到目标路径。也就是说目标文件要么是完整的，要么不存在 —— 中途取消 / 抛错 /
-///   对象被释放（`deinit`）都不会留下半个文件冒充成品。
+///   对象被释放（`deinit`）都不会留下半个文件冒充成品；
+/// - **不毁已有文件**（R-34）：目标已存在时**绝不先删**它，而是「原文件先挪到备份 →
+///   移入新文件 → 成功才删备份；失败把原文件放回去」。导出失败最坏结果是"没导出成功"，
+///   而不是"原来的文件也没了"。
 ///
 /// 本类型不做并发保护，约定由单一调用方顺序使用（一行一条 `write`）。
 public final class ResultStreamWriter {
@@ -68,6 +71,9 @@ public final class ResultStreamWriter {
     private let dialect: (any SQLDialect)?
     private let includeByteOrderMark: Bool
     private let flushByteLimit: Int
+    /// 文件移动操作。抽成可注入，是为了能测「移动失败」这条路径 ——
+    /// 那条路径正是 R-34 里会**毁掉用户已有文件**的地方，必须被测试覆盖。
+    private let moveItem: @Sendable (URL, URL) throws -> Void
 
     /// JSON 的列名 → 唯一键（重复列名加后缀），构造时算一次。
     private let jsonKeys: [String]
@@ -96,7 +102,10 @@ public final class ResultStreamWriter {
         tableName: String = "table_name",
         dialect: (any SQLDialect)? = nil,
         includeByteOrderMark: Bool = true,
-        flushByteLimit: Int = 1 << 20
+        flushByteLimit: Int = 1 << 20,
+        moveItem: @escaping @Sendable (URL, URL) throws -> Void = { source, destination in
+            try FileManager.default.moveItem(at: source, to: destination)
+        }
     ) {
         self.targetURL = targetURL
         self.format = format
@@ -105,6 +114,7 @@ public final class ResultStreamWriter {
         self.dialect = dialect
         self.includeByteOrderMark = includeByteOrderMark
         self.flushByteLimit = flushByteLimit
+        self.moveItem = moveItem
         self.jsonKeys = ResultExporter.uniqueKeys(for: columns)
         let prefix = ResultExporter.insertPrefix(tableName: tableName, columns: columns, dialect: dialect)
         self.insertTable = prefix.table
@@ -207,15 +217,39 @@ public final class ResultStreamWriter {
         self.handle = nil
 
         let manager = FileManager.default
-        // 目标已存在（用户选了已有文件）时先移除，保证 moveItem 成功。
-        if manager.fileExists(atPath: targetURL.path) {
-            try manager.removeItem(at: targetURL)
+
+        // 目标不存在：直接移动（移动成功之前不改状态，失败时 `abort()` / `deinit` 仍会清临时文件）。
+        guard manager.fileExists(atPath: targetURL.path) else {
+            try moveItem(partialURL, targetURL)
+            state = .finished
+            return makeReport()
         }
-        // 移动成功之前不改状态：万一半途失败，`abort()` / `deinit` 仍会清掉临时文件。
-        try manager.moveItem(at: partialURL, to: targetURL)
+
+        // 目标已存在（用户选了已有文件）——**绝不能先删它**（R-34）：
+        // 原来是 `removeItem(target)` 再 `moveItem`，移动一旦失败（跨卷、权限、磁盘满），
+        // 用户原来的文件就没了，而新文件也没生成。
+        // 改为「原文件先挪到备份 → 移动 → 成功才删备份；失败则把原文件放回去」。
+        let backupURL = targetURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(targetURL.lastPathComponent).backup-\(UUID().uuidString)")
+        try moveItem(targetURL, backupURL)
+
+        do {
+            try moveItem(partialURL, targetURL)
+        } catch {
+            // 把用户原来的文件**放回去**，再抛出真实错误。
+            try? moveItem(backupURL, targetURL)
+            throw error
+        }
+
+        try? manager.removeItem(at: backupURL)
         state = .finished
 
-        return Report(
+        return makeReport()
+    }
+
+    private func makeReport() -> Report {
+        Report(
             rowCount: rowCount,
             byteCount: byteCount,
             flushCount: flushCount,

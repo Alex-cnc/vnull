@@ -13,8 +13,26 @@ import Darwin
 /// 本类与沙箱无关，去掉沙箱即可全功能。
 final class TerminalSession {
 
-    private var masterFD: Int32 = -1
-    private var childPID: pid_t = -1
+    /// PTY 主端与子进程号的**互斥保护**。
+    ///
+    /// 它们会被三个执行域碰：主线程（`terminate`）、读队列（`drainOutput`）、写队列（`write`）。
+    /// 原先是无保护的裸属性（R-34）：`terminate` 把 fd 置 -1 并关闭，而写队列可能刚好读到
+    /// 同一个整数 —— 那个号可能已被系统分配给别的文件，于是"往自己的终端写"变成
+    /// "往别人的 fd 写"。用一把锁把「检查 + 使用」收进临界区。
+    private let stateLock = NSLock()
+    private var storedMasterFD: Int32 = -1
+    private var storedChildPID: pid_t = -1
+
+    private var masterFD: Int32 {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return storedMasterFD }
+        set { stateLock.lock(); storedMasterFD = newValue; stateLock.unlock() }
+    }
+
+    private var childPID: pid_t {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return storedChildPID }
+        set { stateLock.lock(); storedChildPID = newValue; stateLock.unlock() }
+    }
+
     private var readSource: DispatchSourceRead?
     private var processSource: DispatchSourceProcess?
 
@@ -121,14 +139,49 @@ final class TerminalSession {
         processSource?.cancel()
         processSource = nil
 
-        if childPID > 0 {
-            kill(childPID, SIGHUP)
-            childPID = -1
+        let pid = childPID
+        childPID = -1
+
+        if pid > 0 {
+            // ① 向**整个进程组**发挂断（R-34）。
+            //
+            // `forkpty` 让子进程成为新会话的首进程，它的进程组号就等于 pid，
+            // 所以 `killpg(pid, …)` 能连它的子孙一起通知。
+            // 原来只 `kill(childPID, SIGHUP)`：直接子进程收到，正在跑 `psql` 的**孙进程**
+            // 收不到 —— 它继续握着 PTY 不放，成了看不见的孤儿。
+            if killpg(pid, SIGHUP) != 0 {
+                // 极少数情况（组已不存在）退回直接发信号。
+                _ = kill(pid, SIGHUP)
+            }
+
+            // ② 宽限期后仍活着就强杀整组，并**回收子进程**。
+            //
+            // 原实现从不 `waitpid`：shell 退出后留下僵尸项（父进程还在，僵尸就会一直挂着）。
+            // 这里在专用的后台队列上做（`terminate` 可能在主线程被调用，不能阻塞它）。
+            let reaper = DispatchQueue(label: "studio.doyah.terminal.reaper")
+            reaper.async {
+                var status: Int32 = 0
+                // 先等 1 秒：多数 shell 收到 SIGHUP 就退了。
+                for _ in 0..<10 {
+                    let result = waitpid(pid, &status, WNOHANG)
+                    if result == pid || result == -1 {
+                        return          // 已回收（或已经不是我们的子进程）
+                    }
+                    usleep(100_000)
+                }
+                // 还不退：整组强杀，再阻塞回收，确保不留僵尸。
+                killpg(pid, SIGKILL)
+                _ = kill(pid, SIGKILL)
+                _ = waitpid(pid, &status, 0)
+            }
         }
+
         // 关闭放在最后：cancel 之后事件不会再触发，避免与 cancel handler 双关闭。
-        if masterFD >= 0 {
-            let descriptor = masterFD
-            masterFD = -1
+        stateLock.lock()
+        let descriptor = storedMasterFD
+        storedMasterFD = -1
+        stateLock.unlock()
+        if descriptor >= 0 {
             ioQueue.async { close(descriptor) }
         }
         isRunning = false
@@ -140,18 +193,23 @@ final class TerminalSession {
     func write(_ bytes: [UInt8]) {
         guard isRunning, !bytes.isEmpty else { return }
         writeQueue.async { [weak self] in
-            guard let self, self.masterFD >= 0 else { return }
+            guard let self else { return }
+            // 整个写循环都握着锁：fd 一旦被 terminate 置为 -1 并关闭，
+            // 必须保证**没有线程正拿着旧号在写**（旧号可能已被复用）。
+            self.stateLock.lock()
+            defer { self.stateLock.unlock() }
+            guard self.storedMasterFD >= 0 else { return }
             var remaining = bytes
-            while !remaining.isEmpty, self.masterFD >= 0 {
+            while !remaining.isEmpty, self.storedMasterFD >= 0 {
                 let written = remaining.withUnsafeBytes { raw -> Int in
                     guard let base = raw.baseAddress else { return 0 }
-                    return Darwin.write(self.masterFD, base, raw.count)
+                    return Darwin.write(self.storedMasterFD, base, raw.count)
                 }
                 if written > 0 {
                     remaining.removeFirst(written)
                 } else if errno == EAGAIN || errno == EWOULDBLOCK {
                     // PTY 缓冲满：等可写（最多 100ms）再试，别忙等
-                    var descriptor = pollfd(fd: self.masterFD, events: Int16(POLLOUT), revents: 0)
+                    var descriptor = pollfd(fd: self.storedMasterFD, events: Int16(POLLOUT), revents: 0)
                     _ = poll(&descriptor, 1, 100)
                 } else {
                     return // 从设备已关闭

@@ -57,6 +57,12 @@ final class ResultStreamWriterTests: XCTestCase {
             .filter { $0.contains(".partial-") }
     }
 
+    /// 目录里残留的备份文件（正常情况应该没有）。
+    private func backupFiles(in directory: URL) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .filter { $0.contains(".backup-") }
+    }
+
     private func oneShot(_ format: ResultExportFormat, tableName: String = "table_name") -> String {
         ResultExporter.text(
             for: QueryResult(columns: columns, rows: rows),
@@ -372,5 +378,63 @@ final class ResultStreamWriterTests: XCTestCase {
         XCTAssertThrowsError(try writer.begin()) {
             XCTAssertEqual($0 as? ResultStreamError, .invalidFlushLimit(0))
         }
+    }
+
+    // MARK: - 覆盖已有文件（R-34）
+
+    /// 覆盖已有文件：内容被替换，且**不留备份残渣**。
+    func testFinishOverExistingFileReplacesContent() throws {
+        let directory = try makeDirectory()
+        let url = directory.appendingPathComponent("out.csv")
+        try "旧的、很重要的内容".write(to: url, atomically: true, encoding: .utf8)
+
+        let writer = ResultStreamWriter(targetURL: url, format: .csv, columns: columns)
+        try writer.begin()
+        try writer.write(rows)
+        let report = try writer.finish()
+
+        XCTAssertEqual(report.fileURL, url)
+        XCTAssertTrue(try readText(url).contains("Alice"))
+        XCTAssertFalse(try readText(url).contains("旧的、很重要的内容"))
+        XCTAssertTrue(try backupFiles(in: directory).isEmpty, "成功替换后备份必须删掉")
+        XCTAssertTrue(try partialFiles(in: directory).isEmpty)
+    }
+
+    /// **回归主用例**：移动失败时，用户原来的文件必须还在（原实现会先删掉它）。
+    ///
+    /// 原实现：`removeItem(target)` → `moveItem(partial, target)`。
+    /// 第二步失败（跨卷 / 权限 / 磁盘满）时，旧文件已经没了、新文件也没生成 —— 净损失一个文件。
+    func testFailedReplaceRestoresTheOriginalFile() throws {
+        let directory = try makeDirectory()
+        let url = directory.appendingPathComponent("out.csv")
+        let original = "旧的、很重要的内容"
+        try original.write(to: url, atomically: true, encoding: .utf8)
+
+        // 注入一个"第二次移动必失败"的 mover：先让原文件挪到备份成功，再让新文件移入失败。
+        let failingMover: @Sendable (URL, URL) throws -> Void = { source, destination in
+            if destination.lastPathComponent == url.lastPathComponent,
+               source.lastPathComponent.contains(".partial-") {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try FileManager.default.moveItem(at: source, to: destination)
+        }
+
+        let writer = ResultStreamWriter(
+            targetURL: url,
+            format: .csv,
+            columns: columns,
+            moveItem: failingMover
+        )
+        try writer.begin()
+        try writer.write(rows)
+
+        XCTAssertThrowsError(try writer.finish())
+        XCTAssertEqual(try readText(url), original, "替换失败后，用户原来的文件必须完好无损")
+        XCTAssertTrue(try backupFiles(in: directory).isEmpty, "还原后不该留下备份文件")
+
+        // 半成品由 abort / deinit 负责清理（目标路径不受影响）。
+        writer.abort()
+        XCTAssertTrue(try partialFiles(in: directory).isEmpty)
+        XCTAssertEqual(try readText(url), original)
     }
 }
