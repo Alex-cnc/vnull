@@ -24,13 +24,19 @@ final class ObjectTreeActionsTests: XCTestCase {
                        .copyQualifiedName, .viewDDL, .truncateTable, .dropTable] {
             XCTAssertTrue(ObjectTreeActions.isAvailable(action, for: .table), "\(action) 应可用于表")
         }
-        // 视图：可浏览 / 生成 SELECT / 复制名；不能删改、DDL 暂不支持
+        // 视图：可浏览 / 生成 SELECT / 复制名 / **查看 DDL**；不能插入模板或删改。
+        //
+        // 视图的 DDL 此前往 `columns` 里找，而视图定义体根本不在列信息里，于是只能返回 nil、
+        // 菜单项也一并禁用。FR-META-13 改成由 `ObjectDDL` 走方言查询取回（视图 / 函数），
+        // 因此这条断言随之更新 —— 表仍走"读列 + 拼装"的老路。
         XCTAssertTrue(ObjectTreeActions.isAvailable(.browseRows, for: .view))
         XCTAssertTrue(ObjectTreeActions.isAvailable(.selectTemplate, for: .view))
         XCTAssertTrue(ObjectTreeActions.isAvailable(.copyQualifiedName, for: .view))
+        XCTAssertTrue(ObjectTreeActions.isAvailable(.viewDDL, for: .view))
+        XCTAssertTrue(ObjectTreeActions.isAvailable(.viewDDL, for: .function))
         XCTAssertFalse(ObjectTreeActions.isAvailable(.insertTemplate, for: .view))
-        XCTAssertFalse(ObjectTreeActions.isAvailable(.viewDDL, for: .view))
         XCTAssertFalse(ObjectTreeActions.isAvailable(.dropTable, for: .view))
+        XCTAssertFalse(ObjectTreeActions.isAvailable(.viewDDL, for: .column))
         // 列：只复制列名
         XCTAssertTrue(ObjectTreeActions.isAvailable(.copyColumnName, for: .column))
         XCTAssertFalse(ObjectTreeActions.isAvailable(.browseRows, for: .column))

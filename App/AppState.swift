@@ -2489,6 +2489,13 @@ final class AppState: ObservableObject {
 
         // 需要列的动作：按需加载；加载失败就退回「无列」由 Core 判定（生成 SELECT 仍可用，
         // 生成 INSERT / DDL 会明确失败并提示，而不是猜列）。
+        // 视图 / 函数的 DDL 不在"列信息"里 —— 它们的定义体只存在于服务端元数据中，
+        // 必须查询取回（FR-META-13）；表仍走「读列 + 拼装」的老路。
+        if action == .viewDDL, object.kind == .view || object.kind == .function {
+            await openObjectDDL(for: object, dialect: dialect, configuration: configuration)
+            return
+        }
+
         var columns: [ColumnMeta] = []
         if action == .selectTemplate || action == .insertTemplate || action == .viewDDL {
             columns = (try? await columnSpecs(for: object)) ?? []
@@ -2508,6 +2515,51 @@ final class AppState: ObservableObject {
             return
         }
         openSQLInNewTab(sql)
+    }
+
+    /// 取视图 / 函数的 DDL 并**放进新页签**（不执行）。
+    ///
+    /// 三条口径：① 方言不支持时给可读提示，不静默失败；② 结果为空时也说清楚
+    /// （可能是权限不足 —— 元数据函数对无权限对象返回空而不是报错）；③ 一律只进编辑器，不执行。
+    private func openObjectDDL(
+        for object: DatabaseObject,
+        dialect: any SQLDialect,
+        configuration: ConnectionConfig
+    ) async {
+        let query: ObjectDDLQuery?
+        switch object.kind {
+        case .view:
+            query = ObjectDDL.view(schema: object.schema, name: object.name, dialect: dialect)
+        case .function:
+            query = ObjectDDL.function(schema: object.schema, name: object.name, dialect: dialect)
+        default:
+            query = nil
+        }
+
+        guard let query else {
+            errorMessage = L(.treeDDLUnsupported)
+            return
+        }
+
+        let database = object.database ?? currentDatabaseName(for: configuration)
+        do {
+            let service = try await ensureService(for: configuration, database: database)
+            let result = try await runSingleQuery(query.sql, on: service)
+            let text = ObjectDDL.assemble(
+                query,
+                columns: result.columns.map(\.name),
+                rows: result.rows,
+                dialect: dialect
+            )
+            guard let text else {
+                errorMessage = L(.treeDDLEmpty, object.name)
+                return
+            }
+            openSQLInNewTab(text)
+            statusMessage = L(.treeDDLReady, object.name)
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
     }
 
     // MARK: - 锁与阻塞链（FR-DIAG-05）

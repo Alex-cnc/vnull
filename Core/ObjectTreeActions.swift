@@ -76,7 +76,11 @@ public enum ObjectTreeActions {
         switch action {
         case .browseRows, .selectTemplate, .copyQualifiedName:
             return kind == .table || kind == .view
-        case .insertTemplate, .viewDDL, .truncateTable, .dropTable:
+        case .viewDDL:
+            // 视图与函数也能看 DDL（FR-META-13）：它们的定义体只存在于服务端元数据里，
+            // 由 `ObjectDDL` 走方言查询取回；表仍走「读列 + 拼装」那条老路。
+            return kind == .table || kind == .view || kind == .function
+        case .insertTemplate, .truncateTable, .dropTable:
             return kind == .table
         case .copyColumnName:
             return kind == .column
@@ -127,6 +131,9 @@ public enum ObjectTreeActions {
             )
 
         case .viewDDL:
+            // 表：按已加载的列拼装；视图 / 函数不走这里（`AppState` 会用 `ObjectDDL` 查询取回），
+            // 因此这里只对表负责，列未加载时返回 nil 由界面提示。
+            guard target.kind == .table else { return nil }
             guard !target.columns.isEmpty else { return nil }
             return SQLGenerator.createTableDDL(
                 table: target.name,

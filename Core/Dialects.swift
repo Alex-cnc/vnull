@@ -62,6 +62,12 @@ public protocol SQLDialect: Sendable {
     /// 必须知道当前默认值与主键 —— 否则界面上算不出差异、会把没改的列也写成 ALTER。
     func tableStructureQuery(table: String, schema: String?) -> String?
 
+    /// 视图定义查询（FR-META-13）：结果的**定义体**由 `ObjectDDL` 包成 `CREATE OR REPLACE VIEW`。
+    /// nil = 该方言不支持（界面据此不呈现该项，而不是给一句看不懂的报错）。
+    func viewDDLQuery(view: String, schema: String?) -> String?
+    /// 函数 / 存储过程定义查询（FR-META-13）；nil = 该方言不支持。
+    func functionDDLQuery(function: String, schema: String?) -> String?
+
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -84,6 +90,8 @@ public extension SQLDialect {
     func terminateSessionStatement(pid: Int) -> String? { nil }
     func objectPrivilegeQuery(role: String) -> String? { nil }
     func tableStructureQuery(table: String, schema: String?) -> String? { nil }
+    func viewDDLQuery(view: String, schema: String?) -> String? { nil }
+    func functionDDLQuery(function: String, schema: String?) -> String? { nil }
     func lockWaitingQuery() -> String? { nil }
 }
 
@@ -315,6 +323,35 @@ public struct PostgresDialect: SQLDialect {
         ]
     }
 
+    /// 视图定义体：`pg_get_viewdef` 直接给出 `SELECT …`（带结尾分号），由 `ObjectDDL` 包装。
+    ///
+    /// 用 `regclass` 转换而不是去 `pg_views` 里查文本：`regclass` 走的是标识符解析，
+    /// 带 schema / 带引号的怪名字都能正确落到同一个对象上。
+    public func viewDDLQuery(view: String, schema: String?) -> String? {
+        let target = SQLGenerator.qualifiedName(table: view, schema: schema, dialect: self)
+        return "SELECT pg_get_viewdef(\(literal(target))::regclass, true) AS view_definition"
+    }
+
+    /// 函数定义：`pg_get_functiondef` 给出**完整**的 `CREATE OR REPLACE FUNCTION`。
+    ///
+    /// 同名函数可能有多个重载（不同参数），因此不 `LIMIT 1` —— 全部取出由 `ObjectDDL` 依次拼接，
+    /// 丢掉任何一个都会让人以为"这函数只有一种签名"。
+    public func functionDDLQuery(function: String, schema: String?) -> String? {
+        var sql = """
+        SELECT pg_get_functiondef(p.oid) AS function_definition
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname = \(literal(function))
+        """
+        if let schema, !schema.isEmpty {
+            sql += "\n  AND n.nspname = \(literal(schema))"
+        } else {
+            // 没给 schema 时只取当前搜索路径可见的那些，避免同名函数跨 schema 混进来。
+            sql += "\n  AND pg_function_is_visible(p.oid)"
+        }
+        return sql + "\n ORDER BY p.oid"
+    }
+
     private func literal(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
@@ -415,6 +452,16 @@ public struct GBaseDialect: SQLDialect {
             "ENGINE", "CHARSET", "COLLATE", "TEMPORARY", "UNSIGNED",
             "ZEROFILL", "GRANT", "REVOKE", "TRUNCATE"
         ]
+    }
+
+    /// GBase 8a 兼容 MySQL 语法：`SHOW CREATE VIEW` 直接给出完整建视图语句。
+    public func viewDDLQuery(view: String, schema: String?) -> String? {
+        "SHOW CREATE VIEW \(SQLGenerator.qualifiedName(table: view, schema: schema, dialect: self))"
+    }
+
+    /// 同上：`SHOW CREATE FUNCTION` 给出完整定义。
+    public func functionDDLQuery(function: String, schema: String?) -> String? {
+        "SHOW CREATE FUNCTION \(SQLGenerator.qualifiedName(table: function, schema: schema, dialect: self))"
     }
 
     public var builtinFunctions: [String] {
