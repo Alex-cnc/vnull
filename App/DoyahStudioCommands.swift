@@ -33,6 +33,13 @@ struct DoyahStudioCommands: Commands {
                 appState.newQueryTab()
             }
             .keyboardShortcut("t", modifiers: [.command])
+
+            // 浏览器页签与 SQL 页签同级（FR-EDIT-34），所以入口也该在「文件 · 新建」这一组里，
+            // 而不是躲在「智能体」菜单下 —— 它跟智能体没有任何关系。
+            Button(L(.menuNewBrowserTab)) {
+                appState.openBrowserTab()
+            }
+            .keyboardShortcut(AppShortcut.newBrowserTab.key, modifiers: AppShortcut.newBrowserTab.modifiers)
         }
 
         CommandGroup(after: .newItem) {
@@ -68,11 +75,6 @@ struct DoyahStudioCommands: Commands {
                 appState.isAgentAuditPresented = true
             }
             .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
-
-            Button(L(.menuNewBrowserTab)) {
-                appState.openBrowserTab()
-            }
-            .keyboardShortcut(AppShortcut.newBrowserTab.key, modifiers: AppShortcut.newBrowserTab.modifiers)
 
             Button(L(.menuEgressLog)) {
                 appState.isEgressLogPresented = true
