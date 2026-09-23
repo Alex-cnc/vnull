@@ -259,6 +259,23 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultPageNext
     case resultPageLast
 
+    // 事务模式（FR-EXEC-15）
+    case transactionModeAuto
+    case transactionModeManual
+    case transactionCommit
+    case transactionRollback
+    case transactionOpenBadge
+    case transactionAbortedBadge
+    case transactionCommitted
+    case transactionRolledBack
+    case transactionBeginFailed
+    case transactionRolledBackOnLeave
+    case transactionRefusedNotManual
+    case transactionRefusedNothing
+    case transactionRefusedAborted
+    case transactionRefusedOpen
+    case transactionHelp
+
     // 对象树
     case treeLoading
     case treeLoadingObjects
@@ -1036,6 +1053,22 @@ public enum LocalizedStrings {
         .resultPagePrevious: [.simplifiedChinese: "上一页", .english: "Previous page"],
         .resultPageNext: [.simplifiedChinese: "下一页", .english: "Next page"],
         .resultPageLast: [.simplifiedChinese: "最后一页", .english: "Last page"],
+
+        .transactionModeAuto: [.simplifiedChinese: "自动提交", .english: "Auto-commit"],
+        .transactionModeManual: [.simplifiedChinese: "手工事务", .english: "Manual transaction"],
+        .transactionCommit: [.simplifiedChinese: "提交", .english: "Commit"],
+        .transactionRollback: [.simplifiedChinese: "回滚", .english: "Roll back"],
+        .transactionOpenBadge: [.simplifiedChinese: "事务进行中 · 已执行 %d 条", .english: "Transaction open · %d statements"],
+        .transactionAbortedBadge: [.simplifiedChinese: "事务已失败 —— 只能回滚", .english: "Transaction failed — roll back only"],
+        .transactionCommitted: [.simplifiedChinese: "事务已提交", .english: "Transaction committed"],
+        .transactionRolledBack: [.simplifiedChinese: "事务已回滚", .english: "Transaction rolled back"],
+        .transactionBeginFailed: [.simplifiedChinese: "事务开启失败：%@", .english: "Could not begin transaction: %@"],
+        .transactionRolledBackOnLeave: [.simplifiedChinese: "连接或数据库已切换：未提交的事务已回滚", .english: "Connection or database changed: the uncommitted transaction was rolled back"],
+        .transactionRefusedNotManual: [.simplifiedChinese: "当前是自动提交模式，没有事务可提交或回滚", .english: "Auto-commit is on; there is no transaction to commit or roll back"],
+        .transactionRefusedNothing: [.simplifiedChinese: "没有进行中的事务", .english: "No transaction in progress"],
+        .transactionRefusedAborted: [.simplifiedChinese: "事务已失败，请先回滚", .english: "The transaction failed; roll it back first"],
+        .transactionRefusedOpen: [.simplifiedChinese: "有进行中的事务，请先提交或回滚，再切回自动提交", .english: "Commit or roll back the open transaction before switching back to auto-commit"],
+        .transactionHelp: [.simplifiedChinese: "事务属于当前连接：同一连接下的所有页签共用它；切换连接或数据库会回滚未提交的事务", .english: "A transaction belongs to the connection: every tab on it shares it; switching connection or database rolls back uncommitted work"],
 
         .treeLoading: [.simplifiedChinese: "加载中…", .english: "Loading…"],
         .treeLoadingObjects: [.simplifiedChinese: "加载对象…", .english: "Loading objects…"],

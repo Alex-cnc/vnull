@@ -61,6 +61,12 @@ struct QueryToolbar: View {
             checkButton
             planButton
 
+            Divider()
+                .frame(height: 16)
+
+            // 事务模式（FR-EXEC-15）：紧挨执行按钮 —— 它改变的是「执行会发生什么」。
+            TransactionControl(tab: tab)
+
             if tab.isExecuting {
                 ProgressView()
                     .controlSize(.small)

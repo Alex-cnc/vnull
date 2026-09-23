@@ -148,6 +148,11 @@ final class AppState: ObservableObject {
     @Published var connections: [ConnectionConfig] = []
     @Published var selectedConnectionID: ConnectionConfig.ID? {
         didSet {
+            // 换连接 = 离开旧连接：旧连接上未提交的手工事务必须先结算（回滚并说明），
+            // 否则它会一直挂在那个连接上（连接还活着，事务也还开着），用户却再也看不到它。
+            if oldValue != selectedConnectionID {
+                settleTransactions(leaving: selectedConnectionID)
+            }
             rememberSelectedConnection()
             // 换连接后建库权限结论作废，等对象树加载时重新探测（FR-META-11）。
             setIfChanged(\.canCreateDatabase, nil)
@@ -532,10 +537,16 @@ final class AppState: ObservableObject {
 
 
     /// 连接缓存键：同一个「已保存连接」可以在多个数据库上各持有一条连接。
-    private struct ServiceKey: Hashable {
+    struct ServiceKey: Hashable {
         let connectionID: UUID
         let database: String
     }
+
+    /// 事务上下文：**按「连接 + 数据库」归属**（FR-EXEC-15）。
+    ///
+    /// 事务属于连接会话而不是页签：同一连接下的多个页签共用一条连接，因此也共用同一个事务。
+    /// 这也是界面必须把它显示出来的原因 —— 在别的页签里提交 / 回滚，会影响你手上这条语句。
+    @Published private(set) var transactionSessions: [ServiceKey: TransactionSession] = [:]
 
     private var services: [ServiceKey: any DatabaseService] = [:]
     private var serverInfos: [UUID: ServerInfo] = [:]
@@ -2823,6 +2834,123 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 事务模式（FR-EXEC-15）
+
+    /// 当前选中的查询页签（浏览器页签没有 SQL，不参与事务界面）。
+    var activeQueryTab: QueryTab? {
+        if let selectedTabID, let tab = tabs.first(where: { $0.id == selectedTabID }) {
+            return tab
+        }
+        return tabs.last
+    }
+
+    /// 当前页签所在连接上的事务状态；连接未知时为 nil（界面据此隐藏事务控件）。
+    var activeTransactionSession: TransactionSession? {
+        guard let tab = activeQueryTab, let key = transactionKey(for: tab) else { return nil }
+        return transactionSessions[key] ?? TransactionSession()
+    }
+
+    /// 当前页签的事务模式（默认自动提交）。
+    var activeTransactionMode: TransactionMode { activeTransactionSession?.mode ?? .autoCommit }
+
+    /// 当前页签的事务阶段。
+    var activeTransactionPhase: TransactionPhase { activeTransactionSession?.phase ?? .idle }
+
+    private func transactionKey(for tab: QueryTab) -> ServiceKey? {
+        guard let connectionID = tab.connectionID,
+              let configuration = connections.first(where: { $0.id == connectionID }) else { return nil }
+        let database = tab.database?.isEmpty == false ? tab.database! : queryDatabase(for: configuration)
+        return ServiceKey(connectionID: connectionID, database: database)
+    }
+
+    /// 切换自动提交 / 手工事务。有进行中的事务时**拒绝切回自动提交**（静默提交与静默丢弃都是事故）。
+    func setTransactionMode(_ mode: TransactionMode, for tabID: UUID) async {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let key = transactionKey(for: tab) else { return }
+
+        var session = transactionSessions[key] ?? TransactionSession()
+        switch session.setMode(mode) {
+        case .refuse(let refusal):
+            statusMessage = transactionRefusalMessage(refusal)
+        case .nothing, .begin, .commit, .rollback:
+            transactionSessions[key] = session
+            statusMessage = session.mode.isManual ? L(.transactionModeManual) : L(.transactionModeAuto)
+        }
+    }
+
+    /// 提交手工事务。
+    func commitTransaction(for tabID: UUID) async {
+        await performTransactionCommand(for: tabID) { $0.commit() }
+    }
+
+    /// 回滚手工事务。
+    func rollbackTransaction(for tabID: UUID) async {
+        await performTransactionCommand(for: tabID) { $0.rollback() }
+    }
+
+    /// 事务命令的统一执行路径：**先由状态机判定能不能做**，再发命令，再按结果更新界面。
+    private func performTransactionCommand(
+        for tabID: UUID,
+        _ decide: (inout TransactionSession) -> TransactionAction
+    ) async {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let key = transactionKey(for: tab),
+              let configuration = connections.first(where: { $0.id == key.connectionID }) else { return }
+
+        var session = transactionSessions[key] ?? TransactionSession()
+        let action = decide(&session)
+        switch action {
+        case .refuse(let refusal):
+            statusMessage = transactionRefusalMessage(refusal)
+            return
+        case .commit, .rollback:
+            // 先把状态落到内存，再发命令：命令失败时会改写回去。
+            transactionSessions[key] = session
+            do {
+                let service = try await ensureService(for: configuration, database: key.database)
+                if case .commit = action {
+                    try await service.commit()
+                    statusMessage = L(.transactionCommitted)
+                } else {
+                    try await service.rollback()
+                    statusMessage = L(.transactionRolledBack)
+                }
+            } catch {
+                // 命令没成功：状态退回「事务已结束」，别让界面显示「已提交」而库里其实没有。
+                session.serverCommandFailed()
+                transactionSessions[key] = session
+                errorMessage = ErrorPresenter.message(for: error)
+            }
+        case .begin, .nothing:
+            transactionSessions[key] = session
+        }
+    }
+
+    private func transactionRefusalMessage(_ refusal: TransactionRefusal) -> String {
+        switch refusal {
+        case .notInManualMode: return L(.transactionRefusedNotManual)
+        case .nothingToDo: return L(.transactionRefusedNothing)
+        case .aborted: return L(.transactionRefusedAborted)
+        case .hasOpenTransaction: return L(.transactionRefusedOpen)
+        }
+    }
+
+    /// 切换连接 / 数据库前，把**别处**未提交的事务回滚掉并说明。
+    ///
+    /// 为什么不是自动提交：未提交的事务在新连接上根本不存在，替用户提交是数据事故；
+    /// 回滚 + 明说是唯一可预期的处置。**绝不静默丢弃**。
+    private func settleTransactions(leaving connectionID: UUID?) {
+        for key in Array(transactionSessions.keys) {
+            guard var session = transactionSessions[key], session.phase.isOpen else { continue }
+            if let connectionID, key.connectionID == connectionID { continue }
+            guard session.connectionDidChange() == .rollback else { continue }
+            transactionSessions[key] = session
+            let service = services[key]
+            Task { try? await service?.rollback() }
+            statusMessage = L(.transactionRolledBackOnLeave)
+        }
+    }
+
     func updateSQL(_ sql: String, for tabID: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         tabs[index].sql = sql
@@ -3008,6 +3136,10 @@ final class AppState: ObservableObject {
         // 通道只剩 `.resultSet(affectedRows:)` 一条，且只有 absorb 一处会加。
         var affectedTally = AffectedRowsTally()
 
+        // 事务上下文按「连接 + 数据库」归属（FR-EXEC-15）。
+        // 声明在 `do` 之外：失败分支也要用它把事务标记成失败态。
+        let transactionKey = ServiceKey(connectionID: configuration.id, database: targetDatabase)
+
         do {
             let service = try await ensureService(for: configuration, database: targetDatabase)
             updateTab(tabID) { $0.statusMessage = L(.stateExecuting) }
@@ -3017,6 +3149,37 @@ final class AppState: ObservableObject {
 
             let handle = executionHandles[tabID] ?? ExecutionHandle()
             executionHandles[tabID] = handle
+
+            // 事务时序（FR-EXEC-15）：手工模式下**第一条语句前**才发 BEGIN（懒开启），
+            // 失败的事务里直接拒绝继续执行 —— 否则用户会看到一条难懂的
+            // 「current transaction is aborted」服务端错误。
+            var transactionSession = transactionSessions[transactionKey] ?? TransactionSession()
+            let transactionAction = transactionSession.prepareStatement()
+            if case .refuse(let refusal) = transactionAction {
+                transactionSessions[transactionKey] = transactionSession
+                updateTab(tabID) {
+                    $0.isExecuting = false
+                    $0.errorMessage = transactionRefusalMessage(refusal)
+                    $0.statusMessage = L(.stateNotExecuted)
+                }
+                return
+            }
+            transactionSessions[transactionKey] = transactionSession
+            if case .begin = transactionAction {
+                do {
+                    try await service.beginTransaction()
+                } catch {
+                    // BEGIN 没成功 = 没有事务：状态退回 idle，别让界面显示「事务进行中」。
+                    transactionSession.serverCommandFailed()
+                    transactionSessions[transactionKey] = transactionSession
+                    updateTab(tabID) {
+                        $0.isExecuting = false
+                        $0.errorMessage = L(.transactionBeginFailed, ErrorPresenter.message(for: error))
+                        $0.statusMessage = L(.stateNotExecuted)
+                    }
+                    return
+                }
+            }
 
             for try await event in service.execute(sql, options: .default, handle: handle) {
                 // 页签可能在执行过程中被关闭；此时停止更新，避免下标越界。
@@ -3113,6 +3276,11 @@ final class AppState: ObservableObject {
                 affectedRows: affectedTally.value,
                 note: message
             )
+
+            // 手工事务里的失败（含取消）会让事务进入失败态：之后只接受回滚。
+            var session = transactionSessions[transactionKey] ?? TransactionSession()
+            session.statementFailed(reason: message)
+            transactionSessions[transactionKey] = session
         }
 
         if Task.isCancelled {
@@ -3248,6 +3416,15 @@ final class AppState: ObservableObject {
         }
 
         for key in Array(services.keys) where key.connectionID == connectionID {
+            // 断开连接会连带丢弃未提交事务（服务端在连接关闭时回滚）——
+            // 这是**隐式**回滚，必须显式说出来，不能让用户以为它提交了。
+            if var session = transactionSessions[key], session.phase.isOpen {
+                session.serverCommandFailed()
+                transactionSessions[key] = nil
+                let service = services[key]
+                Task { try? await service?.rollback() }
+                statusMessage = L(.transactionRolledBackOnLeave)
+            }
             if let service = services[key] {
                 Task {
                     await service.disconnect()
