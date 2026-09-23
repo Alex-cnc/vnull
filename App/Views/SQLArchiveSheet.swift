@@ -33,6 +33,14 @@ struct SQLArchiveSheet: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
+            // 跟随工作区时如实说明：用户会想知道"到底写到哪去了"（FR-EDIT-32 衔接）
+            if appState.sqlArchiveSource == .workspace, let path = appState.sqlArchiveDirectoryPath {
+                Text(L(.archiveUsingWorkspace, path))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack {
                 Button(L(.archiveChooseDirectory)) {
                     Task { await appState.chooseSQLArchiveDirectory() }

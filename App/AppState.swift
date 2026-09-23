@@ -269,6 +269,12 @@ final class AppState: ObservableObject {
     /// 归档目录的当前状态（界面直接显示整句）。
     @Published private(set) var sqlArchiveStatus: DirectoryAccessStatus?
 
+    /// 归档根目录的来源：单独指定 / 跟随工作区 / 没有（FR-EDIT-32 衔接）。
+    @Published private(set) var sqlArchiveSource: ArchiveLocation.Source = .none
+
+    /// 工作区路径的提供者（由 App 层注入；AppState 不该直接依赖工作区存储）。
+    var workspacePathProvider: (() -> String?)?
+
     /// 归档目录的书签**单独存一个文件**，免得出现在数据任务面板的「使用已授权目录」列表里。
     private let sqlArchiveBookmarks = DirectoryBookmarkStore(fileName: "sql-archive-bookmark.json")
 
@@ -635,12 +641,29 @@ final class AppState: ObservableObject {
     /// 读取归档目录书签并刷新状态（界面打开归档面板时调用）。
     func refreshSQLArchiveStatus() async {
         do {
-            guard let bookmark = try await sqlArchiveBookmarks.all().first else {
+            let bookmark = try await sqlArchiveBookmarks.all().first
+            let chosenStatus = bookmark.map { SecureDirectoryAccess.status(for: $0) }
+            // **优先级：单独指定 > 工作区 > 没有**（判定收在 Core 的 ArchiveLocation，可单测）
+            guard let resolved = ArchiveLocation.queriesDirectory(
+                chosenPath: chosenStatus?.path,
+                workspacePath: workspacePathProvider?()
+            ) else {
+                sqlArchiveSource = .none
                 sqlArchiveStatus = .notAuthorized
                 return
             }
-            sqlArchiveStatus = SecureDirectoryAccess.status(for: bookmark)
+            sqlArchiveSource = resolved.source
+            switch resolved.source {
+            case .chosen:
+                sqlArchiveStatus = chosenStatus
+            case .workspace:
+                // 跟随工作区时**没有归档自己的书签**，但工作区的书签已经授权了这块位置。
+                sqlArchiveStatus = .granted(path: resolved.url.path, isStale: false)
+            case .none:
+                sqlArchiveStatus = .notAuthorized
+            }
         } catch {
+            sqlArchiveSource = .none
             sqlArchiveStatus = .resolutionFailed(reason: ErrorPresenter.message(for: error))
         }
     }
@@ -693,14 +716,23 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                guard let bookmark = try await self.sqlArchiveBookmarks.all().first else { return }
-                let grant = try SecureDirectoryAccess.open(bookmark)
-                defer { grant.stopAccessing() }
+                // 单独指定过归档目录就用它；否则跟随工作区（判定见 ArchiveLocation）。
+                var grant: DirectoryGrant?
+                defer { grant?.stopAccessing() }
+                var chosenPath: String?
+                if let bookmark = try await self.sqlArchiveBookmarks.all().first {
+                    let opened = try SecureDirectoryAccess.open(bookmark)
+                    grant = opened
+                    chosenPath = opened.url.path
+                }
+                guard let resolved = ArchiveLocation.queriesDirectory(
+                    chosenPath: chosenPath,
+                    workspacePath: self.workspacePathProvider?()
+                ) else { return }
 
-                // 归档落在所选目录的 queries/ 子目录，避免和数据任务产物混在一起。
-                let directory = grant.url.appendingPathComponent("queries", isDirectory: true)
-                let count = try await self.sqlArchiveWriter.append(entry, in: directory)
-                self.statusMessage = L(.archiveSaved, directory.lastPathComponent, count)
+                // 归档落在 queries/ 子目录，避免和数据任务产物、以及工作区里的代码混在一起。
+                let count = try await self.sqlArchiveWriter.append(entry, in: resolved.url)
+                self.statusMessage = L(.archiveSaved, resolved.url.deletingLastPathComponent().lastPathComponent, count)
             } catch {
                 self.statusMessage = L(.archiveFailed, ErrorPresenter.message(for: error))
             }

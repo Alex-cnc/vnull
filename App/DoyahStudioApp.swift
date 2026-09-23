@@ -29,7 +29,10 @@ struct DoyahStudioApp: App {
                     // 工作区 → 终端启动目录：把工作区路径交给终端（它只在启动那一刻读）。
                     workspace.onWorkspaceChanged = { [terminal] path in
                         terminal.workspacePath = path
+                        // 归档目录跟随工作区（未单独指定时）—— 变了就重新判定一次状态
+                        Task { await appState.refreshSQLArchiveStatus() }
                     }
+                    appState.workspacePathProvider = { [workspace] in workspace.rootPath }
                     await workspace.load()
                 }
                 .tint(accent.accentColor)

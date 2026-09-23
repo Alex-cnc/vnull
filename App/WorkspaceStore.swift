@@ -2,13 +2,6 @@ import AppKit
 import Combine
 import DoyahCore
 
-/// 工作区的一行（条目 + 缩进层级）—— 扁平化之后交给 `List` / `ForEach` 渲染。
-struct WorkspaceRow: Identifiable {
-    let entry: WorkspaceEntry
-    let depth: Int
-    var id: String { entry.relativePath }
-}
-
 /// 工作区状态（FR-EDIT-32）：用户自选目录 + 沙箱授权书签 + 一层懒加载的文件树。
 ///
 /// 关于授权：macOS 沙箱下访问用户目录必须持有 security-scoped bookmark，
@@ -32,6 +25,47 @@ final class WorkspaceStore: ObservableObject {
 
     /// 工作区变化时通知外部（终端启动目录要跟着走）。
     var onWorkspaceChanged: ((String?) -> Void)?
+
+    // MARK: 文件名搜索（FR-EDIT-32）
+    //
+    // 有界：忽略名单 + 深度上限 + 结果上限，全部收在 `WorkspaceSearch`（可单测）。
+    // 这里只负责"什么时候算一次"与缓存 —— 每次敲键都重扫大目录是界面卡顿的经典来源。
+
+    /// 搜索词。改动即重算（短查询会命中缓存）。
+    @Published var searchQuery = "" {
+        didSet { recomputeSearch() }
+    }
+
+    /// 搜索结果；`nil` = 当前没有在搜索。
+    @Published private(set) var searchResult: WorkspaceSearch.Result?
+
+    /// 是否处于搜索状态（界面据此决定显示树还是结果列表）。
+    var isSearching: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var searchCache: [String: WorkspaceSearch.Result] = [:]
+
+    func clearSearch() {
+        searchQuery = ""
+    }
+
+    private func recomputeSearch() {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, let rootURL else {
+            searchResult = nil
+            return
+        }
+        // 缓存键带上工作区路径：换工作区后同一个词不能命中旧结果。
+        let key = rootURL.path + "\u{1}" + query
+        if let cached = searchCache[key] {
+            searchResult = cached
+            return
+        }
+        let result = WorkspaceSearch.findFileNames(in: rootURL, query: query)
+        searchCache[key] = result
+        searchResult = result
+    }
 
     private var childrenCache: [String: [WorkspaceEntry]] = [:]
     private var expandedPaths: Set<String> = []
@@ -214,7 +248,9 @@ final class WorkspaceStore: ObservableObject {
             ? rootURL
             : WorkspaceTree.resolve(relativePath: relativePath, in: rootURL) ?? rootURL
         do {
-            return try WorkspaceTree.children(of: directory)
+            // 传 rootURL 而不是 directory：relativePath 必须**始终相对工作区根**，
+            // 它既是展开状态的键、也是路径解析的输入（见 WorkspaceTree.children 的注释）。
+            return try WorkspaceTree.children(of: directory, relativeTo: rootURL)
         } catch {
             loadError = ErrorPresenter.message(for: error)
             return []

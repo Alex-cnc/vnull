@@ -15,8 +15,9 @@ struct SQLEditorView: NSViewRepresentable {
 
     @ObservedObject private var commandCenter = EditorCommandCenter.shared
 
-    static let baseFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    static let keywordFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold)
+    /// 编辑器字体取自令牌（等宽档）：原先写死 13pt，而字号刻度里没有 13 这个等宽档。
+    static let baseFont = NSFont.monospacedSystemFont(ofSize: TypeScale.monoSize, weight: .regular)
+    static let keywordFont = NSFont.monospacedSystemFont(ofSize: TypeScale.monoSize, weight: .semibold)
 
     private static let tokenizers: [DatabaseType: SQLTokenizer] = [
         .postgresql: SQLTokenizer.standard(.postgresql),
@@ -399,7 +400,7 @@ final class SQLTextView: NSTextView {
         let fullRange = NSRange(location: 0, length: length)
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: Theme.nsColor(TextTone.primary)
         ]
 
         storage.beginEditing()
@@ -419,7 +420,9 @@ final class SQLTextView: NSTextView {
             storage.addAttributes(
                 [
                     .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue,
-                    .underlineColor: diagnostic.severity == .error ? NSColor.systemRed : NSColor.systemOrange
+                    .underlineColor: diagnostic.severity == .error
+                        ? Theme.nsColor(StatusTone.danger)
+                        : Theme.nsColor(StatusTone.warning)
                 ],
                 range: range
             )
@@ -429,7 +432,7 @@ final class SQLTextView: NSTextView {
 
         typingAttributes = [
             .font: baseFont,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: Theme.nsColor(TextTone.primary)
         ]
     }
 
@@ -442,19 +445,22 @@ final class SQLTextView: NSTextView {
         baseFont: NSFont,
         keywordFont: NSFont
     ) -> [NSAttributedString.Key: Any] {
+        // 语法色一律走令牌（`SyntaxTone`）：深浅两套各有一份，且对比度由单测守着。
+        // `quotedIdentifier` 归到 `identifier`：外观方案里标识符就是一档，
+        // 引号本身已经把它和普通标识符区分开了，再给一个颜色反而更花。
         switch kind {
         case .keyword:
-            return [.foregroundColor: NSColor.systemPurple, .font: keywordFont]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.keyword), .font: keywordFont]
         case .function:
-            return [.foregroundColor: NSColor.systemTeal]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.function)]
         case .string:
-            return [.foregroundColor: NSColor.systemRed]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.string)]
         case .quotedIdentifier:
-            return [.foregroundColor: NSColor.systemOrange]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.identifier)]
         case .comment:
-            return [.foregroundColor: NSColor.secondaryLabelColor]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.comment)]
         case .number:
-            return [.foregroundColor: NSColor.systemBlue]
+            return [.foregroundColor: Theme.nsColor(SyntaxTone.number)]
         case .operatorSymbol:
             return [:]
         }

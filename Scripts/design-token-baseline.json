@@ -75,9 +75,6 @@
     "App/Views/SQLArchiveSheet.swift": {
       "bare-spacing": 3
     },
-    "App/Views/SQLEditorView.swift": {
-      "bare-color": 6
-    },
     "App/Views/SafeModeConfirmSheet.swift": {
       "bare-spacing": 1
     },
@@ -89,7 +86,7 @@
     }
   },
   "totals": {
-    "bare-color": 14,
+    "bare-color": 8,
     "bare-font": 3,
     "bare-radius": 1,
     "bare-spacing": 76

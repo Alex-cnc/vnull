@@ -56,6 +56,11 @@ public enum LKey: String, CaseIterable, Sendable {
     case workspaceReveal
     case workspaceTreeEmpty
     case workspaceLoading
+    case workspaceSearchPlaceholder
+    case workspaceSearchResultCount
+    case workspaceSearchTruncated
+    case workspaceSearchEmpty
+    case archiveUsingWorkspace
     case directoryStatusGranted
     case directoryStatusStale
     case directoryStatusNotAuthorized
@@ -767,6 +772,11 @@ public enum LocalizedStrings {
         .workspaceReveal: [.simplifiedChinese: "在访达中显示", .english: "Reveal in Finder"],
         .workspaceTreeEmpty: [.simplifiedChinese: "这个目录里没有可显示的条目。", .english: "Nothing to show in this folder."],
         .workspaceLoading: [.simplifiedChinese: "正在读取…", .english: "Loading…"],
+        .workspaceSearchPlaceholder: [.simplifiedChinese: "搜索文件名…", .english: "Search file names…"],
+        .workspaceSearchResultCount: [.simplifiedChinese: "找到 %@ 个文件", .english: "%@ files found"],
+        .workspaceSearchTruncated: [.simplifiedChinese: "结果已达上限，请输入更精确的关键词。", .english: "Result limit reached — type a more specific query."],
+        .workspaceSearchEmpty: [.simplifiedChinese: "没有匹配的文件。", .english: "No matching files."],
+        .archiveUsingWorkspace: [.simplifiedChinese: "未单独指定归档目录，当前使用工作区：%@", .english: "No archive folder chosen — using the workspace: %@"],
         .directoryStatusGranted: [.simplifiedChinese: "已授权读写：%@", .english: "Read-write access granted: %@"],
         .directoryStatusStale: [.simplifiedChinese: "已授权读写：%@（书签已过期，建议重新选择一次）", .english: "Read-write access granted: %@ (bookmark is stale — choose the folder again)"],
         .directoryStatusNotAuthorized: [.simplifiedChinese: "尚未授权目录", .english: "No folder authorised yet"],

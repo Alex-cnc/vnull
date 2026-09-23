@@ -21,7 +21,12 @@ struct WorkspaceExplorerView: View {
             if workspace.hasWorkspace {
                 header
                 pathLine
-                tree
+                searchField
+                if workspace.isSearching {
+                    searchResultsList
+                } else {
+                    tree
+                }
                 statusFooter
             } else {
                 emptyState
@@ -75,6 +80,117 @@ struct WorkspaceExplorerView: View {
         }
         .padding(.horizontal, Spacing.m)
         .padding(.bottom, Spacing.s)
+    }
+
+    // MARK: 搜索
+
+    /// 搜索框：有界搜索（忽略名单 / 深度上限 / 结果上限），详见 `WorkspaceSearch`。
+    private var searchField: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .imageScale(.small)
+                .foregroundStyle(Theme.text(.tertiary))
+            TextField(L(.workspaceSearchPlaceholder), text: $workspace.searchQuery)
+                .textFieldStyle(.plain)
+                .font(Theme.font(.body))
+            if workspace.isSearching {
+                Button {
+                    workspace.clearSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .imageScale(.small)
+                        .foregroundStyle(Theme.text(.tertiary))
+                }
+                .buttonStyle(.plain)
+                .help(L(.commonClose))
+            }
+        }
+        .padding(.horizontal, Spacing.s)
+        .padding(.vertical, Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                .fill(Theme.surface(.raised))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                .strokeBorder(Theme.hairline(scheme), lineWidth: Metrics.hairline)
+        )
+        .padding(.horizontal, Spacing.m)
+        .padding(.bottom, Spacing.s)
+    }
+
+    /// 搜索结果：扁平列表（名字 + 相对路径），点击在新页签打开。
+    private var searchResultsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            searchSummary
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(workspace.searchResult?.entries ?? [], id: \.relativePath) { entry in
+                        searchResultRow(entry)
+                    }
+                }
+                .padding(.vertical, Spacing.xs)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var searchSummary: some View {
+        let result = workspace.searchResult
+        if let result, result.entries.isEmpty {
+            Text(L(.workspaceSearchEmpty))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .padding(.horizontal, Spacing.m)
+                .padding(.bottom, Spacing.xs)
+        } else {
+            VStack(alignment: .leading, spacing: Spacing.hair) {
+                Text(L(.workspaceSearchResultCount, "\(result?.entries.count ?? 0)"))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+                // 命中上限时如实说明，而不是悄悄少给几条
+                if result?.isTruncated == true {
+                    Text(L(.workspaceSearchTruncated))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.warning))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, Spacing.m)
+            .padding(.bottom, Spacing.xs)
+        }
+    }
+
+    private func searchResultRow(_ entry: WorkspaceEntry) -> some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: symbol(for: entry))
+                .imageScale(.small)
+                .foregroundStyle(Theme.text(.tertiary))
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(entry.name)
+                    .font(Theme.font(.body))
+                    .foregroundStyle(Theme.text(.primary))
+                    .lineLimit(1)
+                Text(entry.relativePath)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.tertiary))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.xs)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let url = workspace.url(for: entry) { appState.openFile(at: url) }
+        }
+        .contextMenu {
+            Button(L(.workspaceReveal)) { workspace.reveal(entry) }
+        }
+        .help(entry.relativePath)
     }
 
     // MARK: 文件树

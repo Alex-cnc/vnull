@@ -41,12 +41,19 @@ public enum WorkspaceTree {
     ///
     /// 排序规则：目录在前、文件在后，同类按名称不区分大小写排序 ——
     /// 与访达 / VS Code 一致，用户不用重新适应。
+    /// - Parameter root: 计算相对路径的基准。**必须传工作区根**：
+    ///   传成"被列出的那一层"会让深层条目拿到错误的 `relativePath`
+    ///   （`Core/Deep` 变成 `Deep`），而 `relativePath` 同时是**展开状态的键**
+    ///   与**路径解析的输入** —— 结果就是展开第二层时去 `<根>/Deep` 找目录，
+    ///   找不到、列表空掉。（2026-09-23 实测踩到：自检探针只展开了一层，所以漏过。）
     public static func children(
         of directory: URL,
+        relativeTo root: URL? = nil,
         showHidden: Bool = false,
         ignored: Set<String> = defaultIgnored,
         fileManager: FileManager = .default
     ) throws -> [WorkspaceEntry] {
+        let base = root ?? directory
         let names = try fileManager.contentsOfDirectory(atPath: directory.path)
         var entries: [WorkspaceEntry] = []
         for name in names {
@@ -66,7 +73,7 @@ public enum WorkspaceTree {
             entries.append(
                 WorkspaceEntry(
                     name: name,
-                    relativePath: relativePath(of: url, in: directory) ?? name,
+                    relativePath: relativePath(of: url, in: base) ?? name,
                     kind: kind
                 )
             )

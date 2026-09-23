@@ -81,6 +81,11 @@ enum Theme {
 
     // MARK: 底层
 
+    // AppKit 视图（编辑器 / 结果网格 / 终端）需要 NSColor，这里给三个语义重载。
+    static func nsColor(_ tone: TextTone) -> NSColor { nsColor(tone.color) }
+    static func nsColor(_ tone: SyntaxTone) -> NSColor { nsColor(tone.color) }
+    static func nsColor(_ tone: StatusTone) -> NSColor { nsColor(tone.color) }
+
     /// 把一个令牌色解析成动态 `NSColor`（自动跟随系统外观）。
     static func nsColor(_ color: ThemeColor) -> NSColor {
         let light = Self.nsColor(hex: color.light)
