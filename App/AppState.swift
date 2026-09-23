@@ -1899,6 +1899,13 @@ final class AppState: ObservableObject {
         return ColumnSpecParser.columns(from: result)
     }
 
+    /// **本次运行**的智能体用量账本（NFR-AI-04）。
+    ///
+    /// 为什么必须留在内存里跨调用累计：配额判定的输入就是它 —— 每次都传 `.empty` 的话，
+    /// 「调用次数上限 / 累计 token 上限」**永远触发不了**（本轮发现的真缺口）。
+    /// 按需求口径它是「单次会话」，所以退出应用即清零，不落盘。
+    @Published private(set) var agentQuotaLedger: AgentQuotaLedger = .empty
+
     /// 表清单外发上限（防止把上千张表发出去）。
     static let agentTableListLimit = 60
     /// 列信息外发总量上限（按列累计，超出后的表只发表名）。
@@ -1922,7 +1929,8 @@ final class AppState: ObservableObject {
                 apiKey: agentAPIKey,
                 // 只读模式 / 白名单来自配置（FR-AI-09），不再写死默认策略。
                 policy: agentGuardPolicy,
-                ledger: .empty,
+                // 传**累计账本**，否则配额永远触发不了（见 agentQuotaLedger 的说明）。
+                ledger: agentQuotaLedger,
                 client: OpenAICompatibleClient(
                     transport: EgressRecordingTransport(
                         origin: "智能体 · 用自然语言生成 SQL",
@@ -1931,6 +1939,8 @@ final class AppState: ObservableObject {
                 )
             )
             await recordAgentModelCall(summary: instruction, outcome: .generated, since: started)
+            // 记账：下一次调用的配额判定要用它（NFR-AI-04）。
+            agentQuotaLedger = result.quotaLedger
             return result
         } catch {
             // 失败的调用同样留痕：审计要能回答「哪次调用失败了、花了多久」（NFR-AI-03）。
@@ -1985,7 +1995,7 @@ final class AppState: ObservableObject {
                 apiKey: agentAPIKey,
                 // 只读模式 / 白名单来自配置（FR-AI-09），与其它智能体路径同一份策略。
                 policy: agentGuardPolicy,
-                ledger: .empty,
+                ledger: agentQuotaLedger,
                 client: OpenAICompatibleClient(
                     transport: EgressRecordingTransport(
                         origin: "智能体 · 数据任务规格",
@@ -1994,6 +2004,8 @@ final class AppState: ObservableObject {
                 )
             )
             await recordAgentModelCall(summary: specs, outcome: .generated, since: started)
+            // 记账：下一次调用的配额判定要用它（NFR-AI-04）。
+            agentQuotaLedger = result.quotaLedger
             return result
         } catch {
             await recordAgentModelCall(

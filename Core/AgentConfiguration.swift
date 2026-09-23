@@ -323,6 +323,14 @@ public struct AgentQuota: Codable, Equatable, Sendable {
     }
 
     /// 调用前的判定：超限返回具体原因（不是静默失败）。
+    /// 是否放行本次调用（NFR-AI-04：**超限即终止并提示**）。
+    ///
+    /// - `requestedOutputTokens` 是**本次调用最多还要用多少 token 的预算**（真实路径传 `maxOutputTokensPerRequest`，
+    ///   它同时作为 `max_tokens` 下发给模型）。有了它，累计上限才是"提前拦"而不是"超了才拦"。
+    ///
+    /// **一个必须讲清的边界**：客户端**不数 token**，所以预算只覆盖**输出侧**；
+    /// 提示词很大时，一次调用仍可能把累计量顶过上限（下一次才会被拦）。这不是疏忽，
+    /// 而是"不为了精确而引入一个 tokenizer"的取舍，已在需求书 R-41 登记。
     public func decision(
         ledger: AgentQuotaLedger,
         requestedOutputTokens: Int? = nil
@@ -330,8 +338,16 @@ public struct AgentQuota: Codable, Equatable, Sendable {
         if let limit = maxRequestsPerSession, ledger.requestCount >= limit {
             return .requestLimitReached(limit: limit)
         }
-        if let limit = maxTotalTokens, ledger.totalTokens >= limit {
-            return .tokenLimitReached(limit: limit, used: ledger.totalTokens)
+        if let limit = maxTotalTokens {
+            // 已经用满 → 拦；再加本次预算就会超 → 也拦（这一条此前永远不会触发：
+            // 调用方传进来的就是它自己比较的那个上限，见 v3.88 的修正说明）。
+            let expected = ledger.totalTokens + max(0, requestedOutputTokens ?? 0)
+            if ledger.totalTokens >= limit {
+                return .tokenLimitReached(limit: limit, used: ledger.totalTokens)
+            }
+            if expected > limit {
+                return .tokenLimitReached(limit: limit, used: expected)
+            }
         }
         if let limit = maxOutputTokensPerRequest, let requested = requestedOutputTokens, requested > limit {
             return .outputTokenLimitExceeded(requested: requested, limit: limit)
