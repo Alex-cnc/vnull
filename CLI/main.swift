@@ -206,7 +206,10 @@ struct DoyahCLI {
                 case .started(let index):
                     print("--- statement \(index + 1) ---")
                 case .resultSet(let result):
-                    if result.columns.isEmpty {
+                    if let affected = result.affectedRows {
+                        // 影响行数随结果对象上报（R-32：通道只有这一条）
+                        print("affectedRows: \(affected)")
+                    } else if result.columns.isEmpty {
                         print("(no result set)")
                     } else {
                         print(result.columns.map { "\($0.name):\($0.typeName)" }.joined(separator: " | "))
@@ -214,8 +217,6 @@ struct DoyahCLI {
                             print(row.map { $0 ?? "NULL" }.joined(separator: " | "))
                         }
                     }
-                case .affectedRows(let count):
-                    print("affectedRows: \(count)")
                 case .notice(let message):
                     print("notice: \(message)")
                 case .finished(let summary):

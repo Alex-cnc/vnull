@@ -206,10 +206,9 @@ public actor PostgresService: DatabaseService {
                     affectedRows: affected,
                     executionTime: Date().timeIntervalSince(statementStart)
                 )
+                // 只发这一个事件：行数随结果对象一起上报（R-32：曾经这里还额外发一次
+                // `.affectedRows`，上层两条分支都累加，落盘数字翻倍）。
                 continuation.yield(.resultSet(result))
-                if let affected {
-                    continuation.yield(.affectedRows(affected))
-                }
                 executedCount += 1
                 continue
             }

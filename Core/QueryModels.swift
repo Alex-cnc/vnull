@@ -55,12 +55,40 @@ public struct QuerySummary: Sendable {
     }
 }
 
+/// 执行事件流。
+///
+/// **影响行数只走一条通道**：`.resultSet(QueryResult.affectedRows)`。
+/// 为什么写在这里（R-32，2026-09-23 评审）：原先 DML 同时发 `.resultSet(携带 affectedRows)`
+/// 与 `.affectedRows` 两个事件，上层两条分支都累加 ⇒ **归档与任务历史里的行数系统性翻倍**，
+/// 而归档是复盘与审计的依据 —— 数字翻倍比没有数字更糟。
+/// 现在把「一条语句只报一次行数」变成**类型上的事实**：没有第二个通道可走。
 public enum QueryEvent: Sendable {
     case started(statementIndex: Int)
     case resultSet(QueryResult)
-    case affectedRows(Int)
     case notice(String)
     case finished(QuerySummary)
+}
+
+/// 影响行数累加器：**全工程唯一的计数入口**。
+///
+/// 存在的理由就是 R-32：计数若是散在调用方的 `switch` 里，多一条事件通道就会多算一次，
+/// 而且没人能一眼看出"到底加了几次"。收成一个类型之后，行为可单测、可断言。
+public struct AffectedRowsTally: Sendable {
+    public private(set) var total = 0
+    public private(set) var sawAny = false
+
+    public init() {}
+
+    /// 吸收一个事件。只有携带行数的事件会改变计数。
+    public mutating func absorb(_ event: QueryEvent) {
+        guard case .resultSet(let result) = event, let rows = result.affectedRows else { return }
+        total += rows
+        sawAny = true
+    }
+
+    /// 累计行数；**一条都没报过时为 `nil`**（而不是 0）——
+    /// 「0 行受影响」与「这条语句不报行数」是两件事，归档里必须能区分。
+    public var value: Int? { sawAny ? total : nil }
 }
 
 public struct QueryOptions: Sendable {

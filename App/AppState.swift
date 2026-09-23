@@ -1472,22 +1472,13 @@ final class AppState: ObservableObject {
         on service: any DatabaseService
     ) async throws -> Int? {
         let statements = StatementSplitter(databaseType: databaseType).split(sql)
-        var affected: Int?
+        var tally = AffectedRowsTally()
         for statement in statements {
             for try await event in service.execute(statement.sql, options: .default) {
-                switch event {
-                case .affectedRows(let count):
-                    affected = (affected ?? 0) + count
-                case .resultSet(let result):
-                    if let rows = result.affectedRows {
-                        affected = (affected ?? 0) + rows
-                    }
-                default:
-                    break
-                }
+                tally.absorb(event)      // 计数只有这一处（R-32）
             }
         }
-        return affected
+        return tally.value
     }
 
     /// 供模型参考的 schema 摘要（NFR-AI-01：只有结构，没有行数据）。
@@ -2727,7 +2718,11 @@ final class AppState: ObservableObject {
 
         // 归档要写「影响行数」，在执行过程中累计一次（原先只在事件里即时展示）。
         // 声明在 `do` 之外：**失败分支也要用到它**（出错前可能已经写过几行）。
-        var affectedTotal = 0
+        //
+        // 计数收进 AffectedRowsTally：**全工程唯一的计数入口**。R-32 的教训是
+        // 「DML 同时发两个事件、上层两条分支都累加」⇒ 落盘行数翻倍，而现在
+        // 通道只剩 `.resultSet(affectedRows:)` 一条，且只有 absorb 一处会加。
+        var affectedTally = AffectedRowsTally()
 
         do {
             let service = try await ensureService(for: configuration, database: targetDatabase)
@@ -2751,10 +2746,10 @@ final class AppState: ObservableObject {
                     // 有表格的结果集：行 × 列 交给 Result 页签的表头，**不进 Output 日志**，
                     // 否则两个页签会重复同一件事。没有表格的（影响行数 / 无结果集）才进日志，
                     // 因为结果表里根本不会出现它们。
+                    affectedTally.absorb(event)
                     let isTabular = result.affectedRows == nil && result.columnCount > 0
                     let logLine: String?
                     if let affected = result.affectedRows {
-                        affectedTotal += affected
                         logLine = L(.stateStatementAffectedRows, statementNumber, affected)
                     } else if result.columnCount == 0 {
                         logLine = L(.stateStatementNoResultSet, statementNumber)
@@ -2770,10 +2765,6 @@ final class AppState: ObservableObject {
                             $0.statusMessage = logLine
                         }
                     }
-
-                case .affectedRows(let count):
-                    affectedTotal += count
-                    updateTab(tabID) { $0.statusMessage = L(.stateAffectedRows, count) }
 
                 case .notice(let message):
                     updateTab(tabID) { $0.statusMessage = message }
@@ -2796,32 +2787,39 @@ final class AppState: ObservableObject {
                 updateTab(tabID) { $0.statusMessage = L(.stateFinishedEmpty) }
             }
 
+            // 取消必须在历史里留痕，且**不得记成成功**（R-31）。
+            // 原先这里无条件写 `succeeded: true`：取消若发生在流正常结束的瞬间
+            // （或驱动没把取消变成抛错），归档里就留下一条"成功执行"的假记录 ——
+            // 归档是审计依据，假成功比失败更糟。
+            let cancelled = Task.isCancelled
             recordHistory(
                 sql: sql,
                 connectionID: configuration.id,
                 duration: Date().timeIntervalSince(executionStart),
-                succeeded: true,
-                affectedRows: affectedTotal > 0 ? affectedTotal : nil,
-                note: nil
+                succeeded: !cancelled,
+                affectedRows: affectedTally.value,
+                note: cancelled ? L(.stateCancelled) : nil
             )
         } catch {
-            if Task.isCancelled {
-                updateTab(tabID) { $0.statusMessage = L(.stateCancelled) }
-            } else {
-                let message = ErrorPresenter.message(for: error)
-                updateTab(tabID) {
+            // 取消同样留痕（`succeeded: false` + 可读原因），不再"什么都不记"。
+            let cancelled = Task.isCancelled || error is CancellationError
+            let message = cancelled ? L(.stateCancelled) : ErrorPresenter.message(for: error)
+            updateTab(tabID) {
+                if cancelled {
+                    $0.statusMessage = message
+                } else {
                     $0.errorMessage = message
                     $0.statusMessage = L(.stateExecutionFailed)
                 }
-                recordHistory(
-                    sql: sql,
-                    connectionID: configuration.id,
-                    duration: Date().timeIntervalSince(executionStart),
-                    succeeded: false,
-                    affectedRows: affectedTotal > 0 ? affectedTotal : nil,
-                    note: message
-                )
             }
+            recordHistory(
+                sql: sql,
+                connectionID: configuration.id,
+                duration: Date().timeIntervalSince(executionStart),
+                succeeded: false,
+                affectedRows: affectedTally.value,
+                note: message
+            )
         }
 
         if Task.isCancelled {
