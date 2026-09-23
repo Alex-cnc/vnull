@@ -24,7 +24,7 @@ final class DesignTokensTests: XCTestCase {
     }
 
     func testRadiusScaleIsFixed() {
-        XCTAssertEqual(Radius.scale, [4, 6, 8, 10])
+        XCTAssertEqual(Radius.scale, [1, 4, 6, 8, 10])
     }
 
     func testTypeScaleHasRealHierarchy() {

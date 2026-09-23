@@ -33,6 +33,12 @@ final class TerminalModel: ObservableObject {
     /// PTY 是否已经起过（视图用它决定"首次布局时用真实几何启动"）。
     var hasStarted: Bool { didStart }
 
+    /// 工作区路径（FR-EDIT-32）：终端启动目录以它为准。
+    ///
+    /// 说明：**只在启动那一刻读取** —— 已经跑起来的 shell 不会被"换工作区"搬走
+    /// （与 VS Code 一致：换工作区是开新终端，而不是把正在跑的命令换目录）。
+    var workspacePath: String?
+
     // MARK: 回滚区与选区
 
     /// 回滚区显示偏移（0 = 实时画面）。
@@ -117,7 +123,7 @@ final class TerminalModel: ObservableObject {
             self.requestRedraw?()
         }
         screen.resize(columns: columns, rows: rows)
-        if session.start(columns: columns, rows: rows, workingDirectory: Self.launchDirectory()) {
+        if session.start(columns: columns, rows: rows, workingDirectory: launchDirectory()) {
             isRunning = true
         } else {
             isRunning = false
@@ -159,7 +165,7 @@ final class TerminalModel: ObservableObject {
     ///
     /// 实测：Finder 双击 / `open` 拉起时 `currentDirectoryPath` 是 `/`，直接继承会让
     /// 终端一进去就是根目录；从命令行直接跑才是真正的"启动目录"。
-    private static func launchDirectory() -> String {
+    private func launchDirectory() -> String {
         let fileManager = FileManager.default
         let isUsableDirectory: (String) -> Bool = { path in
             var isDirectory: ObjCBool = false
@@ -167,7 +173,7 @@ final class TerminalModel: ObservableObject {
             return exists && isDirectory.boolValue && fileManager.isReadableFile(atPath: path)
         }
         return TerminalWorkingDirectory.resolve(
-            workspace: nil,
+            workspace: workspacePath,
             launchDirectory: fileManager.currentDirectoryPath,
             home: fileManager.homeDirectoryForCurrentUser.path,
             isUsableDirectory: isUsableDirectory

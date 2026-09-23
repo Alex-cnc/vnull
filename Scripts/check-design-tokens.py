@@ -40,7 +40,7 @@ BASELINE = pathlib.Path("Scripts/design-token-baseline.json")
 
 SPACING_SCALE = {0, 1, 2, 4, 8, 12, 16, 24, 32}
 FONT_SCALE = {11, 12, 13, 15, 17}
-RADIUS_SCALE = {4, 6, 8, 10}
+RADIUS_SCALE = {1, 4, 6, 8, 10}
 
 BARE_COLOR = re.compile(
     r"\b(?:Color|NSColor)\.(?:orange|red|blue|yellow|green|purple|pink|gray|grey|brown|cyan|indigo|mint|teal)\b"

@@ -99,6 +99,31 @@ public enum DirectoryAccessStatus: Equatable, Sendable {
         }
     }
 
+    /// 可读提示的**文案键**（NFR-I18N-03）。
+    ///
+    /// 为什么要有它：下面的 `message` 是硬编码中文，英文界面里会露出中文。
+    /// 界面一律用 `L(status.messageKey, status.path ?? "")`，`message` 只留给
+    /// Core 内部的错误信息（那一条也应当尽快改成键）。
+    public var messageKey: LKey {
+        switch self {
+        case .granted(_, let isStale):
+            return isStale ? .directoryStatusStale : .directoryStatusGranted
+        case .notAuthorized:
+            return .directoryStatusNotAuthorized
+        case .missing:
+            return .directoryStatusMissing
+        case .denied:
+            return .directoryStatusDenied
+        case .resolutionFailed:
+            return .directoryStatusFailed
+        }
+    }
+
+    /// 状态文案的格式化参数（路径；无路径时给空串）。
+    public var messageArgument: String {
+        path ?? ""
+    }
+
     /// 授权目录路径（可用 / 缺失 / 无权限时给出）。
     public var path: String? {
         switch self {
@@ -160,6 +185,18 @@ public protocol SecurityScopedBookmarking: Sendable {
 public struct FoundationSecurityScopedBookmarking: SecurityScopedBookmarking {
     public init() {}
 
+    /// 生成书签：**先试安全作用域，失败则退回普通书签**。
+    ///
+    /// 为什么必须有这个退回（实测，2026-09-23）：在**非沙箱**构建里
+    /// `bookmarkData(options: .withSecurityScope)` 会失败并抛
+    /// `bookmarkCreationFailed(reason: "未能打开该文件。")`。
+    /// 而本工程日常用的正是非沙箱构建（终端要跑 dsh-tui，见 T-38）——
+    /// 没有退回，工作区在那个构建里**根本选不了目录**，而且报的还是一句
+    /// 与真实原因毫不相干的"未能打开该文件"。
+    ///
+    /// 语义上这也说得通：非沙箱进程本来就能访问用户选过的路径，
+    /// 不需要（也无法）用沙箱授权去"圈住"它；普通书签足以承载"用户曾经选过这个目录"
+    /// 与"目录被移动后仍能跟随"这两件事。
     public func makeBookmark(for directory: URL) throws -> Data {
         do {
             return try directory.bookmarkData(
@@ -168,19 +205,50 @@ public struct FoundationSecurityScopedBookmarking: SecurityScopedBookmarking {
                 relativeTo: nil
             )
         } catch {
-            throw DirectoryAccessError.bookmarkCreationFailed(reason: error.localizedDescription)
+            // 退回普通书签；两条路都失败才是真的失败。
+            do {
+                return try directory.bookmarkData(
+                    options: [],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            } catch {
+                throw DirectoryAccessError.bookmarkCreationFailed(
+                    reason: "\(error.localizedDescription)（安全作用域与普通书签均失败）"
+                )
+            }
         }
     }
 
+    /// 解析书签：同样**兼容两种书签**（安全作用域 / 普通）。
+    ///
+    /// 用 `.withSecurityScope` 去解析一个普通书签会失败，反之亦然 ——
+    /// 所以这里先按安全作用域解，失败再按普通解。混着用才不会出现
+    /// "沙箱里能用、非沙箱里读不回来"这类只在某一种构建里发作的问题。
+    /// 解析书签：**两种书签都要能解**。
+    ///
+    /// 实测（2026-09-23）：用 `.withSecurityScope` 去解析一个**普通**书签会失败并抛
+    /// "The file couldn't be opened because it isn't in the correct format."；
+    /// 反之亦然。所以先按安全作用域解、失败再按普通解 ——
+    /// 否则会出现"沙箱构建里能用、非沙箱构建里读不回来"这种只在一种构建里发作的问题。
     public func resolve(_ data: Data) throws -> (url: URL, isStale: Bool) {
         var isStale = false
-        let url = try URL(
+        if let url = try? URL(
             resolvingBookmarkData: data,
             options: [.withSecurityScope],
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
+        ) {
+            return (url, isStale)
+        }
+        var plainStale = false
+        let url = try URL(
+            resolvingBookmarkData: data,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &plainStale
         )
-        return (url, isStale)
+        return (url, plainStale)
     }
 
     /// 说明：非沙箱进程里对普通文件 URL 调用会返回 `false`，但这**不代表没有权限**。

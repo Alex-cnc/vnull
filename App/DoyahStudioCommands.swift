@@ -72,6 +72,19 @@ struct DoyahStudioCommands: Commands {
 
         // 「显示」菜单：下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）。
         CommandGroup(after: .sidebar) {
+            // 与活动栏一一对应：切换右侧面板看哪个视图（⌘1 / ⌘2 是通用习惯）
+            ForEach(ActivityBarItem.allCases) { item in
+                Button(L(item.menuKey)) {
+                    appState.selectedActivityItem = item
+                }
+                .keyboardShortcut(
+                    KeyEquivalent(Character("\(item.shortcutIndex)")),
+                    modifiers: [.command]
+                )
+            }
+
+            Divider()
+
             Button(L(.menuAppearance)) {
                 appState.isAppearancePresented = true
             }

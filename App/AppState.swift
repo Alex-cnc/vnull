@@ -189,6 +189,18 @@ final class AppState: ObservableObject {
 
     /// 「外观」面板（FR-EDIT-33：强调色可配置）。
     @Published var isAppearancePresented = false
+
+    /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
+    @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
+        id: UserDefaults.standard.string(forKey: ActivityBarItem.storageKey)
+    ) {
+        didSet {
+            UserDefaults.standard.set(selectedActivityItem.rawValue, forKey: ActivityBarItem.storageKey)
+        }
+    }
+
+    /// 「账户」占位说明（R-23：语义未定，只放占位不实现登录）。
+    @Published var isAccountNoticePresented = false
     // MARK: 执行计划（FR-DIAG-01）
 
     /// 执行计划面板的呈现开关。

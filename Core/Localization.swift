@@ -41,6 +41,30 @@ public enum LKey: String, CaseIterable, Sendable {
     case menuNewQuery
     case menuLanguage
 
+    // 活动栏与工作区（FR-EDIT-32）
+    case menuViewDatabase
+    case menuViewWorkspace
+    case activityDatabase
+    case activityWorkspace
+    case activityAccount
+    case activitySettings
+    case workspaceChoose
+    case workspaceSwitch
+    case workspaceEmptyTitle
+    case workspaceEmptyHint
+    case workspaceRefresh
+    case workspaceReveal
+    case workspaceTreeEmpty
+    case workspaceLoading
+    case directoryStatusGranted
+    case directoryStatusStale
+    case directoryStatusNotAuthorized
+    case directoryStatusMissing
+    case directoryStatusDenied
+    case directoryStatusFailed
+    case accountUndecidedTitle
+    case accountUndecidedMessage
+
     // 外观（FR-EDIT-33）
     case menuAppearance
     case appearanceTitle
@@ -729,6 +753,28 @@ public enum LocalizedStrings {
 
         .menuNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
         .menuLanguage: [.simplifiedChinese: "语言", .english: "Language"],
+        .menuViewDatabase: [.simplifiedChinese: "数据库视图", .english: "Database View"],
+        .menuViewWorkspace: [.simplifiedChinese: "工作区视图", .english: "Workspace View"],
+        .activityDatabase: [.simplifiedChinese: "数据库", .english: "Database"],
+        .activityWorkspace: [.simplifiedChinese: "工作区", .english: "Workspace"],
+        .activityAccount: [.simplifiedChinese: "账户", .english: "Account"],
+        .activitySettings: [.simplifiedChinese: "设置", .english: "Settings"],
+        .workspaceChoose: [.simplifiedChinese: "选择文件夹…", .english: "Choose Folder…"],
+        .workspaceSwitch: [.simplifiedChinese: "切换工作区…", .english: "Switch Workspace…"],
+        .workspaceEmptyTitle: [.simplifiedChinese: "还没有选择工作区", .english: "No workspace yet"],
+        .workspaceEmptyHint: [.simplifiedChinese: "选一个本地目录作为工作区：终端会在那里启动，查询归档与智能体的文件读写也都以它为准。", .english: "Pick a local folder as your workspace: the terminal starts there, and query archiving plus the agent's file access follow it."],
+        .workspaceRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .workspaceReveal: [.simplifiedChinese: "在访达中显示", .english: "Reveal in Finder"],
+        .workspaceTreeEmpty: [.simplifiedChinese: "这个目录里没有可显示的条目。", .english: "Nothing to show in this folder."],
+        .workspaceLoading: [.simplifiedChinese: "正在读取…", .english: "Loading…"],
+        .directoryStatusGranted: [.simplifiedChinese: "已授权读写：%@", .english: "Read-write access granted: %@"],
+        .directoryStatusStale: [.simplifiedChinese: "已授权读写：%@（书签已过期，建议重新选择一次）", .english: "Read-write access granted: %@ (bookmark is stale — choose the folder again)"],
+        .directoryStatusNotAuthorized: [.simplifiedChinese: "尚未授权目录", .english: "No folder authorised yet"],
+        .directoryStatusMissing: [.simplifiedChinese: "目录已不存在：%@", .english: "Folder no longer exists: %@"],
+        .directoryStatusDenied: [.simplifiedChinese: "没有访问权限：%@", .english: "Access denied: %@"],
+        .directoryStatusFailed: [.simplifiedChinese: "书签无法解析，建议重新选择目录", .english: "Bookmark could not be resolved — choose the folder again"],
+        .accountUndecidedTitle: [.simplifiedChinese: "账户功能还没定", .english: "The account feature is not decided yet"],
+        .accountUndecidedMessage: [.simplifiedChinese: "「登录后提供什么」还没定：模型配额与计费、配置跨机同步、许可校验，三者的架构代价完全不同。在定下来之前这里只放占位入口，不实现登录流程。密钥与密码也不会参与任何同步。", .english: "What signing in should give you is still undecided: model quota and billing, config sync across machines, and licence checks all cost very differently to build. Until that is settled this stays a placeholder — no sign-in flow is implemented, and secrets never take part in any sync."],
         .menuAppearance: [.simplifiedChinese: "外观…", .english: "Appearance…"],
         .appearanceTitle: [.simplifiedChinese: "外观", .english: "Appearance"],
         .appearanceAccentSection: [.simplifiedChinese: "强调色", .english: "Accent Color"],

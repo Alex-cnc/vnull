@@ -39,12 +39,14 @@ public enum Spacing {
 
 /// 圆角刻度。
 public enum Radius {
+    /// 发丝级圆角：给 2pt 强调条这类"线"用（线的圆角只能是线宽的一半）。
+    public static let hairline: CGFloat = 1
     public static let badge: CGFloat = 4
     public static let control: CGFloat = 6
     public static let card: CGFloat = 8
     public static let panel: CGFloat = 10
 
-    public static let scale: [CGFloat] = [badge, control, card, panel]
+    public static let scale: [CGFloat] = [hairline, badge, control, card, panel]
 }
 
 /// 度量：尺寸类常量。

@@ -29,7 +29,9 @@ public enum MenuLocalization {
         .menuDataTask,
         .menuAgentAudit,
         .menuLanguage,
-        .menuAppearance
+        .menuAppearance,
+        .menuViewDatabase,
+        .menuViewWorkspace
     ]
 
     /// 把「任意受支持语言下的自有菜单标题」翻成目标语言。

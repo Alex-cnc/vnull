@@ -35,23 +35,36 @@ enum ConnectionFormMode: Identifiable {
 struct MainWindow: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var localization: LocalizationManager
+    @EnvironmentObject private var workspace: WorkspaceStore
     @State private var formMode: ConnectionFormMode?
 
-    var body: some View {
-        NavigationSplitView {
+    /// 侧栏内容由活动栏决定（「看哪个视图」与「视图里看什么」分开）。
+    @ViewBuilder
+    private var sidebarContent: some View {
+        switch appState.selectedActivityItem {
+        case .database:
             ConnectionListView(
-                onAdd: {
-                    formMode = .new
-                },
-                onEdit: { configuration in
-                    formMode = .edit(configuration)
-                }
+                onAdd: { formMode = .new },
+                onEdit: { configuration in formMode = .edit(configuration) }
             )
-            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
-        } detail: {
+        case .workspace:
+            WorkspaceExplorerView()
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // 活动栏在 `NavigationSplitView` **外面**：它是应用级 chrome，不属于可调宽的侧栏
+            // （与 VS Code 一致 —— 拖拽侧栏宽度时活动栏不动）。
+            ActivityBarView()
+            NavigationSplitView {
+                sidebarContent
+                    .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
+            } detail: {
             // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）已经并进工作区本身，
             // 所以这里不再另开一块区域。
-            QueryWorkspaceView()
+                QueryWorkspaceView()
+            }
         }
         .sheet(item: $formMode) { mode in
             ConnectionFormView(configuration: mode.configuration) { configuration, password in
@@ -73,6 +86,14 @@ struct MainWindow: View {
         }
         .sheet(isPresented: $appState.isAppearancePresented) {
             AppearanceSheet()
+        }
+        .alert(
+            L(.accountUndecidedTitle),
+            isPresented: $appState.isAccountNoticePresented
+        ) {
+            Button(L(.commonOk), role: .cancel) {}
+        } message: {
+            Text(L(.accountUndecidedMessage))
         }
         .sheet(isPresented: $appState.isAgentSQLPresented) {
             AgentSQLPanel()
@@ -99,6 +120,10 @@ struct MainWindow: View {
             RelaunchPromptSheet()
         }
         .task {
+            // 工作区（FR-EDIT-32）：读回授权书签并把路径交给终端作为启动目录。
+            // 终端对象挂在 App 层，这里通过环境取不到它（它在 environment 里但需要 @EnvironmentObject）。
+            // 因此工作区路径由 App 层直接订阅 —— 见 `DoyahStudioApp`。
+            await workspace.load()
             await appState.loadAgentConfiguration()
             // 数据任务需要在客户端运行期间一直被调度（FR-AI-06）：
             // 启动时读一次任务与执行历史，然后由 App 侧的 tick 驱动 Core 的纯时间判定。
