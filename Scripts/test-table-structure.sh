@@ -82,6 +82,19 @@ check_eq "flag 的 is_nullable（可空）" "$(row_field flag 3)" "YES"
 check_eq "flag 的默认值（NULL 显示为字面量 NULL）" "$(row_field flag 4)" "NULL"
 
 echo ""
+echo "== 3.5) 按条件浏览 / 计数的语句（FR-DATA-02）在真机能跑 =="
+# 这两条就是 RowBrowsingQuery 生成的形状：WHERE → ORDER BY → 分页（分页必须在最后）。
+BROWSE_SQL="SELECT * FROM $SCHEMA.$TABLE WHERE id > 0 ORDER BY id DESC LIMIT 10 OFFSET 0;"
+COUNT_SQL="SELECT count(*) FROM $SCHEMA.$TABLE WHERE id > 0;"
+BROWSE_OUT="$("$CLI" -c "$BROWSE_SQL" 2>&1)"
+[ $? -eq 0 ] && check "带 WHERE + ORDER BY + 分页的浏览语句被执行（分页在最后才是合法顺序）" 0 \
+             || { check "浏览语句执行" 1; echo "$BROWSE_OUT" | tail -3; }
+COUNT_OUT="$("$CLI" -c "$COUNT_SQL" 2>&1)"
+[ $? -eq 0 ] && check "计数语句（带同一份 WHERE）被执行" 0 \
+             || { check "计数语句执行" 1; echo "$COUNT_OUT" | tail -3; }
+echo "$COUNT_OUT" | grep -q "count" && check "计数语句返回了结果列" 0 || check "计数语句返回结果列" 1
+
+echo ""
 echo "== 4) 方差不支持时不给空数组 =="
 # GBase 方言没有 tableStructureQuery 实现（默认 nil）：界面据此给可读错误，
 # 而不是把"读不出来"显示成"这张表没有列"。

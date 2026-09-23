@@ -259,6 +259,23 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultPageNext
     case resultPageLast
 
+    // 按条件浏览 / 统计行数（FR-DATA-02）
+    case browseSheetTitle
+    case browseSheetServerSideNote
+    case browseSheetWhere
+    case browseSheetWherePlaceholder
+    case browseSheetOrderBy
+    case browseSheetOrderByPlaceholder
+    case browseSheetLimit
+    case browseSheetOffset
+    case browseSheetPreview
+    case browseSheetHint
+    case browseSheetBrowse
+    case browseSheetCount
+    case browseSheetRefused
+    case browseSheetBrowsing
+    case browseSheetCounting
+
     // 查看 DDL（FR-META-13）
     case treeDDLUnsupported
     case treeDDLEmpty
@@ -785,6 +802,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeActionInsertTemplate
     case treeActionCopyQualifiedName
     case treeActionCopyColumnName
+    case treeActionBrowseWithCondition
+
     case treeActionViewDDL
     case treeActionTruncate
     case treeActionDrop
@@ -1062,6 +1081,22 @@ public enum LocalizedStrings {
         .resultPagePrevious: [.simplifiedChinese: "上一页", .english: "Previous page"],
         .resultPageNext: [.simplifiedChinese: "下一页", .english: "Next page"],
         .resultPageLast: [.simplifiedChinese: "最后一页", .english: "Last page"],
+
+        .browseSheetTitle: [.simplifiedChinese: "按条件浏览：%@", .english: "Browse with a condition: %@"],
+        .browseSheetServerSideNote: [.simplifiedChinese: "这里的条件会**发给数据库**执行（与结果区里的客户端筛选不同 —— 那个只在已取回的行上生效）", .english: "These conditions are sent to the database (unlike the client-side filter in the result area, which only applies to rows already fetched)"],
+        .browseSheetWhere: [.simplifiedChinese: "WHERE 条件", .english: "WHERE condition"],
+        .browseSheetWherePlaceholder: [.simplifiedChinese: "如：status = 'active' AND created_at > now() - interval '7 days'", .english: "e.g. status = 'active' AND created_at > now() - interval '7 days'"],
+        .browseSheetOrderBy: [.simplifiedChinese: "ORDER BY（可留空）", .english: "ORDER BY (optional)"],
+        .browseSheetOrderByPlaceholder: [.simplifiedChinese: "如：created_at DESC", .english: "e.g. created_at DESC"],
+        .browseSheetLimit: [.simplifiedChinese: "行数", .english: "Rows"],
+        .browseSheetOffset: [.simplifiedChinese: "偏移", .english: "Offset"],
+        .browseSheetPreview: [.simplifiedChinese: "将要执行的语句", .english: "Statement to run"],
+        .browseSheetHint: [.simplifiedChinese: "写 `WHERE` / `ORDER BY` 关键字也可以；语句只允许一条（出现分号会被拒绝）", .english: "You may include the WHERE / ORDER BY keywords; only one statement is allowed (a semicolon is refused)"],
+        .browseSheetBrowse: [.simplifiedChinese: "浏览", .english: "Browse"],
+        .browseSheetCount: [.simplifiedChinese: "统计行数", .english: "Count rows"],
+        .browseSheetRefused: [.simplifiedChinese: "条件无法生成语句（%@）：请写成单条表达式，并把 ORDER BY 填到它自己的框里", .english: "The condition cannot be turned into a statement (%@): write a single expression and put ORDER BY in its own field"],
+        .browseSheetBrowsing: [.simplifiedChinese: "正在按条件浏览…", .english: "Browsing with the condition…"],
+        .browseSheetCounting: [.simplifiedChinese: "正在统计行数…", .english: "Counting rows…"],
 
         .treeDDLUnsupported: [.simplifiedChinese: "该数据库类型暂不支持查看此对象的 DDL", .english: "Viewing DDL for this object is not supported on this database type"],
         .treeDDLEmpty: [.simplifiedChinese: "没有取到 %@ 的 DDL —— 可能是权限不足（元数据函数对无权限对象返回空）", .english: "No DDL was returned for %@ — this usually means insufficient privileges (metadata functions return empty for objects you cannot see)"],
@@ -1420,6 +1455,8 @@ public enum LocalizedStrings {
         .treeActionInsertTemplate: [.simplifiedChinese: "生成 INSERT 模板", .english: "Generate INSERT template"],
         .treeActionCopyQualifiedName: [.simplifiedChinese: "复制限定名", .english: "Copy qualified name"],
         .treeActionCopyColumnName: [.simplifiedChinese: "复制列名", .english: "Copy column name"],
+
+        .treeActionBrowseWithCondition: [.simplifiedChinese: "按条件浏览…", .english: "Browse with Condition…"],
         .treeActionViewDDL: [.simplifiedChinese: "查看建表 DDL", .english: "View CREATE TABLE DDL"],
         .treeActionTruncate: [.simplifiedChinese: "生成清空语句（TRUNCATE）", .english: "Generate TRUNCATE statement"],
         .treeActionDrop: [.simplifiedChinese: "生成删除语句（DROP）", .english: "Generate DROP statement"],

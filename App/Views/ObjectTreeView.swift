@@ -26,6 +26,8 @@ struct ObjectTreeView: View {
     @State private var createTableTarget: DatabaseObject?
     /// 「编辑表结构」的目标表节点；非 nil 时呈现表设计面板（编辑模式）。
     @State private var alterTableTarget: DatabaseObject?
+    /// 按条件浏览 / 统计行数（FR-DATA-02）。
+    @State private var browseRowsTarget: DatabaseObject?
     /// 库属性 / 删除数据库（FR-SESS-05）。
     @State private var isPropertiesPresented = false
     @State private var isDropDatabasePresented = false
@@ -102,6 +104,12 @@ struct ObjectTreeView: View {
             ) { name, schema, columns, _ in
                 Task { _ = await appState.createTable(named: name, schema: schema, columns: columns) }
             }
+        }
+        .sheet(item: $browseRowsTarget) { target in
+            BrowseRowsSheet(object: target) {
+                browseRowsTarget = nil
+            }
+            .environmentObject(appState)
         }
         .sheet(item: $alterTableTarget) { target in
             TableDesignSheet(
@@ -371,6 +379,12 @@ struct ObjectTreeView: View {
         if ObjectTreeActions.isAvailable(.copyColumnName, for: object.kind) {
             Button(L(.treeActionCopyColumnName)) {
                 runTreeAction(.copyColumnName, on: object)
+            }
+        }
+
+        if ObjectTreeActions.isAvailable(.browseRows, for: object.kind) {
+            Button(L(.treeActionBrowseWithCondition)) {
+                browseRowsTarget = object
             }
         }
 

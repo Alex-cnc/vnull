@@ -1956,11 +1956,46 @@ final class AppState: ObservableObject {
     }
 
     /// 把生成的 SQL 放进**新页签**的编辑器：不覆盖用户正在写的内容，也不执行（FR-META-14）。
-    func openSQLInNewTab(_ sql: String, status: String? = nil) {
+    func openSQLInNewTab(_ sql: String, status: String? = nil, execute: Bool = false) {
         newQueryTab()
         guard let tabID = selectedTabID else { return }
         updateSQL(sql, for: tabID)
         statusMessage = status ?? L(.objectTreeOpenedInNewTab)
+        // `execute: true` 只用于"用户刚刚在面板上确认过语句"的入口（浏览 / 计数）：
+        // 语句在面板里已经**实时预览**过，且仍然走 Safe Mode 那一关。
+        if execute {
+            Task { await executeQuery(for: tabID) }
+        }
+    }
+
+    /// 按条件浏览（FR-DATA-02）：条件发给数据库执行，结果进新页签并立刻执行。
+    func browseRows(_ object: DatabaseObject, filter: RowBrowsingQuery.Filter) {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        switch RowBrowsingQuery.browse(table: object.name, schema: object.schema, filter: filter, dialect: dialect) {
+        case .success(let sql):
+            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true)
+        case .failure(let error):
+            errorMessage = L(.browseSheetRefused, error.identifier)
+        }
+    }
+
+    /// 统计行数（FR-DATA-02）：`count(*)` 带上同一份 WHERE，结果进新页签并立刻执行。
+    func countRows(_ object: DatabaseObject, filter: RowBrowsingQuery.Filter) {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        switch RowBrowsingQuery.count(table: object.name, schema: object.schema, filter: filter, dialect: dialect) {
+        case .success(let sql):
+            openSQLInNewTab(sql, status: L(.browseSheetCounting), execute: true)
+        case .failure(let error):
+            errorMessage = L(.browseSheetRefused, error.identifier)
+        }
     }
 
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
