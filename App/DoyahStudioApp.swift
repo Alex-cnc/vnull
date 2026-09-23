@@ -22,19 +22,32 @@ struct DoyahStudioApp: App {
         // 接替启动优先判断：它会等旧实例真的退出，并把交接单消费掉。
         let isTakeover = AppRelauncher.claimHandoffIfPresent()
         if !isTakeover, let existing = Self.otherRunningInstance() {
-            existing.activate()
-            exit(0)
+            // **必须看 activate() 的返回值**：对方可能正在退出（我刚踩过 ——
+            // "杀掉旧实例后立刻启动"会让新实例静默 exit(0)，表现就是"界面干脆不出来"：
+            // 没有窗口、没有崩溃报告、进程也没了）。只有真的把它激活了，我才退出自己；
+            // 激活失败就**继续运行**，宁可短暂多一个实例，也不能让用户看不到界面。
+            if existing.activate() {
+                StartupLog.write("检测到已在运行的实例 pid=\(existing.processIdentifier)，已激活它并退出自己")
+                exit(0)
+            }
+            StartupLog.write(
+                "检测到实例 pid=\(existing.processIdentifier) 但激活失败（可能正在退出）→ 继续启动自己"
+            )
         }
+        StartupLog.write("正常启动 pid=\(ProcessInfo.processInfo.processIdentifier)")
         MainMenuLocalizer.start()
     }
 
     /// 找出**已经在本机运行的另一个自己**（不含当前进程）。
+    ///
+    /// 排除已终止的：`runningApplications` 里可能还留着**正在退出**的实例，
+    /// 把它当"已有实例"会让新实例把自己退出掉 —— 用户看到的就是"界面不出来"。
     private static func otherRunningInstance() -> NSRunningApplication? {
         guard let bundleID = Bundle.main.bundleIdentifier else { return nil }
         let currentPID = ProcessInfo.processInfo.processIdentifier
         return NSRunningApplication
             .runningApplications(withBundleIdentifier: bundleID)
-            .first { $0.processIdentifier != currentPID }
+            .first { $0.processIdentifier != currentPID && !$0.isTerminated }
     }
 
 
@@ -72,3 +85,36 @@ struct DoyahStudioApp: App {
 }
 
 
+
+
+/// 启动决策的留痕（写进应用数据目录的 `startup.log`，最多留最近 200 行）。
+///
+/// 为什么需要它：「启动后没有窗口」这类故障原本是**静默**的 —— 进程没了、没有崩溃报告，
+/// 只能靠猜。留一行"为什么退出/为什么继续"，下次一看日志就知道。
+enum StartupLog {
+    private static let lock = NSLock()
+
+    private static var fileURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return base
+            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent("startup.log", isDirectory: false)
+    }
+
+    static func write(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        let formatter = ISO8601DateFormatter()
+        let line = "\(formatter.string(from: Date())) \(message)\n"
+        let url = fileURL
+        var lines = (try? String(contentsOf: url, encoding: .utf8))?.split(separator: "\n").map(String.init) ?? []
+        lines.append(line.trimmingCharacters(in: .newlines))
+        if lines.count > 200 { lines.removeFirst(lines.count - 200) }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? Data((lines.joined(separator: "\n") + "\n").utf8).write(to: url, options: .atomic)
+    }
+}
