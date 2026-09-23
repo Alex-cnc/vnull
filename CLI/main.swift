@@ -309,6 +309,17 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // slow-queries：慢查询排行（FR-DIAG-03）。扩展没装时**给出怎么装**，而不是抛原始错误。
+        if arguments.first == "slow-queries" {
+            let code = await runSlowQueriesCommand(
+                arguments: Array(arguments.dropFirst()),
+                service: service,
+                serverInfo: serverInfo
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         // row：单行竖排详情（FR-DATA-05）。等价于 psql 的 expanded display，
         // 用来在无界面环境里核对"长 JSON / 二进制 / NULL 到底长什么样"。
         if arguments.first == "row" {
@@ -524,6 +535,79 @@ struct DoyahCLI {
         }
         print("整库导出完成：\(tables.count) 张表")
         return 0
+    }
+
+    /// `slow-queries [--sort total|mean|calls] [--limit N] [--json]`
+    private static func runSlowQueriesCommand(
+        arguments: [String],
+        service: any DatabaseService,
+        serverInfo: ServerInfo
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        let sort: SlowQueryReport.Sort
+        switch (value(for: "--sort") ?? "total").lowercased() {
+        case "total", "total_time", "totalTime".lowercased(): sort = .totalTime
+        case "mean", "mean_time", "meanTime".lowercased(): sort = .meanTime
+        case "calls": sort = .calls
+        default:
+            print("--sort 只支持 total / mean / calls")
+            return 64
+        }
+        let limit = Int(value(for: "--limit") ?? "") ?? 20
+
+        /// 执行一条语句取最后结果集。
+        func run(_ sql: String) async throws -> QueryResult {
+            var last: QueryResult?
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let result) = event { last = result }
+            }
+            return last ?? QueryResult(columns: [], rows: [], affectedRows: nil,
+                                       executionTime: 0, isTruncated: false, truncationLimit: nil)
+        }
+
+        do {
+            // 先查扩展：没装是很常见的状态，要给"怎么装"而不是原始报错。
+            let check = try await run(SlowQueryReport.extensionCheckQuery)
+            guard SlowQueryReport.isExtensionInstalled(check) else {
+                print(SlowQueryReport.missingExtensionMessage)
+                return 3   // 与"查询失败"区分开的退出码：环境不具备 ≠ 命令写错
+            }
+
+            // `ServerInfo.version` 是原始字符串（如 `16.2`）→ 用方言解析出主版本，
+            // 排行查询要按它决定列名（PG 13 起 `total_time` 改名为 `total_exec_time`）。
+            let serverVersion = PostgresDialect().parseServerVersion(serverInfo.version)
+            let sql = SlowQueryReport.query(sort: sort, limit: limit, serverMajor: serverVersion.major)
+            let result = try await run(sql)
+            let entries = SlowQueryReport.entries(from: result)
+
+            if arguments.contains("--json") {
+                let payload = entries.map { entry -> [String: Any] in
+                    ["query": entry.query, "calls": entry.calls, "totalMillis": entry.totalMillis,
+                     "meanMillis": entry.meanMillis, "rows": entry.rows]
+                }
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return 0
+                }
+            }
+
+            print("慢查询排行（按\(sort.displayName)，前 \(entries.count) 条，服务端 \(serverInfo.version)）")
+            for (index, entry) in entries.enumerated() {
+                let position = String(format: "%2d", index + 1)
+                print("\(position). 调用 \(entry.calls) 次 · 总 \(SlowQueryReport.formatDuration(millis: entry.totalMillis))"
+                      + " · 平均 \(SlowQueryReport.formatDuration(millis: entry.meanMillis)) · 返回 \(entry.rows) 行")
+                print("    \(entry.display())")
+            }
+            return entries.isEmpty ? 1 : 0
+        } catch {
+            print("读取慢查询失败：\(error.localizedDescription)")
+            return 67
+        }
     }
 
     /// `row --table <表> [--schema S] --where "id = 1" [--limit 1] [--json]`
