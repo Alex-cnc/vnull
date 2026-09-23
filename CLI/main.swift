@@ -199,7 +199,7 @@ struct DoyahCLI {
                 Task {
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                     let outcome = await service.cancel(handle)
-                    print("cancel: 触发取消 → \(outcome)")
+                    print("cancel: 触发服务端取消 → \(outcome)")
                 }
             }
             defer { canceller?.cancel() }
@@ -209,12 +209,17 @@ struct DoyahCLI {
                 case .started(let index):
                     print("--- statement \(index + 1) ---")
                 case .resultSet(let result):
+                    // 先按原有契约打出「无结果集」，再补一行影响行数：
+                    // 两行信息不重复（一个说"没有表格"，一个说"写了几行"），
+                    // 而验收脚本 `test-local-query-path.sh` 断言的是前者 —— 不该为了措辞去改验收契约。
+                    if result.columns.isEmpty {
+                        print("(no result set)")
+                    }
                     if let affected = result.affectedRows {
                         // 影响行数随结果对象上报（R-32：通道只有这一条）
                         print("affectedRows: \(affected)")
-                    } else if result.columns.isEmpty {
-                        print("(no result set)")
-                    } else {
+                    }
+                    if !result.columns.isEmpty {
                         print(result.columns.map { "\($0.name):\($0.typeName)" }.joined(separator: " | "))
                         for row in result.rows {
                             print(row.map { $0 ?? "NULL" }.joined(separator: " | "))
