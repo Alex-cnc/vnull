@@ -28,6 +28,78 @@ final class TerminalModel: ObservableObject {
         requestRedraw = redraw
     }
 
+    /// PTY 是否已经起过（视图用它决定"首次布局时用真实几何启动"）。
+    var hasStarted: Bool { didStart }
+
+    // MARK: 回滚区与选区
+
+    /// 回滚区显示偏移（0 = 实时画面）。
+    ///
+    /// 只要不为 0，新输出**不会**把视口拽回底部（终端惯例：用户翻上去看东西时不被踢下来）；
+    /// 按任意键 / ⌘↓ / ⌘End / 滚回底部才回到实时画面。
+    /// 说明：偏移是相对**缓冲区底部**算的，因此回滚区被裁剪时看到的还是"底部往上第 N 行"。
+    @Published private(set) var scrollOffset = 0
+
+    /// 当前鼠标选区（nil = 没有选中）。
+    @Published private(set) var selection: TerminalSelection?
+
+    var maxScrollOffset: Int { screen.maxScrollOffset }
+
+    /// 视图要画的那几行（已应用回滚偏移）。
+    func displayLines() -> [[TerminalCell]] {
+        screen.visibleLines(offset: scrollOffset, height: screen.rows)
+    }
+
+    func scroll(byLines delta: Int) {
+        let clamped = min(max(0, scrollOffset + delta), screen.maxScrollOffset)
+        guard clamped != scrollOffset else { return }
+        scrollOffset = clamped
+        requestRedraw?()
+    }
+
+    func scrollToBottom() {
+        guard scrollOffset != 0 else { return }
+        scrollOffset = 0
+        requestRedraw?()
+    }
+
+    func beginSelection(at raw: TerminalCellPosition) {
+        let position = TerminalSelection.snapped(raw, in: displayLines())
+        selection = TerminalSelection(anchor: position, focus: position)
+        requestRedraw?()
+    }
+
+    func extendSelection(to raw: TerminalCellPosition) {
+        guard var current = selection else { return }
+        current.focus = TerminalSelection.snapped(raw, in: displayLines())
+        selection = current
+        requestRedraw?()
+    }
+
+    func clearSelection() {
+        guard selection != nil else { return }
+        selection = nil
+        requestRedraw?()
+    }
+
+    /// 选区文本（没选中或选到空白时返回 nil）。取的是**当前显示的那几行**，
+    /// 所以"看到什么就复制什么"。
+    func selectedText() -> String? {
+        guard let selection else { return nil }
+        let text = selection.text(in: displayLines())
+        return text.isEmpty ? nil : text
+    }
+
+    /// ⌘C：把选区写进系统剪贴板；没有选中时返回 false，让按键继续往下走。
+    @discardableResult
+    func copySelectionToPasteboard() -> Bool {
+        guard let text = selectedText() else { return false }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        return true
+    }
+
     func startIfNeeded(columns: Int, rows: Int) {
         guard !didStart else { return }
         didStart = true
@@ -55,6 +127,8 @@ final class TerminalModel: ObservableObject {
     func restart(columns: Int, rows: Int) {
         session.terminate()
         screen.reset()
+        scrollOffset = 0
+        selection = nil
         didStart = false
         errorText = nil
         startIfNeeded(columns: columns, rows: rows)
@@ -142,7 +216,20 @@ final class TerminalHostView: NSView {
         super.layout()
         let columns = max(20, Int(bounds.width / cellSize.width))
         let rows = max(4, Int(bounds.height / cellSize.height))
+
+        // 首次布局时用**真实几何**启动 PTY。
+        //
+        // 原先是在 SwiftUI 的 `onAppear` 里启动，那时视图还没布局，只能拿到模型默认的
+        // 80×24 —— 全屏 TUI 的第一帧就是按错的列数排的（`dsh-tui` 的欢迎鲸鱼是
+        // 13 行 × 40 列的固定 sprite，按错的尺寸排就会挤在一起）。
+        if !model.hasStarted {
+            guard bounds.width >= cellSize.width * 20, bounds.height >= cellSize.height * 4 else { return }
+            model.startIfNeeded(columns: columns, rows: rows)
+            return
+        }
+
         if columns != model.screen.columns || rows != model.screen.rows {
+            runCache.removeAll()
             model.resize(columns: columns, rows: rows)
         }
     }
@@ -153,14 +240,50 @@ final class TerminalHostView: NSView {
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
 
-        let lines = model.screen.visibleLines()
+        let lines = model.displayLines()
         for (rowIndex, cells) in lines.enumerated() {
             let origin = CGPoint(x: 0, y: CGFloat(rowIndex) * cellSize.height)
             drawBackgrounds(cells, at: origin, rowIndex: rowIndex)
-            drawText(cells, at: origin)
+            drawSelection(cells, at: origin, rowIndex: rowIndex)
+            drawText(cells, at: origin, rowIndex: rowIndex)
         }
         drawCursor()
         drawMarkedText()
+        drawScrollIndicator()
+    }
+
+    /// 选区高亮：按格填，与背景层同一套坐标（列号 × 格子宽度）。
+    private func drawSelection(_ cells: [TerminalCell], at origin: CGPoint, rowIndex: Int) {
+        guard let selection = model.selection, !selection.isEmpty else { return }
+        NSColor.selectedTextBackgroundColor.withAlphaComponent(0.55).setFill()
+        for column in cells.indices where selection.contains(row: rowIndex, column: column) {
+            NSRect(
+                x: origin.x + CGFloat(column) * cellSize.width,
+                y: origin.y,
+                width: cellSize.width,
+                height: cellSize.height
+            ).fill()
+        }
+    }
+
+    /// 翻上去看回滚区时的位置提示（右上角）。
+    ///
+    /// 只画箭头与数字、不含自然语言，所以不需要本地化文案键（本地化键表有奇偶校验，
+    /// 为一句提示新增两套文案不划算）。
+    private func drawScrollIndicator() {
+        let offset = model.scrollOffset
+        guard offset > 0 else { return }
+        let text = "↑ \(offset)/\(model.maxScrollOffset)"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: NSColor.labelColor,
+            .backgroundColor: NSColor.controlBackgroundColor.withAlphaComponent(0.85)
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        (text as NSString).draw(
+            at: CGPoint(x: bounds.maxX - size.width - 6, y: 2),
+            withAttributes: attributes
+        )
     }
 
     /// 画输入法未上屏的组字（带下划线）—— 让用户看得到自己正在打的拼音 / 候选。
@@ -187,14 +310,44 @@ final class TerminalHostView: NSView {
         }
     }
 
-    private func drawText(_ cells: [TerminalCell], at origin: CGPoint) {
-        let attributed = NSMutableAttributedString()
-        for cell in cells {
-            guard let character = cell.character else { continue }
-            attributed.append(NSAttributedString(string: String(character), attributes: attributes(for: cell)))
+    /// 按**绘制段**画，每段从自己的格子原点开始。
+    ///
+    /// 不能用"整行拼一个 NSAttributedString、一次性 draw"：那样字形落点由字体 advance
+    /// 决定，而中日韩字符会回落成 PingFang、advance 只有 1.607 格（实测），
+    /// 含中文的行会从第一个汉字起越画越偏。分段见 `Core/TerminalRun.swift`。
+    ///
+    /// 分段是**按行缓存**的：全屏 TUI 每帧都要重画整屏，若每帧都重新切段 + 新建
+    /// `NSAttributedString`，一行 200 格就能堆出几千次分配。缓存按「这一行的格子内容」
+    /// 命中，内容没变的行直接复用上一帧的分段与属性串。
+    private func drawText(_ cells: [TerminalCell], at origin: CGPoint, rowIndex: Int) {
+        let cached = attributedRuns(forRow: cells, rowIndex: rowIndex)
+        for (run, attributed) in zip(cached.runs, cached.attributed) {
+            attributed.draw(
+                at: CGPoint(x: origin.x + CGFloat(run.column) * cellSize.width, y: origin.y)
+            )
         }
-        guard attributed.length > 0 else { return }
-        attributed.draw(at: origin)
+    }
+
+    private struct CachedRuns {
+        var cells: [TerminalCell]
+        var runs: [TerminalRun]
+        var attributed: [NSAttributedString]
+    }
+
+    private var runCache: [Int: CachedRuns] = [:]
+
+    private func attributedRuns(forRow cells: [TerminalCell], rowIndex: Int) -> CachedRuns {
+        if let cached = runCache[rowIndex], cached.cells == cells { return cached }
+        let runs = TerminalScreen.runs(in: cells)
+        let entry = CachedRuns(
+            cells: cells,
+            runs: runs,
+            attributed: runs.map {
+                NSAttributedString(string: $0.text, attributes: attributes(for: $0.cell))
+            }
+        )
+        runCache[rowIndex] = entry
+        return entry
     }
 
     private func attributes(for cell: TerminalCell) -> [NSAttributedString.Key: Any] {
@@ -305,22 +458,70 @@ final class TerminalHostView: NSView {
 
     // MARK: 输入
 
+    /// 触控板给的是带小数的精确位移，先攒够一行再滚，免得疯狂抖动。
+    private var scrollRemainder: CGFloat = 0
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        super.mouseDown(with: event)
+        let position = cellPosition(for: event)
+        if event.modifierFlags.contains(.shift), model.selection != nil {
+            model.extendSelection(to: position)
+        } else {
+            model.beginSelection(at: position)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        model.extendSelection(to: cellPosition(for: event))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        // 只是点了一下（没拖出范围）：清掉那一格高亮，不然屏幕上会留个孤零零的方块。
+        if model.selection?.isEmpty == true { model.clearSelection() }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        scrollRemainder += event.scrollingDeltaY
+        let lines = Int(scrollRemainder / cellSize.height)
+        guard lines != 0 else { return }
+        scrollRemainder -= CGFloat(lines) * cellSize.height
+        // 向上滚（deltaY 为正）= 看更早的行 → 偏移增大。
+        model.scroll(byLines: lines)
+    }
+
+    /// 视图坐标 → 格子位置（越界夹住，拖动到面板外也不会算飞出范围）。
+    private func cellPosition(for event: NSEvent) -> TerminalCellPosition {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = min(max(0, Int(point.y / cellSize.height)), max(0, model.screen.rows - 1))
+        let column = min(max(0, Int(point.x / cellSize.width)), max(0, model.screen.columns - 1))
+        return TerminalCellPosition(row: row, column: column)
     }
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) {
+            switch event.charactersIgnoringModifiers {
             // ⌘V 粘贴：把整段文本喂给 shell。
-            if event.charactersIgnoringModifiers == "v",
-               let text = NSPasteboard.general.string(forType: .string) {
-                model.send(text: text)
+            case "v":
+                if let text = NSPasteboard.general.string(forType: .string) {
+                    model.send(text: text)
+                    return
+                }
+            // ⌘C 复制选区；没有选中就不拦，让按键照常往下走。
+            case "c":
+                if model.copySelectionToPasteboard() { return }
+            // ⌘↓ / ⌘End：回到实时画面（翻上去看回滚区之后的"逃出"键）。
+            case "\u{F701}", "\u{F72B}":
+                model.scrollToBottom()
                 return
+            default:
+                break
             }
             super.keyDown(with: event)
             return
         }
+
+        // 有输入就回到实时画面（终端惯例：一边往上翻一边打字，视线要跟着回底部）。
+        model.scrollToBottom()
 
         // 控制键 / 方向键 / 功能键：固定字节序列，不经过输入法。
         if let bytes = Self.controlBytes(for: event) {

@@ -200,6 +200,129 @@ final class TerminalScreenTests: XCTestCase {
         XCTAssertEqual(TerminalScreen.cellWidth("，"), 2)
         XCTAssertEqual(TerminalScreen.cellWidth("😀"), 2)
     }
+
+    // MARK: 备用屏（?1049 / ?47）
+
+    /// 备用屏的意义：全屏 TUI 的界面盖在主屏上，退出后主屏原样回来。
+    /// 我们原先不支持它，于是 TUI 每一帧都画在主屏上、旧帧永不清除。
+    func testAlternateScreenSavesAndRestoresMainContent() {
+        let s = screen()
+        s.feed(text: "main")
+        s.feed(text: "\u{1B}[?1049h")
+        XCTAssertTrue(s.isAlternateScreen)
+        XCTAssertEqual(s.text().trimmed, "", "备用屏初始必须是空白")
+        s.feed(text: "tui")
+        XCTAssertEqual(s.text().trimmed, "tui")
+        s.feed(text: "\u{1B}[?1049l")
+        XCTAssertFalse(s.isAlternateScreen)
+        XCTAssertEqual(s.text().trimmed, "main")
+    }
+
+    func testAlternateScreenRestoresCursor() {
+        let s = screen()
+        s.feed(text: "ab")
+        let row = s.cursorRow
+        let column = s.cursorColumn
+        s.feed(text: "\u{1B}[?1049h")
+        XCTAssertEqual(s.cursorRow, 0)
+        XCTAssertEqual(s.cursorColumn, 0)
+        s.feed(text: "xyz")
+        s.feed(text: "\u{1B}[?1049l")
+        XCTAssertEqual(s.cursorRow, row)
+        XCTAssertEqual(s.cursorColumn, column)
+    }
+
+    /// `?47` 只切缓冲区、不保存光标（xterm 约定），与 `?1049` 区分开。
+    func testMode47DoesNotRestoreCursor() {
+        let s = screen()
+        s.feed(text: "ab")
+        s.feed(text: "\u{1B}[?47h")
+        XCTAssertTrue(s.isAlternateScreen)
+        s.feed(text: "xyz")
+        s.feed(text: "\u{1B}[?47l")
+        XCTAssertFalse(s.isAlternateScreen)
+        XCTAssertEqual(s.cursorColumn, 3)
+    }
+
+    /// 备用屏上的滚屏**不得**灌进回滚区：TUI 每帧都在滚，
+    /// 真灌进去会把回滚区变成它自己的界面垃圾场。
+    func testAlternateScreenDoesNotPolluteScrollback() {
+        let s = screen(columns: 20, rows: 3)
+        s.feed(text: "\u{1B}[?1049h")
+        for index in 0..<10 {
+            s.feed(text: "line\(index)\r\n")
+        }
+        XCTAssertEqual(s.scrollbackCount, 0)
+        s.feed(text: "\u{1B}[?1049l")
+        XCTAssertEqual(s.scrollbackCount, 0)
+    }
+
+    /// 在 TUI 里改过窗口大小后回来，主屏要按当前尺寸补齐 / 裁剪，不能崩。
+    func testAlternateScreenRestoresMainScreenAtCurrentSize() {
+        let s = screen(columns: 20, rows: 3)
+        s.feed(text: "main")
+        s.feed(text: "\u{1B}[?1049h")
+        s.resize(columns: 10, rows: 2)
+        s.feed(text: "\u{1B}[?1049l")
+        XCTAssertEqual(s.line(0).count, 10)
+        XCTAssertEqual(s.text().trimmed, "main")
+    }
+
+    func testResetLeavesAlternateScreen() {
+        let s = screen()
+        s.feed(text: "\u{1B}[?1049h")
+        XCTAssertTrue(s.isAlternateScreen)
+        s.feed(text: "\u{1B}c")
+        XCTAssertFalse(s.isAlternateScreen)
+        XCTAssertEqual(s.maxScrollOffset, 0)
+    }
+
+    // MARK: 回滚区视口（显示偏移）
+
+    private func viewportText(_ s: TerminalScreen, offset: Int, height: Int) -> [String] {
+        s.visibleLines(offset: offset, height: height)
+            .map { $0.map(\.displayText).joined().trimmed }
+    }
+
+    func testViewportOffsetZeroIsLiveScreen() {
+        let s = screen(columns: 10, rows: 3)
+        s.feed(text: "a\r\nb\r\nc")
+        XCTAssertEqual(viewportText(s, offset: 0, height: 3), ["a", "b", "c"])
+    }
+
+    func testViewportScrollsBackIntoScrollback() {
+        let s = screen(columns: 10, rows: 2)
+        s.feed(text: "1\r\n2\r\n3\r\n4") // 回滚区: 1、2；屏幕: 3、4
+        XCTAssertEqual(s.scrollbackCount, 2)
+        XCTAssertEqual(viewportText(s, offset: 1, height: 2), ["2", "3"])
+        XCTAssertEqual(viewportText(s, offset: 2, height: 2), ["1", "2"])
+    }
+
+    func testViewportClampsOffsetToScrollbackCount() {
+        let s = screen(columns: 10, rows: 2)
+        s.feed(text: "1\r\n2\r\n3")
+        XCTAssertEqual(
+            viewportText(s, offset: 99, height: 2),
+            viewportText(s, offset: s.maxScrollOffset, height: 2)
+        )
+    }
+
+    func testViewportPadsWhenHeightExceedsBuffer() {
+        let s = screen(columns: 10, rows: 2)
+        s.feed(text: "x")
+        let lines = viewportText(s, offset: 0, height: 5)
+        XCTAssertEqual(lines.count, 5)
+        XCTAssertEqual(lines[3], "x", "补的空行在前，内容贴底")
+        XCTAssertEqual(lines[4], "")
+    }
+
+    func testAlternateScreenHasNoScrollbackOffset() {
+        let s = screen(columns: 10, rows: 2)
+        s.feed(text: "1\r\n2\r\n3")
+        XCTAssertGreaterThan(s.maxScrollOffset, 0)
+        s.feed(text: "\u{1B}[?1049h")
+        XCTAssertEqual(s.maxScrollOffset, 0)
+    }
 }
 
 private extension TerminalScreen {

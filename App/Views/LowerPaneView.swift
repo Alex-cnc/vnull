@@ -28,9 +28,9 @@ struct LowerPaneView: View {
         }
         .frame(minHeight: 90)
         .background(.background)
-        .onAppear {
-            terminal.startIfNeeded(columns: terminal.screen.columns, rows: terminal.screen.rows)
-        }
+        // 终端**不在这里启动**：`onAppear` 时视图还没布局，只能拿模型默认的 80×24，
+        // 于是全屏 TUI 的第一帧就按错的列数排（`dsh-tui` 的 13×40 欢迎鲸鱼会挤在一起）。
+        // 启动挪到 `TerminalHostView.layout()`，那里拿得到真实几何。
     }
 
     // MARK: 页签条

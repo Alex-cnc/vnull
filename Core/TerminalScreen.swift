@@ -71,7 +71,7 @@ public struct TerminalCell: Equatable, Sendable {
 /// - CSI：光标移动（A B C D E F G H f）、擦除（J K X）、插入删除（@ P L M）、
 ///   滚动（S T）、SGR（m）、屏幕对齐（r，滚动区域）
 /// - OSC：忽略（窗口标题一类）
-/// - 私有模式：只认 `?25`（光标显隐）与 `?7`（自动换行）
+/// - 私有模式：`?25`（光标显隐）、`?7`（自动换行）、`?47` / `?1049`（备用屏）
 ///
 /// 明确不做的：鼠标上报、字符集切换（只当两字节吞掉）、双向文本、图片协议。
 public final class TerminalScreen {
@@ -102,6 +102,19 @@ public final class TerminalScreen {
     private var scrollBottom: Int
 
     private var savedCursor: (row: Int, column: Int)?
+
+    /// 备用屏（`?1049h/l`、`?47h/l`）保存下来的主屏与光标。
+    ///
+    /// 为什么必须有它：全屏 TUI（`dsh-tui` / vim / less）都靠备用屏把界面"盖"在主屏上，
+    /// 退出时再放回去。我们原先不支持，于是它们的每一帧都直接画在主屏上、
+    /// **旧帧永不清除**，而且滚屏时会把 TUI 自己的界面推进回滚区 ——
+    /// 视觉上就是"新旧内容叠在一起"。
+    private var savedMainScreen: [[TerminalCell]]?
+    private var savedMainCursor: (row: Int, column: Int)?
+    private var savedMainFlags: (cursorVisible: Bool, autoWrap: Bool)?
+
+    /// 当前是否在备用屏上。
+    public private(set) var isAlternateScreen = false
 
     /// 「延迟换行」标记：光标停在最后一列且已写过内容，等下一个字符才真正换行。
     private var pendingWrap = false
@@ -141,6 +154,34 @@ public final class TerminalScreen {
     /// 可见屏幕的浅拷贝（视图渲染用）。
     public func visibleLines() -> [[TerminalCell]] {
         screen
+    }
+
+    /// 回滚区最多能往上翻多少行（备用屏上不提供回滚，与真实终端一致）。
+    public var maxScrollOffset: Int {
+        isAlternateScreen ? 0 : scrollbackLines.count
+    }
+
+    /// 按显示偏移取 `height` 行：`offset = 0` 是实时画面，`offset > 0` 往上翻。
+    ///
+    /// 回滚区与屏幕在这里拼成一个**虚拟缓冲**，视图不需要知道两者的边界 ——
+    /// 它只拿到"要画的这几行"。不足 `height` 行时前面补空行，避免视图里出现
+    /// 半屏跳动。
+    public func visibleLines(offset: Int, height: Int) -> [[TerminalCell]] {
+        let height = max(1, height)
+        let clamped = min(max(0, offset), maxScrollOffset)
+        var buffer = scrollbackLines
+        buffer.append(contentsOf: screen)
+
+        let bottom = max(0, buffer.count - clamped)
+        let top = max(0, bottom - height)
+        var window = Array(buffer[top..<bottom])
+        if window.count < height {
+            window.insert(
+                contentsOf: Array(repeating: blankRow(), count: height - window.count),
+                at: 0
+            )
+        }
+        return window
     }
 
     public func line(_ index: Int) -> [TerminalCell] {
@@ -313,10 +354,13 @@ public final class TerminalScreen {
     }
 
     /// 在滚动区域内上滚，腾出的行压入回滚缓冲。
+    ///
+    /// **备用屏上不压回滚**：TUI 每帧都在滚屏，压进去会把回滚区灌满它自己的界面，
+    /// 而真实终端在备用屏上根本不提供回滚。
     private func scrollUp(_ count: Int) {
         for _ in 0..<max(1, count) {
             let removed = screen.remove(at: scrollTop)
-            if scrollTop == 0 { appendScrollback([removed]) }
+            if scrollTop == 0, !isAlternateScreen { appendScrollback([removed]) }
             screen.insert(Array(repeating: .blank, count: columns), at: scrollBottom)
         }
     }
@@ -477,10 +521,64 @@ public final class TerminalScreen {
             switch parameter {
             case 25: isCursorVisible = enabled
             case 7: isAutoWrapEnabled = enabled
+            // 47 与 1049 都切备用屏；1049 额外保存/恢复光标与模式（xterm 的约定）。
+            case 47: setAlternateScreen(enabled, savesCursor: false)
+            case 1049: setAlternateScreen(enabled, savesCursor: true)
             default: break
             }
         }
-        if csiParameters.isEmpty { return }
+    }
+
+    /// 切到 / 切回备用屏。
+    private func setAlternateScreen(_ enabled: Bool, savesCursor: Bool) {
+        guard enabled != isAlternateScreen else { return }
+        if enabled {
+            savedMainScreen = screen
+            if savesCursor {
+                savedMainCursor = (cursorRow, cursorColumn)
+                savedMainFlags = (isCursorVisible, isAutoWrapEnabled)
+            }
+            screen = Array(repeating: blankRow(), count: rows)
+            cursorRow = 0
+            cursorColumn = 0
+            pendingWrap = false
+            scrollTop = 0
+            scrollBottom = rows - 1
+            isAlternateScreen = true
+        } else {
+            // 主屏内容可能与备用屏尺寸不同（窗口在 TUI 里被拉过），按当前尺寸补齐。
+            if let saved = savedMainScreen { screen = normalize(saved) }
+            if let cursor = savedMainCursor {
+                cursorRow = clampRow(cursor.row)
+                cursorColumn = clampColumn(cursor.column)
+            }
+            if let flags = savedMainFlags {
+                isCursorVisible = flags.cursorVisible
+                isAutoWrapEnabled = flags.autoWrap
+            }
+            savedMainScreen = nil
+            savedMainCursor = nil
+            savedMainFlags = nil
+            isAlternateScreen = false
+            scrollTop = 0
+            scrollBottom = rows - 1
+            pendingWrap = false
+        }
+    }
+
+    /// 把一份行数组调整为当前列 / 行数（多裁少补）。
+    private func normalize(_ lines: [[TerminalCell]]) -> [[TerminalCell]] {
+        var result = lines.prefix(rows).map { row -> [TerminalCell] in
+            var row = row
+            if row.count < columns {
+                row.append(contentsOf: Array(repeating: .blank, count: columns - row.count))
+            } else if row.count > columns {
+                row.removeLast(row.count - columns)
+            }
+            return row
+        }
+        while result.count < rows { result.append(blankRow()) }
+        return result
     }
 
     private func eraseInDisplay(mode: Int) {
@@ -560,6 +658,11 @@ public final class TerminalScreen {
         isCursorVisible = true
         isAutoWrapEnabled = true
         savedCursor = nil
+        savedMainScreen = nil
+        savedMainCursor = nil
+        savedMainFlags = nil
+        isAlternateScreen = false
+        pendingWrap = false
     }
 
     // MARK: SGR
