@@ -110,6 +110,21 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // archive-add：用**产品的归档写入器**追加一条记录（FR-EDIT-31）。
+        // 存在的理由：记忆层的验证必须用真归档格式 —— 手编格式验的是"我以为的格式"，
+        // 本轮就踩过（手写文件解析出 0 条）。
+        if arguments.first == "archive-add" {
+            let code = runArchiveAddCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
+        // memory：查询记忆（FR-AI-13）—— 从归档 .sql 建索引、按前缀给补全候选。
+        // 不需要数据库连接：**事实源是本地归档文件**，索引是纯派生缓存。
+        if arguments.first == "memory" {
+            let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         // connections：列出已保存的连接及其环境标签 / 颜色（FR-CONN-16）。
         // 为什么要它：标签是"存在配置里、显示在界面上"的东西，**界面没法进脚本**，
         // 于是"写进去的东西读得回来"需要一条命令行出口。
@@ -684,6 +699,101 @@ struct DoyahCLI {
             print("读取行失败：\(error.localizedDescription)")
             return 67
         }
+    }
+
+    /// `archive-add --dir <目录> --sql "…" --connection 名 [--database 名] [--runs N] [--at ISO8601]`
+    private static func runArchiveAddCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        guard let directory = value(for: "--dir"),
+              let sql = value(for: "--sql"),
+              let connection = value(for: "--connection")
+        else {
+            print("用法：archive-add --dir <目录> --sql \"…\" --connection 名 [--database 名] [--runs N] [--at ISO8601]")
+            return 64
+        }
+
+        let formatter = ISO8601DateFormatter()
+        let date = value(for: "--at").flatMap { formatter.date(from: $0) } ?? Date()
+        let entry = SQLArchiveEntry(
+            sql: sql,
+            firstExecutedAt: date,
+            lastExecutedAt: date,
+            runCount: Int(value(for: "--runs") ?? "1") ?? 1,
+            connection: connection,
+            database: value(for: "--database") ?? "app"
+        )
+
+        do {
+            let store = SQLArchiveStore(directory: URL(fileURLWithPath: directory))
+            let total = try store.append(entry, on: date)
+            print("已追加归档记录（当天累计 \(total) 条）")
+            return 0
+        } catch {
+            print("写入归档失败：\(error.localizedDescription)")
+            return 66
+        }
+    }
+
+    /// `memory --dir <归档目录> [--prefix "SELECT * FROM o"] [--connection 名] [--json]`
+    ///
+    /// 不带 `--prefix` 时列出记忆概览（骨架 / 次数 / 跨天 / 连接）。
+    private static func runMemoryCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        guard let directory = value(for: "--dir") else {
+            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--json]")
+            return 64
+        }
+
+        let index = QueryMemory.buildIndex(directory: URL(fileURLWithPath: directory))
+        if !index.skippedFiles.isEmpty {
+            print("跳过 \(index.skippedFiles.count) 个文件（空 / 非归档格式 / 读不了）：\(index.skippedFiles.joined(separator: "、"))")
+        }
+        print("从 \(index.parsedEntryCount) 条归档记录派生出 \(index.memories.count) 条记忆")
+
+        if let prefix = value(for: "--prefix") {
+            let suggestions = QueryMemory.suggestions(
+                prefix: prefix,
+                in: index,
+                connection: value(for: "--connection"),
+                limit: 10
+            )
+            if arguments.contains("--json") {
+                let payload = suggestions.map { suggestion -> [String: Any] in
+                    ["sql": suggestion.sql, "score": suggestion.score, "runs": suggestion.memory.runCount]
+                }
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return suggestions.isEmpty ? 1 : 0
+                }
+            }
+            print("补全候选（前缀「\(prefix)」\(value(for: "--connection").map { "，连接「\($0)」" } ?? "")）：\(suggestions.count) 条")
+            for suggestion in suggestions {
+                let memory = suggestion.memory
+                print("  [\(suggestion.score)] 执行 \(memory.runCount) 次 · \(memory.days.count) 天 · 连接 \(memory.connections.sorted().joined(separator: "/"))")
+                print("      \(suggestion.sql.replacingOccurrences(of: "\n", with: " "))")
+            }
+            return suggestions.isEmpty ? 1 : 0
+        }
+
+        for memory in index.memories {
+            print("  \(String(format: "%4d", memory.runCount)) 次 · \(memory.days.count) 天 · \(memory.variantCount) 个变体 · "
+                  + "\(memory.connections.sorted().joined(separator: "/"))")
+            print("      \(QueryMemory.coarseFingerprint(memory.latestSQL))")
+        }
+        return index.isEmpty ? 1 : 0
     }
 
     /// `connections [--dir <配置目录>] [--json]`
