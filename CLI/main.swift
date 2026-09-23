@@ -294,6 +294,17 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // synth：合成数据（FR-AI-07）。默认**只导出 SQL 到 stdout**，`--write` 才真写库。
+        if arguments.first == "synth" {
+            let code = await runSynthCommand(
+                arguments: Array(arguments.dropFirst()),
+                service: service,
+                serverInfo: serverInfo
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         let sql = resolveSQL(arguments: arguments) ?? "SELECT version(), current_database(), current_user;"
 
         print("SQL：")
@@ -359,6 +370,124 @@ struct DoyahCLI {
             print(String(reflecting: error))
             await service.disconnect()
             exit(2)
+        }
+    }
+
+    /// `synth --table <表> [--schema S] --rows N [--seed S] [--write] [--overwrite] [--preview N] [--spec 文件.json]`
+    ///
+    /// 规格来源：`--spec` 给 JSON（`SyntheticTableSpec`，可手写可复用），否则**按表结构自动推断**
+    /// （主键用序列、非空列不给 NULL —— 保证生成的数据插得进去）。
+    /// 默认只把 INSERT 语句打到 stdout（**不执行**）；`--write` 才真写库，写库前会把语句摊开。
+    private static func runSynthCommand(
+        arguments: [String],
+        service: any DatabaseService,
+        serverInfo: ServerInfo
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let table = value(for: "--table") else {
+            print("用法：synth --table <表> [--schema S] --rows N [--seed S] [--write] [--overwrite] [--preview N] [--spec 文件.json]")
+            return 64
+        }
+        let schema = value(for: "--schema")
+        let rowCount = Int(value(for: "--rows") ?? "100") ?? 100
+        let seed = UInt64(value(for: "--seed") ?? "1") ?? 1
+        let previewLimit = Int(value(for: "--preview") ?? "3") ?? 3
+
+        let dialect = PostgresDialect()
+        let spec: SyntheticTableSpec
+        if let specPath = value(for: "--spec") {
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: specPath))
+                spec = try JSONDecoder().decode(SyntheticTableSpec.self, from: data)
+            } catch {
+                print("读取规格失败：\(error.localizedDescription)")
+                return 65
+            }
+        } else {
+            // 读表结构 → 推断规格。
+            guard let query = dialect.tableStructureQuery(table: table, schema: schema) else {
+                print("该数据库类型不支持读表结构，无法自动推断规格（可改用 --spec）")
+                return 65
+            }
+            var columns: [SyntheticSpecBuilder.ColumnShape] = []
+            do {
+            for try await event in service.execute(query, options: .default) {
+                if case .resultSet(let result) = event {
+                    columns = result.rows.compactMap { row -> SyntheticSpecBuilder.ColumnShape? in
+                        guard row.indices.contains(0), let name = row[0], !name.isEmpty else { return nil }
+                        return SyntheticSpecBuilder.ColumnShape(
+                            name: name,
+                            typeName: row.indices.contains(1) ? (row[1] ?? "text") : "text",
+                            isNullable: (row.indices.contains(2) ? (row[2] ?? "YES") : "YES").uppercased() != "NO",
+                            isPrimaryKey: (row.indices.contains(4) ? (row[4] ?? "NO") : "NO").uppercased() == "YES"
+                        )
+                    }
+                }
+            }
+            } catch {
+                print("读表结构失败：\(error.localizedDescription)")
+                return 66
+            }
+            guard !columns.isEmpty else {
+                print("读不到 \(table) 的列结构（表不存在？）")
+                return 66
+            }
+            spec = SyntheticSpecBuilder.spec(
+                table: table,
+                schema: schema,
+                columns: columns,
+                rowCount: rowCount,
+                seed: seed
+            )
+            print("按表结构推断出 \(columns.count) 列规则（主键→序列、非空列不给 NULL）")
+        }
+
+        let issues = SyntheticDataGenerator.issues(in: spec)
+        if !issues.isEmpty {
+            print("规格有问题：")
+            for issue in issues { print("  · \(issue)") }
+            return 67
+        }
+
+        do {
+            let rows = try SyntheticDataGenerator.generate(spec)
+            print("已生成 \(rows.count) 行（seed=\(spec.seed)，同 seed + 同规格必然得到同一批行）")
+            for row in rows.prefix(max(0, previewLimit)) {
+                print("  " + row.map { $0 ?? "NULL" }.joined(separator: " | "))
+            }
+
+            guard let sql = SyntheticDataGenerator.insertStatements(
+                rows: rows,
+                spec: spec,
+                writeMode: arguments.contains("--overwrite") ? .overwrite : .append,
+                dialect: dialect
+            ) else {
+                print("生成 INSERT 失败")
+                return 67
+            }
+
+            if !arguments.contains("--write") {
+                print("")
+                print("（未加 --write，只输出 SQL）")
+                print(sql)
+                return 0
+            }
+
+            print("")
+            print("将执行：\(sql.split(separator: "\n").count) 行 SQL（首行：\(sql.split(separator: "\n").first ?? "")）")
+            var affected = 0
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let result) = event { affected += result.affectedRows ?? 0 }
+            }
+            print("写入完成：影响 \(affected) 行")
+            return 0
+        } catch {
+            print("生成 / 写入失败：\(error.localizedDescription)")
+            return 68
         }
     }
 

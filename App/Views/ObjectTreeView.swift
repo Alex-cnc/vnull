@@ -36,6 +36,8 @@ struct ObjectTreeView: View {
     @State private var isLockPanelPresented = false
     /// 服务器会话面板（FR-SESS-01 / 02）。
     @State private var isSessionPanelPresented = false
+    /// 合成数据面板（FR-AI-07）。
+    @State private var syntheticDataTarget: DatabaseObject?
     /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
     @State private var groupByType = false
 
@@ -152,6 +154,10 @@ struct ObjectTreeView: View {
         }
         .sheet(isPresented: $isPrivilegePanelPresented) {
             PrivilegePanel()
+        }
+        .sheet(item: $syntheticDataTarget) { target in
+            SyntheticDataPanel(object: target)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $isSessionPanelPresented) {
             SessionPanel()
@@ -399,6 +405,13 @@ struct ObjectTreeView: View {
         if ObjectTreeActions.isAvailable(.browseRows, for: object.kind) {
             Button(L(.treeActionBrowseWithCondition)) {
                 browseRowsTarget = object
+            }
+        }
+
+        // 合成数据（FR-AI-07）：只对表提供 —— 视图不可写，序列没有列。
+        if object.kind == .table {
+            Button(L(.syntheticGenerate) + "…") {
+                syntheticDataTarget = object
             }
         }
 

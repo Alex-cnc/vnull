@@ -317,6 +317,22 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionNewerVersionKept
 
     // 事务模式（FR-EXEC-15）
+    case syntheticTitle
+    case syntheticRows
+    case syntheticSeed
+    case syntheticColumns
+    case syntheticPreview
+    case syntheticGenerate
+    case syntheticExport
+    case syntheticWrite
+    case syntheticWritePending
+    case syntheticWriteDenied
+    case syntheticWriteDone
+    case syntheticExported
+    case syntheticInsertFailed
+    case syntheticSpecIssue
+    case syntheticAutoSpecNote
+    case syntheticOverwrite
     case sessionTitle
     case sessionRefresh
     case sessionPermissionNote
@@ -1188,6 +1204,22 @@ public enum LocalizedStrings {
         .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
         .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 
+        .syntheticTitle: [.simplifiedChinese: "生成测试数据：%@", .english: "Generate test data: %@"],
+        .syntheticRows: [.simplifiedChinese: "行数", .english: "Rows"],
+        .syntheticSeed: [.simplifiedChinese: "随机种子", .english: "Seed"],
+        .syntheticColumns: [.simplifiedChinese: "列与生成规则", .english: "Columns and rules"],
+        .syntheticPreview: [.simplifiedChinese: "预览（前几行）", .english: "Preview (first rows)"],
+        .syntheticGenerate: [.simplifiedChinese: "生成预览", .english: "Generate preview"],
+        .syntheticExport: [.simplifiedChinese: "导出 INSERT 到编辑器", .english: "Export INSERT to editor"],
+        .syntheticWrite: [.simplifiedChinese: "写入目标表…", .english: "Write to table…"],
+        .syntheticWritePending: [.simplifiedChinese: "已提交审批：请在审批单上批准后才会写入（关掉审批单不等于批准）", .english: "Submitted for approval: nothing is written until you approve it on the sheet (closing the sheet is not approval)"],
+        .syntheticWriteDenied: [.simplifiedChinese: "写入被拒绝：%@", .english: "Write refused: %@"],
+        .syntheticWriteDone: [.simplifiedChinese: "写入完成：影响 %d 行", .english: "Written: %d rows affected"],
+        .syntheticExported: [.simplifiedChinese: "已把 INSERT 语句放进新页签（未执行）", .english: "INSERT statements were opened in a new tab (not executed)"],
+        .syntheticInsertFailed: [.simplifiedChinese: "生成 INSERT 语句失败（检查列与行数）", .english: "Could not build INSERT statements (check columns and row count)"],
+        .syntheticSpecIssue: [.simplifiedChinese: "规格问题：%@", .english: "Spec issue: %@"],
+        .syntheticAutoSpecNote: [.simplifiedChinese: "规则按表结构自动推断：主键用序列、非空列不给 NULL —— 生成的数据应当能直接插入", .english: "Rules are inferred from the table: primary keys use a sequence and NOT NULL columns never get NULL, so the rows should insert cleanly"],
+        .syntheticOverwrite: [.simplifiedChinese: "先清空目标表（TRUNCATE）", .english: "Truncate the target table first"],
         .sessionTitle: [.simplifiedChinese: "服务器会话", .english: "Server Sessions"],
         .sessionRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
         .sessionPermissionNote: [.simplifiedChinese: "普通用户只能操作自己的会话（PostgreSQL 需同用户或 pg_signal_backend 权限）；「终止会话」会掐断整条连接，不可恢复", .english: "You can only act on your own sessions (PostgreSQL requires the same user or pg_signal_backend); terminating drops the whole connection and cannot be undone"],

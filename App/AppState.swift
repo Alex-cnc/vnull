@@ -2660,6 +2660,92 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 合成数据（FR-AI-07）
+
+    /// 面板上的错误 / 提示（与其它面板一致：不弹窗打断，就地显示）。
+    @Published var syntheticDataError: String?
+    @Published var syntheticDataMessage: String?
+
+    /// 按表结构推断一份合成数据规格（主键→序列、非空列不给 NULL）。
+    func syntheticSpec(for object: DatabaseObject, rowCount: Int, seed: UInt64) async throws -> SyntheticTableSpec {
+        guard let configuration = selectedConnection else { throw AppError.notConnected }
+        let structure = try await tableStructure(of: object)
+        return SyntheticSpecBuilder.spec(
+            table: object.name,
+            schema: object.schema,
+            columns: structure.map(SyntheticSpecBuilder.ColumnShape.init),
+            rowCount: rowCount,
+            seed: seed
+        )
+    }
+
+    /// 生成行（纯计算，不碰库）。
+    func generateSyntheticRows(_ spec: SyntheticTableSpec) throws -> [[String?]] {
+        let issues = SyntheticDataGenerator.issues(in: spec)
+        guard issues.isEmpty else {
+            throw AppError.invalidConfiguration(issues.joined(separator: "；"))
+        }
+        return try SyntheticDataGenerator.generate(spec)
+    }
+
+    /// 生成 INSERT 语句并**放进新页签**（不执行）—— 与其它"产出 SQL"的入口同一纪律。
+    func exportSyntheticInsert(_ spec: SyntheticTableSpec, rows: [[String?]], overwrite: Bool) {
+        guard let dialect = selectedConnection.map({ SQLDialectFactory.make(for: $0.dbType) }) else {
+            syntheticDataError = L(.stateSelectConnectionFirst)
+            return
+        }
+        guard let sql = SyntheticDataGenerator.insertStatements(
+            rows: rows,
+            spec: spec,
+            writeMode: overwrite ? .overwrite : .append,
+            dialect: dialect
+        ) else {
+            syntheticDataError = L(.syntheticInsertFailed)
+            return
+        }
+        syntheticDataError = nil
+        openSQLInNewTab(sql, status: L(.syntheticExported))
+    }
+
+    /// 写入目标表：**走既有审批闸门**（与数据任务同一条路，不另造一套）。
+    ///
+    /// 只读模式下 `submitAgentAction` 直接 `.denied` —— 连审批单都建不出来；
+    /// 需要人工批准时审批单由它自己弹出，批准后的执行读的是**审批单里那条 SQL**，
+    /// 因此这里不需要再存一份待执行内容。
+    func writeSyntheticData(_ spec: SyntheticTableSpec, rows: [[String?]], overwrite: Bool) async {
+        guard let dialect = selectedConnection.map({ SQLDialectFactory.make(for: $0.dbType) }) else {
+            syntheticDataError = L(.stateSelectConnectionFirst)
+            return
+        }
+        guard let sql = SyntheticDataGenerator.insertStatements(
+            rows: rows,
+            spec: spec,
+            writeMode: overwrite ? .overwrite : .append,
+            dialect: dialect
+        ) else {
+            syntheticDataError = L(.syntheticInsertFailed)
+            return
+        }
+
+        let submission = await submitAgentAction(sql)
+        switch submission {
+        case .denied:
+            syntheticDataMessage = nil
+            syntheticDataError = L(.syntheticWriteDenied, submission.message)
+        case .awaitingApproval:
+            syntheticDataError = nil
+            syntheticDataMessage = L(.syntheticWritePending)
+        case .approved:
+            syntheticDataError = nil
+            do {
+                let affected = try await executeApprovedAgentAction(sql)
+                syntheticDataMessage = L(.syntheticWriteDone, affected ?? 0)
+            } catch {
+                syntheticDataError = ErrorPresenter.message(for: error)
+            }
+        }
+    }
+
     // MARK: - 服务器会话（FR-SESS-01 / FR-SESS-02）
 
     /// 读取当前实例的会话列表（按「等待中 → 活跃 → 空闲」排序，排序规则在 Core 里可单测）。
