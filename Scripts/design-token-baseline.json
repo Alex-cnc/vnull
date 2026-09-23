@@ -27,12 +27,6 @@
       "bare-foreground": 1,
       "bare-textstyle": 2
     },
-    "App/Views/ConnectionListView.swift": {
-      "bare-color": 1,
-      "bare-foreground": 2,
-      "bare-spacing": 1,
-      "bare-textstyle": 3
-    },
     "App/Views/CreateDatabaseSheet.swift": {
       "bare-foreground": 1,
       "bare-spacing": 1,
@@ -71,17 +65,7 @@
       "bare-textstyle": 10
     },
     "App/Views/LowerPaneView.swift": {
-      "bare-color": 1,
-      "bare-foreground": 3,
-      "bare-spacing": 6,
-      "bare-textstyle": 10
-    },
-    "App/Views/ObjectTreeView.swift": {
-      "bare-color": 1,
-      "bare-font": 1,
-      "bare-foreground": 7,
-      "bare-spacing": 4,
-      "bare-textstyle": 11
+      "bare-spacing": 3
     },
     "App/Views/PrivilegePanel.swift": {
       "bare-foreground": 4,
@@ -93,18 +77,8 @@
       "bare-spacing": 1,
       "bare-textstyle": 4
     },
-    "App/Views/QueryToolbar.swift": {
-      "bare-font": 2,
-      "bare-foreground": 7,
-      "bare-spacing": 3,
-      "bare-textstyle": 9
-    },
     "App/Views/QueryWorkspaceView.swift": {
-      "bare-color": 3,
-      "bare-foreground": 2,
-      "bare-radius": 1,
-      "bare-spacing": 8,
-      "bare-textstyle": 4
+      "bare-spacing": 4
     },
     "App/Views/RelaunchPromptSheet.swift": {
       "bare-foreground": 1,
@@ -132,11 +106,9 @@
     }
   },
   "totals": {
-    "bare-color": 12,
-    "bare-font": 3,
-    "bare-foreground": 129,
-    "bare-radius": 1,
-    "bare-spacing": 75,
-    "bare-textstyle": 240
+    "bare-color": 6,
+    "bare-foreground": 108,
+    "bare-spacing": 60,
+    "bare-textstyle": 203
   }
 }

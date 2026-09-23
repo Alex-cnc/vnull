@@ -45,24 +45,24 @@ struct ObjectTreeView: View {
         Group {
             if appState.selectedConnection == nil {
                 Text(L(.objectTreeSelectPrompt))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             } else if isLoadingRoot && roots.isEmpty {
-                HStack(spacing: 6) {
+                HStack(spacing: Spacing.s) {
                     ProgressView()
                         .controlSize(.small)
                     Text(L(.treeLoadingObjects))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
                 }
             } else if let rootError {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
                     Label(L(.treeLoadFailed), systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.warning))
                     Text(rootError)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
                         .lineLimit(4)
                         .textSelection(.enabled)
                     Button(L(.commonRetry)) {
@@ -70,11 +70,11 @@ struct ObjectTreeView: View {
                     }
                     .controlSize(.small)
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, Spacing.hair)
             } else if roots.isEmpty {
                 Text(L(.treeEmpty))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             } else {
                 refreshRow
                 ForEach(visibleRows) { row in
@@ -221,7 +221,7 @@ struct ObjectTreeView: View {
 
     /// 视图切换 + 刷新（FR-META-15 / FR-META-11）。
     private var refreshRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Spacing.s) {
             Picker("", selection: $groupByType) {
                 Text(L(.treeGroupHierarchy)).tag(false)
                 Text(L(.treeGroupByType)).tag(true)
@@ -236,8 +236,8 @@ struct ObjectTreeView: View {
                 Task { await reloadRoot() }
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             }
             .buttonStyle(.plain)
             .help(L(.treeRefreshHelp))
@@ -246,8 +246,8 @@ struct ObjectTreeView: View {
     }
 
     private func rowView(_ row: VisibleRow) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Spacing.hair) {
+            HStack(spacing: Spacing.s) {
                 if row.isGroupHeader {
                     Color.clear.frame(width: 12, height: 12)
                 } else if row.isExpandable {
@@ -255,8 +255,9 @@ struct ObjectTreeView: View {
                         toggle(row.object)
                     } label: {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.secondary)
+                            .imageScale(.small)
+                            .fontWeight(.bold)
+                            .foregroundStyle(Theme.text(.secondary))
                             .rotationEffect(.degrees(row.isExpanded ? 90 : 0))
                             .frame(width: 12, height: 12)
                             .contentShape(Rectangle())
@@ -267,23 +268,23 @@ struct ObjectTreeView: View {
                 }
 
                 Image(systemName: row.object.symbolName)
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                     .foregroundStyle(color(for: row.object.kind))
                     .frame(width: 14)
 
                 Text(row.object.name)
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                     .fontWeight(row.isGroupHeader ? .semibold : .regular)
                     .lineLimit(1)
 
                 if let detail = row.object.detail {
                     Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.tertiary))
                         .lineLimit(1)
                 }
             }
-            .padding(.leading, CGFloat(row.depth) * 12)
+            .padding(.leading, CGFloat(row.depth) * Metrics.listIndent)
             .contentShape(Rectangle())
             // 双击表 / 视图 → 浏览前 N 行（FR-DATA-01）。
             // 双击手势必须写在单击之前，否则会被单击吞掉。
@@ -310,26 +311,26 @@ struct ObjectTreeView: View {
                         text: L(.treeLoading),
                         depth: row.depth + 1,
                         systemImage: nil,
-                        color: .secondary
+                        color: Theme.text(.secondary)
                     )
                 } else if let error = row.error {
                     placeholderRow(
                         text: error,
                         depth: row.depth + 1,
                         systemImage: "exclamationmark.triangle.fill",
-                        color: .orange
+                        color: Theme.status(.warning)
                     )
                 } else if let children = row.children, children.isEmpty {
                     placeholderRow(
                         text: emptyText(for: row.object),
                         depth: row.depth + 1,
                         systemImage: nil,
-                        color: Color(nsColor: .tertiaryLabelColor)
+                        color: Theme.text(.tertiary)
                     )
                 }
             }
         }
-        .padding(.vertical, 1)
+        .frame(height: Metrics.listRowHeight)
     }
 
     /// 挂右键菜单的节点类型（服务器节点见 FR-META-11，其余见 FR-META-14）。
@@ -486,19 +487,19 @@ struct ObjectTreeView: View {
         systemImage: String?,
         color: Color
     ) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Spacing.s) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.caption2)
+                    .font(Theme.font(.caption))
                     .foregroundStyle(color)
             }
             Text(text)
-                .font(.caption2)
+                .font(Theme.font(.caption))
                 .foregroundStyle(color)
                 .lineLimit(3)
                 .textSelection(.enabled)
         }
-        .padding(.leading, CGFloat(depth) * 12 + 18)
+        .padding(.leading, CGFloat(depth) * Metrics.listIndent + Metrics.listIndent + Spacing.xs)
     }
 
     // MARK: - 交互

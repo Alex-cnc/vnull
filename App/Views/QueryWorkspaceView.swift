@@ -33,9 +33,9 @@ struct QueryWorkspaceView: View {
 
     private var tabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: Spacing.s) {
                 ForEach(appState.tabs) { tab in
-                    HStack(spacing: 6) {
+                    HStack(spacing: Spacing.s) {
                         if tab.isExecuting {
                             ProgressView()
                                 .controlSize(.mini)
@@ -51,7 +51,7 @@ struct QueryWorkspaceView: View {
                             appState.closeTab(tab.id)
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.caption2)
+                                .font(Theme.font(.caption))
                         }
                         .buttonStyle(.plain)
                         .disabled(appState.tabs.count <= 1 || tab.isExecuting)
@@ -59,7 +59,7 @@ struct QueryWorkspaceView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(
-                        RoundedRectangle(cornerRadius: 7)
+                        RoundedRectangle(cornerRadius: Radius.card)
                             .fill(appState.selectedTabID == tab.id ? Color.accentColor.opacity(0.16) : Color.clear)
                     )
                 }
@@ -205,16 +205,16 @@ struct QueryEditorView: View {
     }
 
     private func diagnosticsBar(_ diagnostics: [SQLDiagnostic]) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             ForEach(diagnostics.prefix(3)) { diagnostic in
-                HStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .top, spacing: Spacing.s) {
                     Image(systemName: diagnostic.severity == .error
                           ? "xmark.octagon.fill"
                           : "exclamationmark.triangle.fill")
-                        .foregroundStyle(diagnostic.severity == .error ? Color.red : Color.orange)
+                        .foregroundStyle(diagnostic.severity == .error ? Theme.status(.danger) : Theme.status(.warning))
                     Text("\(L(.lintLocation, diagnostic.line, diagnostic.column))：\(diagnostic.message)")
-                        .font(.caption)
-                        .foregroundStyle(diagnostic.severity == .error ? Color.red : Color.orange)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(diagnostic.severity == .error ? Theme.status(.danger) : Theme.status(.warning))
                         .textSelection(.enabled)
                         .lineLimit(2)
                 }
@@ -222,14 +222,14 @@ struct QueryEditorView: View {
 
             if diagnostics.count > 3 {
                 Text(L(.workspaceMoreDiagnostics, diagnostics.count - 3))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.red.opacity(0.06))
+        .background(Theme.status(.danger).opacity(0.06))
     }
 
     // MARK: - 结果区
@@ -240,8 +240,8 @@ struct QueryEditorView: View {
             // 所以留在结果表这一块，而不是再往 Output 日志抄一遍。
             if let provenance = selectedProvenance {
                 Text(provenance)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10)

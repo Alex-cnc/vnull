@@ -32,14 +32,9 @@ struct QueryToolbar: View {
     private static let historyMenuLimit = 20
 
     /// 执行按钮的「暗绿色」。
-    private let executeGreen = Color(red: 0.10, green: 0.50, blue: 0.10)
-    /// 停止按钮的红色。
-    private let stopRed = Color(red: 0.80, green: 0.16, blue: 0.16)
-    /// 未激活按钮的灰色。
-    private let inactiveGray = Color(nsColor: .disabledControlTextColor)
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Spacing.xs) {
             openFileButton
             saveFileMenu
             historyMenu
@@ -69,7 +64,7 @@ struct QueryToolbar: View {
             if tab.isExecuting {
                 ProgressView()
                     .controlSize(.small)
-                    .padding(.leading, 4)
+                    .padding(.leading, Spacing.xs)
             }
 
             Spacer()
@@ -78,12 +73,12 @@ struct QueryToolbar: View {
                 connectionInfo(connection)
             } else {
                 Label(L(.workspaceUnboundTab), systemImage: "exclamationmark.circle")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.s)
     }
 
     // MARK: - 文件
@@ -139,7 +134,7 @@ struct QueryToolbar: View {
             Divider()
 
             Text(L(.runScopeHint))
-                .font(.caption)
+                .font(Theme.font(.caption))
         } label: {
             Label(runScopeTitle, systemImage: runScopeSymbol)
                 .labelStyle(.titleAndIcon)
@@ -204,12 +199,12 @@ struct QueryToolbar: View {
             Divider()
 
             Text(L(.safetySafeModeHint))
-                .font(.caption)
+                .font(Theme.font(.caption))
         } label: {
             Image(systemName: appState.isSafeModeEnabled
                   ? "checkmark.shield.fill"
                   : "shield.slash")
-                .foregroundStyle(appState.isSafeModeEnabled ? Color.accentColor : inactiveGray)
+                .foregroundStyle(appState.isSafeModeEnabled ? Theme.accentColor : Theme.text(.disabled))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -220,22 +215,22 @@ struct QueryToolbar: View {
     /// 帮助面板：直接由 `AppShortcut` 生成完整快捷键表，
     /// 与按钮上挂的是同一份定义，不会出现「提示与实键不一致」。
     private var shortcutList: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Spacing.s) {
             Text(L(.helpShortcutsTitle))
-                .font(.headline)
+                .font(Theme.font(.bodyStrong))
 
             ForEach(Array(Self.shortcutRows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
                     Text(L(row.title))
-                        .font(.caption)
+                        .font(Theme.font(.caption))
                         .frame(width: 190, alignment: .leading)
                     Text(row.shortcut.display)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(Theme.font(.mono))
+                        .foregroundStyle(Theme.text(.secondary))
                 }
             }
         }
-        .padding(14)
+        .padding(Spacing.l)
         .frame(width: 360)
     }
 
@@ -420,9 +415,9 @@ struct QueryToolbar: View {
             appState.startQuery(for: tab.id)
         } label: {
             Image(systemName: "play.fill")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(tab.isExecuting ? inactiveGray : executeGreen)
-                .frame(width: 28, height: 22)
+                .font(Theme.font(.icon)).fontWeight(.bold)
+                .foregroundStyle(tab.isExecuting ? Theme.text(.disabled) : Theme.status(.success))
+                .frame(width: Metrics.toolbarButtonWidth, height: Metrics.toolbarButtonHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -438,9 +433,9 @@ struct QueryToolbar: View {
             }
         } label: {
             Image(systemName: "stop.fill")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(tab.isExecuting ? stopRed : inactiveGray)
-                .frame(width: 28, height: 22)
+                .font(Theme.font(.icon)).fontWeight(.bold)
+                .foregroundStyle(tab.isExecuting ? Theme.status(.danger) : Theme.text(.disabled))
+                .frame(width: Metrics.toolbarButtonWidth, height: Metrics.toolbarButtonHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -484,23 +479,23 @@ struct QueryToolbar: View {
             let dialect = SQLDialectFactory.make(for: connection.dbType)
 
             Text(connection.dbType.displayName)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
 
             Text(L(.workspaceDelimiter, dialect.statementDelimiter))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
 
             if let info = appState.serverInfo(for: connection.id) {
                 Text("· \(info.database) · \(info.user)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.tertiary))
                     .lineLimit(1)
             }
 
             Text(connection.endpointDescription)
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
                 .lineLimit(1)
         }
     }
@@ -509,9 +504,9 @@ struct QueryToolbar: View {
 
     private func toolbarIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 28, height: 22)
+            .font(Theme.font(.icon)).fontWeight(.semibold)
+            .foregroundStyle(Theme.text(.secondary))
+            .frame(width: Metrics.toolbarButtonWidth, height: Metrics.toolbarButtonHeight)
             .contentShape(Rectangle())
     }
 }

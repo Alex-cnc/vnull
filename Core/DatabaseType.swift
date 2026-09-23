@@ -85,3 +85,13 @@ public struct SQLFeatureSet: OptionSet, Hashable, Sendable {
     public static let supportsSSL = SQLFeatureSet(rawValue: 1 << 4)
     public static let supportsExplain = SQLFeatureSet(rawValue: 1 << 5)
 }
+
+extension DatabaseType {
+    /// 引擎徽标用的**身份色**（不是状态色：橙色在这里表示"这是 GBase"，不是"有问题"）。
+    public var identityTone: CategoricalTone {
+        switch self {
+        case .postgresql: return .blue
+        case .gbase8a: return .amber
+        }
+    }
+}

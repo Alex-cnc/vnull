@@ -130,6 +130,18 @@ final class DesignTokensTests: XCTestCase {
         }
     }
 
+    /// 禁用态：WCAG 不要求它达 AA（非活动控件），但**不能淡到看不见**，
+    /// 且必须比三级文本更淡 —— 这条顺序反了就会出现"能用的按钮看起来是禁用的"。
+    func testDisabledTextIsDimmerThanTertiaryButStillVisible() {
+        for isDark in [true, false] {
+            let background = Surface.content.color.hex(dark: isDark)
+            let disabled = ColorContrast.ratio(TextTone.disabled.color.hex(dark: isDark), background)
+            let tertiary = ColorContrast.ratio(TextTone.tertiary.color.hex(dark: isDark), background)
+            XCTAssertLessThan(disabled, tertiary, "\(isDark ? "深色" : "浅色")：禁用态应比三级文本淡")
+            XCTAssertGreaterThanOrEqual(disabled, 1.5, "\(isDark ? "深色" : "浅色")：禁用态淡到看不见了")
+        }
+    }
+
     /// 状态色主要用作状态点（非文本组件）→ 3.0。
     func testStatusColoursAreVisibleOnBothSurfaces() {
         for isDark in [true, false] {
@@ -199,6 +211,26 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertLessThan(Metrics.minColumnWidth, Metrics.maxColumnWidth)
         XCTAssertGreaterThanOrEqual(Metrics.minColumnWidth, 24, "太窄会把列头截没")
         XCTAssertGreaterThan(Metrics.columnWidthSampleRows, 0)
+    }
+
+    /// 分类色必须**彼此可分辨**（徽标的任务就是一眼区分引擎），
+    /// 且引擎映射是稳定的数据（改它等于改用户认引擎的方式）。
+    func testCategoricalTonesAreDistinctAndMapped() {
+        for isDark in [true, false] {
+            let hexes = CategoricalTone.allCases.map { $0.color.hex(dark: isDark) }
+            XCTAssertEqual(Set(hexes).count, hexes.count, "分类色有重复")
+            for i in 0..<hexes.count {
+                for j in (i + 1)..<hexes.count {
+                    XCTAssertGreaterThan(
+                        ColorContrast.distance(hexes[i], hexes[j]), 0.05,
+                        "\(CategoricalTone.allCases[i]) 与 \(CategoricalTone.allCases[j]) 太接近"
+                    )
+                }
+            }
+        }
+        XCTAssertEqual(DatabaseType.postgresql.identityTone, .blue)
+        XCTAssertEqual(DatabaseType.gbase8a.identityTone, .amber)
+        XCTAssertNotEqual(DatabaseType.postgresql.identityTone, DatabaseType.gbase8a.identityTone)
     }
 
     /// 强调色**不属于**令牌层：它由用户配置（`AccentTheme`）。

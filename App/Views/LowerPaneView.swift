@@ -36,7 +36,7 @@ struct LowerPaneView: View {
     // MARK: 页签条
 
     private var tabStrip: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Spacing.hair) {
             ForEach(LowerPaneTab.allCases) { item in
                 tabButton(item)
             }
@@ -52,14 +52,14 @@ struct LowerPaneView: View {
             if appState.lowerPaneTab == .terminal {
                 if !terminal.isRunning {
                     Text(L(.terminalStopped))
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.warning))
                         .padding(.trailing, 4)
                 }
                 if let errorText = terminal.errorText {
                     Text(errorText)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.danger))
                         .lineLimit(1)
                         .padding(.trailing, 4)
                 }
@@ -94,17 +94,17 @@ struct LowerPaneView: View {
         return Button {
             appState.lowerPaneTab = item
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: Spacing.xs) {
                 Image(systemName: item.symbolName)
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                 Text(L(item.textKey))
-                    .font(.caption)
+                    .font(Theme.font(.caption))
                 if badge > 0 {
                     Text("\(badge)")
-                        .font(.caption2)
+                        .font(Theme.font(.caption))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.red.opacity(0.85)))
+                        .background(Capsule().fill(Theme.status(.danger).opacity(0.85)))
                         .foregroundStyle(.white)
                 }
             }
@@ -124,7 +124,7 @@ struct LowerPaneView: View {
     private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption)
+                .font(Theme.font(.caption))
         }
         .buttonStyle(.borderless)
         .help(help)
@@ -207,20 +207,20 @@ struct LowerPaneView: View {
     }
 
     private func logRow(severity: TabLogEntry.Severity, timestamp: Date?, message: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: Spacing.s) {
             Image(systemName: symbol(for: severity))
-                .font(.caption)
+                .font(Theme.font(.caption))
                 .foregroundStyle(color(for: severity))
                 .padding(.top, 1)
 
             if let timestamp {
                 Text(Self.timeFormatter.string(from: timestamp))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.text(.tertiary))
             }
 
             Text(message)
-                .font(.caption)
+                .font(Theme.font(.caption))
                 .foregroundStyle(color(for: severity))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -247,14 +247,14 @@ struct LowerPaneView: View {
     }
 
     private func placeholder(symbol: String, text: String) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Spacing.s) {
             Spacer(minLength: 12)
             Image(systemName: symbol)
-                .font(.title3)
-                .foregroundStyle(.tertiary)
+                .font(Theme.font(.title))
+                .foregroundStyle(Theme.text(.tertiary))
             Text(text)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(Theme.font(.body))
+                .foregroundStyle(Theme.text(.secondary))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 460)

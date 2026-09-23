@@ -21,6 +21,7 @@ enum Theme {
         case mono         // 代码 / 终端
         case monoSmall    // 行号 / 小代码
         case caption      // 表头 / 状态栏
+        case icon         // 工具条上的图标（与正文同字号，但固定 medium 字重）
     }
 
     // MARK: 颜色
@@ -34,6 +35,10 @@ enum Theme {
     }
 
     static func status(_ tone: StatusTone) -> Color {
+        Color(nsColor: nsColor(tone.color))
+    }
+
+    static func categorical(_ tone: CategoricalTone) -> Color {
         Color(nsColor: nsColor(tone.color))
     }
 
@@ -76,6 +81,9 @@ enum Theme {
             return .monospacedSystemFont(ofSize: TypeScale.monoSmallSize, weight: .regular)
         case .caption:
             return .systemFont(ofSize: TypeScale.captionSize, weight: .medium)
+        case .icon:
+            // 图标与正文同字号（13），字重固定 medium —— 这样一套工具条里的图标不会大小不一。
+            return .systemFont(ofSize: TypeScale.bodySize, weight: .medium)
         }
     }
 
@@ -85,6 +93,9 @@ enum Theme {
     // 缓存下来就会出现"改了强调色但结果表的选中条还是旧的"。
 
     static var accentNSColor: NSColor { AccentManager.shared.accentNSColor }
+
+    /// 强调色的 SwiftUI 形态（与根视图 `.tint` 同源）。
+    static var accentColor: Color { AccentManager.shared.accentColor }
 
     /// 选中行的淡填充（与活动栏、侧栏同一套语言；透明度取自 `Overlay.Selection`）。
     static var accentTintNSColor: NSColor {

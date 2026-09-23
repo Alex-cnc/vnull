@@ -14,8 +14,8 @@ struct ConnectionListView: View {
             Section(L(.connectionListTitle)) {
                 if appState.connections.isEmpty {
                     Text(L(.connectionListEmpty))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
                 }
 
                 ForEach(appState.connections) { configuration in
@@ -69,18 +69,18 @@ private struct ConnectionRow: View {
     let configuration: ConnectionConfig
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Spacing.m) {
             Circle()
-                .fill(configuration.dbType == .postgresql ? Color.blue : Color.orange)
+                .fill(Theme.categorical(configuration.dbType.identityTone))
                 .frame(width: 9, height: 9)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Spacing.hair) {
                 Text(configuration.displayTitle(untitled: L(.connectionUntitled)))
-                    .font(.body)
+                    .font(Theme.font(.body))
                     .lineLimit(1)
                 Text("\(configuration.dbType.displayName) · \(configuration.endpointDescription)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
                     .lineLimit(1)
             }
         }

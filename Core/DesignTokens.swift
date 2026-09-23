@@ -66,6 +66,11 @@ public enum Metrics {
     public static let activityBarWidth: CGFloat = 46
     /// 活动栏图标边长。
     public static let activityIconSize: CGFloat = 20
+    /// 列表 / 树的层级缩进步长（对象树、工作区文件树共用）。
+    public static let listIndent: CGFloat = 14
+    /// 工具条上的图标按钮尺寸（28 × 22）。
+    public static let toolbarButtonWidth: CGFloat = 28
+    public static let toolbarButtonHeight: CGFloat = 22
     /// 结果表列的宽度上下限（估算出来的宽度会被夹在这个区间里）。
     public static let minColumnWidth: CGFloat = 40
     public static let maxColumnWidth: CGFloat = 420
@@ -133,6 +138,9 @@ public enum TextTone: String, CaseIterable, Sendable {
     case primary
     case secondary
     case tertiary
+    /// 禁用态：比三级更淡。WCAG 对"非活动控件"不做对比度要求，
+    /// 但它**必须仍能看出"这里有个东西、只是现在不能用"**，所以有下限（见单测）。
+    case disabled
 
     public var color: ThemeColor {
         switch self {
@@ -141,6 +149,7 @@ public enum TextTone: String, CaseIterable, Sendable {
         // 辅助信息（表头 / 行号 / 状态栏）。浅色档实测过：原来的 #9A9AA0 只有 2.80，
         // 连 3.0 的非文本门槛都不到，故压到 #7C7C82（4.15）。
         case .tertiary: return ThemeColor(light: 0x7C7C82, dark: 0x6C7380)
+        case .disabled: return ThemeColor(light: 0xA8A8AE, dark: 0x5A6069)
         }
     }
 }
@@ -156,6 +165,26 @@ public enum StatusTone: String, CaseIterable, Sendable {
         case .success: return ThemeColor(light: 0x1E9E5A, dark: 0x4CC38A)
         case .warning: return ThemeColor(light: 0xB9791B, dark: 0xD9A343)
         case .danger: return ThemeColor(light: 0xD03A32, dark: 0xE5534B)
+        }
+    }
+}
+
+/// **分类色**：用于标识**身份**（数据库引擎徽标、标签），不是状态。
+///
+/// 与状态色分开是有意的：把 GBase 的橙当成"警告"会让状态色失去含义 ——
+/// 用户看到橙色分不清"这是这个引擎的颜色"还是"这里有问题"。
+public enum CategoricalTone: String, CaseIterable, Sendable {
+    case blue
+    case teal
+    case magenta
+    case amber
+
+    public var color: ThemeColor {
+        switch self {
+        case .blue: return ThemeColor(light: 0x3B57E0, dark: 0x6E8BFF)
+        case .teal: return ThemeColor(light: 0x0F7F7F, dark: 0x4FBDBD)
+        case .magenta: return ThemeColor(light: 0xB02A83, dark: 0xD46FB0)
+        case .amber: return ThemeColor(light: 0xB9791B, dark: 0xD9A343)
         }
     }
 }
