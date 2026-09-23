@@ -2767,12 +2767,18 @@ final class AppState: ObservableObject {
                     } else {
                         logLine = nil
                     }
-                    let provenance = L(.stateStatementResult, statementNumber, result.rowCount, result.columnCount)
+                    var provenance = L(.stateStatementResult, statementNumber, result.rowCount, result.columnCount)
+                    if result.isTruncated {
+                        // 摘要与状态栏都写明「被截断」：归档、日志、界面三处口径一致（R-33）。
+                        provenance += " · \(L(.resultTruncatedTag))"
+                    }
                     updateTab(tabID) {
                         $0.results.append(result)
                         $0.resultSummaries.append(isTabular ? provenance : "")
                         $0.selectedResultIndex = $0.results.count - 1
-                        if let logLine {
+                        if result.isTruncated {
+                            $0.statusMessage = L(.resultTruncated, result.truncationLimit ?? result.rowCount)
+                        } else if let logLine {
                             $0.statusMessage = logLine
                         }
                     }

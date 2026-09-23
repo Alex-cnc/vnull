@@ -21,6 +21,14 @@ public struct QueryResult: Identifiable, Sendable {
     public var affectedRows: Int?
     public var executionTime: TimeInterval
     public var notice: String?
+    /// 结果是否**被上限截断**（R-33）。
+    ///
+    /// 原先截断是静默的：`if rows.count >= maxRows { break }` 之后没有任何标记，
+    /// 用户看到 10000 行会以为这就是全部 —— 元数据查询少表少列时更危险。
+    /// 「看到的不完整」必须是一等事实，而不是靠人去猜。
+    public var isTruncated: Bool
+    /// 截断发生在上限值（用于文案：仅显示前 N 行）。
+    public var truncationLimit: Int?
 
     public init(
         id: UUID = UUID(),
@@ -28,7 +36,9 @@ public struct QueryResult: Identifiable, Sendable {
         rows: [[String?]] = [],
         affectedRows: Int? = nil,
         executionTime: TimeInterval = 0,
-        notice: String? = nil
+        notice: String? = nil,
+        isTruncated: Bool = false,
+        truncationLimit: Int? = nil
     ) {
         self.id = id
         self.columns = columns
@@ -36,6 +46,8 @@ public struct QueryResult: Identifiable, Sendable {
         self.affectedRows = affectedRows
         self.executionTime = executionTime
         self.notice = notice
+        self.isTruncated = isTruncated
+        self.truncationLimit = truncationLimit
     }
 
     public var rowCount: Int { rows.count }
@@ -91,6 +103,16 @@ public struct AffectedRowsTally: Sendable {
     public var value: Int? { sawAny ? total : nil }
 }
 
+/// 结果集与语句的**默认保护上限**（R-33）。
+///
+/// 存在的理由：App 侧从来没有设过 `maxRows`，`QueryOptions.default` 就是"不设上限"——
+/// 一条 `SELECT * FROM 大表` 会把全部行拉进内存并**先物化再渲染**。
+/// 上限本身不是问题，**静默**才是：现在截断会带着 `isTruncated` 一路显示到界面上。
+public enum QueryLimits {
+    /// 单个结果集默认行数上限。用户要全量就显式调大（或在后续版本提供"继续拉取"）。
+    public static let defaultMaxRows = 10_000
+}
+
 public struct QueryOptions: Sendable {
     public var maxRows: Int?
     public var statementTimeout: TimeInterval?
@@ -102,7 +124,8 @@ public struct QueryOptions: Sendable {
         self.fetchSize = fetchSize
     }
 
-    public static let `default` = QueryOptions()
+    /// 默认选项：**带上行数上限**（R-33）。以前这里是 `QueryOptions()`，即不设上限。
+    public static let `default` = QueryOptions(maxRows: QueryLimits.defaultMaxRows)
 }
 
 public struct DatabaseObject: Identifiable, Hashable, Sendable {

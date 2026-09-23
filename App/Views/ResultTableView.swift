@@ -95,6 +95,19 @@ struct ResultTableView: View {
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.text(.secondary))
             }
+            // 截断必须**看得见**（R-33）：以前是静默 break，用户会把上限当成全部数据。
+            if result.isTruncated {
+                Text(L(.resultTruncatedTag))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.status(.warning))
+                    .padding(.horizontal, Spacing.xs)
+                    .padding(.vertical, Spacing.hair)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius.badge)
+                            .fill(Theme.status(.warning).opacity(Theme.isDarkAppearance ? Overlay.Zebra.darkAlpha : Overlay.Zebra.lightAlpha))
+                    )
+                    .help(L(.resultTruncated, result.truncationLimit ?? result.rowCount))
+            }
             if result.executionTime > 0 {
                 // 耗时用等宽数字：否则每次执行的小数位跳动会让这一小块"抖"
                 Text("· \(String(format: "%.3f", result.executionTime))s")

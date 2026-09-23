@@ -215,6 +215,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultSize
     case resultNoResultSet
     case resultAffectedRows
+    case resultTruncated
+    case resultTruncatedTag
     case resultExecuting
     case resultEmptyTitle
     case resultEmptyDescription
@@ -916,6 +918,8 @@ public enum LocalizedStrings {
         .resultSize: [.simplifiedChinese: "%d 行 · %d 列", .english: "%d rows · %d columns"],
         .resultNoResultSet: [.simplifiedChinese: "语句执行成功，没有返回结果集", .english: "Statement succeeded with no result set"],
         .resultAffectedRows: [.simplifiedChinese: "影响 %d 行", .english: "%d rows affected"],
+        .resultTruncated: [.simplifiedChinese: "结果已截断：仅显示前 %d 行，还有更多行未取（可在结果区调整上限或加 LIMIT）", .english: "Result truncated: showing the first %d rows; more rows were not fetched (raise the limit or add LIMIT)"],
+        .resultTruncatedTag: [.simplifiedChinese: "已截断", .english: "truncated"],
         .resultExecuting: [.simplifiedChinese: "正在执行…", .english: "Executing…"],
         .resultEmptyTitle: [.simplifiedChinese: "暂无结果", .english: "No Results"],
         .resultEmptyDescription: [.simplifiedChinese: "执行 SQL 后，结果会显示在这里", .english: "Run a query to see results here"],

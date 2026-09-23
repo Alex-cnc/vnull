@@ -309,17 +309,17 @@ public actor PostgresService: DatabaseService {
                 )
             }
 
-            var rows: [[String?]] = []
+            // 截断由 `ResultCollector` 决定并**留下事实**（R-33）：
+            // 到达上限后多拉一行来区分「正好这么多」与「还有更多」，然后停止。
+            var collector = ResultCollector(maxRows: options.maxRows)
             for try await row in rowSequence {
-                rows.append(row.map { PostgresCellFormatter.format($0) })
-                if let maxRows = options.maxRows, rows.count >= maxRows {
+                if !collector.append(row.map { PostgresCellFormatter.format($0) }) {
                     break
                 }
             }
 
-            let result = QueryResult(
+            let result = collector.makeResult(
                 columns: columns,
-                rows: rows,
                 executionTime: Date().timeIntervalSince(statementStart)
             )
             continuation.yield(.resultSet(result))
