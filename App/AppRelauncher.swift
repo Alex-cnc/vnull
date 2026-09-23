@@ -51,6 +51,15 @@ enum AppRelauncher {
     /// - Parameter dirtyTabCount: 有未保存内容的页签数。**`terminate` 被否决且还有未保存内容时，
     ///   宁可重启不成功也不硬退** —— 不能为了换个语言丢掉别人写的东西。
     static func relaunch(dirtyTabCount: Int = 0) async throws {
+        // **有未保存内容就地拒绝**，连新实例都不拉、交接单也不写。
+        //
+        // 为什么不在退出被否决之后再拒绝（原来的写法）：那时新实例**已经起来了**，
+        // 而沙箱又不允许它把旧实例请退（跨应用 AppleEvent 被禁，实测无效）——
+        // 于是"拒绝重启"会变成"留下两个窗口"，比拒绝还糟。拒绝必须发生在动手之前。
+        guard dirtyTabCount == 0 else {
+            throw TerminationBlocked()
+        }
+
         try writeHandoff()
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
@@ -62,10 +71,8 @@ enum AppRelauncher {
         NSApp.terminate(nil)
 
         // 只有「退出被否决」才会执行到这里（正常情况下进程已经没了）。
-        guard dirtyTabCount == 0 else {
-            throw TerminationBlocked()
-        }
-        // 没有未保存内容：直接退，保证"点了重启就真的重启"。
+        // 此时没有未保存内容（上面已 guard），所以可以直接退 ——
+        // 保证"点了重启就真的重启"。
         // 这是对"沙箱下新实例无法强制关掉旧实例"（跨应用 AppleEvent 被禁，实测 `terminate()` 无效）
         // 的兜底 —— 否则就会剩下两个窗口，正是用户最初报的现象。
         exit(0)
