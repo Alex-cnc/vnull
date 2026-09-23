@@ -136,21 +136,28 @@ struct DoyahCLI {
             timeout: 10
         )
 
-        print("PostgreSQL 连接测试")
-        print("目标：\(username)@\(host):\(port)/\(database.isEmpty ? "<default>" : database)")
-        print("SSL：\(sslMode.rawValue)")
-        print("")
+        // `--json` = 机器可读：**不打任何横幅**。人类可读的问候语混进 JSON 里，
+        // 调用方就得先"猜哪一行开始是数据"—— 那是最容易被写错的解析逻辑（本轮脚本就中招了）。
+        let isMachineReadable = arguments.contains("--json")
+        if !isMachineReadable {
+            print("PostgreSQL 连接测试")
+            print("目标：\(username)@\(host):\(port)/\(database.isEmpty ? "<default>" : database)")
+            print("SSL：\(sslMode.rawValue)")
+            print("")
+        }
 
         let service = PostgresService(config: config, password: password)
 
         let serverInfo: ServerInfo
         do {
             serverInfo = try await service.connect()
-            print("连接成功")
-            print("server_version: \(serverInfo.version)")
-            print("database:      \(serverInfo.database)")
-            print("user:          \(serverInfo.user)")
-            print("")
+            if !isMachineReadable {
+                print("连接成功")
+                print("server_version: \(serverInfo.version)")
+                print("database:      \(serverInfo.database)")
+                print("user:          \(serverInfo.user)")
+                print("")
+            }
         } catch {
             print("连接失败")
             print("")
@@ -298,6 +305,14 @@ struct DoyahCLI {
                 service: service,
                 dialect: PostgresDialect()
             )
+            await service.disconnect()
+            exit(code)
+        }
+
+        // row：单行竖排详情（FR-DATA-05）。等价于 psql 的 expanded display，
+        // 用来在无界面环境里核对"长 JSON / 二进制 / NULL 到底长什么样"。
+        if arguments.first == "row" {
+            let code = await runRowCommand(arguments: Array(arguments.dropFirst()), service: service)
             await service.disconnect()
             exit(code)
         }
@@ -509,6 +524,82 @@ struct DoyahCLI {
         }
         print("整库导出完成：\(tables.count) 张表")
         return 0
+    }
+
+    /// `row --table <表> [--schema S] --where "id = 1" [--limit 1] [--json]`
+    ///
+    /// 竖排输出（`列名 | 类型 | 值摘要` + 值正文），长 JSON 会自动美化、二进制给摘要。
+    /// `--json` 输出结构化结果，便于脚本断言。
+    private static func runRowCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let table = value(for: "--table") else {
+            print("用法：row --table <表> [--schema S] --where \"条件\" [--limit N] [--json]")
+            return 64
+        }
+        let schema = value(for: "--schema")
+        let whereClause = value(for: "--where")
+        let limit = Int(value(for: "--limit") ?? "") ?? 1
+
+        let target = SQLGenerator.qualifiedName(table: table, schema: schema, dialect: PostgresDialect())
+        var sql = "SELECT * FROM \(target)"
+        if let whereClause, !whereClause.isEmpty {
+            // 条件原样拼入（与"按条件浏览"同一纪律）：**含分号一律拒绝**，不做聪明改写。
+            guard !whereClause.contains(";") else {
+                print("--where 里不能有分号（只允许单条表达式）")
+                return 64
+            }
+            sql += " WHERE \(whereClause)"
+        }
+        sql += " LIMIT \(max(1, limit));"
+
+        do {
+            var result: QueryResult?
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let value) = event { result = value }
+            }
+            guard let result else {
+                print("没有取到结果集")
+                return 66
+            }
+            guard let firstRow = result.rows.first else {
+                print("没有匹配的行")
+                return 1
+            }
+
+            let fields = CellInspector.row(columns: result.columns, row: firstRow)
+            if arguments.contains("--json") {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let payload = fields.map { ["column": $0.columnName, "type": $0.typeName,
+                                            "summary": $0.value.summary, "value": $0.value.display] }
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return 0
+                }
+            }
+
+            print("行详情（\(fields.count) 列）：")
+            for field in fields {
+                print("  \(field.columnName) [\(field.typeName)]：\(field.value.summary)")
+                if field.value.shape != .null && !field.value.display.isEmpty {
+                    for line in field.value.display.split(separator: "\n") {
+                        print("      \(line)")
+                    }
+                }
+            }
+            return 0
+        } catch {
+            print("读取行失败：\(error.localizedDescription)")
+            return 67
+        }
     }
 
     /// `connections [--dir <配置目录>] [--json]`
