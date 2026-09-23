@@ -119,6 +119,21 @@ struct ObjectSearchPanel: View {
         } else {
             ScrollView {
                 VStack(spacing: 0) {
+                    // 命中总数（**过滤前**）与被截断提示都要看得见：
+                    // 只给一个结果列表，用户会以为那就是全部。
+                    HStack {
+                        Text(L(
+                            .objectSearchResultCount,
+                            "\(outcome?.matches.count ?? 0)",
+                            "\(outcome?.totalHits ?? 0)"
+                        ))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
+                        Spacer()
+                    }
+                    .padding(.horizontal, Spacing.s)
+                    .padding(.vertical, Spacing.xs)
+
                     ForEach(Array((outcome?.matches ?? []).enumerated()), id: \.offset) { _, match in
                         row(match)
                     }

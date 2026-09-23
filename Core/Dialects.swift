@@ -56,6 +56,12 @@ public protocol SQLDialect: Sendable {
     func objectPrivilegeQuery(role: String) -> String?
     /// 锁等待 / 阻塞链查询（FR-DIAG-05）；nil = 该方言不支持。
     func lockWaitingQuery() -> String?
+    /// 全库对象搜索的**单次**元数据查询（FR-META-12）；nil = 该方言不支持。
+    ///
+    /// 为什么放进方言层：这条查询吃的是**系统目录**（PG 的 `pg_class` / `information_schema`），
+    /// 换方言就是另一套目录。没有这一层时，非 PG 连接上会拿一条 PG 口径的 SQL 去跑，
+    /// 用户看到的是一句莫名其妙的 SQL 报错 —— 而"这个方言不支持"本该是一句人话。
+    func objectSearchQuery(schema: String?, limit: Int) -> String?
     /// 表结构查询（FR-DDL-03）：列名 / 类型 / 可空 / **默认值** / **是否主键**；nil = 该方言不支持。
     ///
     /// 与 `listColumnsQuery` 的区别：那个只给对象树用的列名与类型，这个要支撑"改表结构"，
@@ -102,6 +108,7 @@ public extension SQLDialect {
     func tableIndexesQuery(table: String, schema: String?) -> String? { nil }
     func tableConstraintsQuery(table: String, schema: String?) -> String? { nil }
     func lockWaitingQuery() -> String? { nil }
+    func objectSearchQuery(schema: String?, limit: Int) -> String? { nil }
 }
 
 public struct PostgresDialect: SQLDialect {
@@ -204,6 +211,11 @@ public struct PostgresDialect: SQLDialect {
         WHERE NOT l.granted OR cardinality(pg_blocking_pids(a.pid)) > 0
         ORDER BY a.pid, l.locktype
         """
+    }
+
+    /// 全库对象搜索（FR-META-12）：PG 口径的系统目录查询，由 `ObjectSearch` 提供，方言层只做转发。
+    public func objectSearchQuery(schema: String?, limit: Int) -> String? {
+        ObjectSearch.query(schema: schema, limit: limit)
     }
 
     public func objectPrivilegeQuery(role: String) -> String? {

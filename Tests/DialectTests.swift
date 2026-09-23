@@ -22,6 +22,18 @@ final class DialectTests: XCTestCase {
         XCTAssertFalse(dialect.featureSet.contains(.supportsSchemas))
     }
 
+    /// 全库对象搜索是**方言能力**（FR-META-12）：PG 给系统目录查询，其余方言明确返回 nil ——
+    /// nil 会让界面说一句"该方言不支持"，而不是把 PG 口径的 SQL 丢过去换回一句 SQL 报错。
+    func testObjectSearchIsDialectCapability() {
+        let postgres = PostgresDialect()
+        let query = postgres.objectSearchQuery(schema: "public", limit: 500)
+        XCTAssertNotNil(query)
+        XCTAssertTrue(query?.contains("public") == true, query ?? "")
+
+        // GBase 8a 走 MySQL 协议，PG 的系统目录不适用 —— 不实现即不支持（协议扩展默认 nil）。
+        XCTAssertNil(GBaseDialect().objectSearchQuery(schema: nil, limit: 500))
+    }
+
     func testServerVersionParsing() {
         let postgres = PostgresDialect()
         let pgVersion = postgres.parseServerVersion("16.2")

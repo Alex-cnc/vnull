@@ -3167,8 +3167,11 @@ final class AppState: ObservableObject {
         guard let configuration = selectedConnection else {
             throw AppError.notConnected
         }
-        guard let query = ObjectSearch.query(schema: schema) else {
-            throw AppError.notImplemented(L(.objectSearchTitle))
+        // 走方言能力开关（nil = 该方言不支持）：非 PG 连接上给一句人话，
+        // 而不是把一条 PG 口径的 SQL 丢过去换回一句莫名其妙的报错。
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.objectSearchQuery(schema: schema, limit: ObjectSearch.defaultLimit) else {
+            throw AppError.notImplemented(L(.objectSearchUnsupported, configuration.dbType.displayName))
         }
 
         let database = currentDatabaseName(for: configuration)

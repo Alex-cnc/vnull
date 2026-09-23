@@ -364,6 +364,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case objectSearchNoMatch
     case objectSearchTruncated
     case objectSearchBrowse
+    case objectSearchResultCount
+    case objectSearchUnsupported
     case objectSearchKindTable
     case objectSearchKindView
     case objectSearchKindColumn
@@ -372,8 +374,6 @@ public enum LKey: String, CaseIterable, Sendable {
     // 行详情侧栏（FR-DATA-05 界面）
     case rowDetailTitle
     case rowDetailNoSelection
-    case rowDetailColumnHeader
-    case rowDetailValueHeader
     case rowDetailCopyValue
     // 命令面板需要"先选一个对象"时的提示
     case paletteNeedsTreeObject
@@ -1318,6 +1318,8 @@ public enum LocalizedStrings {
         .objectSearchHint: [.simplifiedChinese: "跨 schema 匹配表 / 视图 / 列 / 函数；**空输入不列结果**（全库对象上万条，列前几条只会误导）", .english: "Matches tables / views / columns / functions across schemas; an empty query lists nothing (thousands of objects would only mislead)"],
         .objectSearchNoMatch: [.simplifiedChinese: "没有匹配的对象", .english: "No matching object"],
         .objectSearchTruncated: [.simplifiedChinese: "元数据已达 10,000 行上限，结果**可能不完整** —— 用 schema 缩小范围再搜", .english: "Metadata hit the 10,000-row cap; results may be incomplete — narrow by schema and search again"],
+        .objectSearchResultCount: [.simplifiedChinese: "在 %@ 个对象里搜到 %@ 条", .english: "Matched %@ of %@ objects"],
+        .objectSearchUnsupported: [.simplifiedChinese: "%@ 方言暂不支持全库对象搜索（它吃的是 PostgreSQL 的系统目录）", .english: "Object search is not supported on %@ (it reads PostgreSQL system catalogs)"],
         .objectSearchBrowse: [.simplifiedChinese: "浏览数据", .english: "Browse data"],
         .objectSearchKindTable: [.simplifiedChinese: "表", .english: "Table"],
         .objectSearchKindView: [.simplifiedChinese: "视图", .english: "View"],
@@ -1326,8 +1328,6 @@ public enum LocalizedStrings {
         .objectSearchKindOther: [.simplifiedChinese: "其他", .english: "Other"],
         .rowDetailTitle: [.simplifiedChinese: "行详情", .english: "Row detail"],
         .rowDetailNoSelection: [.simplifiedChinese: "在上方结果里选中一行，这里按**列顺序竖排**显示全部字段", .english: "Select a row above to see every field listed vertically"],
-        .rowDetailColumnHeader: [.simplifiedChinese: "列", .english: "Column"],
-        .rowDetailValueHeader: [.simplifiedChinese: "值", .english: "Value"],
         .rowDetailCopyValue: [.simplifiedChinese: "复制值", .english: "Copy value"],
         .paletteNeedsTreeObject: [.simplifiedChinese: "这条命令需要先选中一个表 / 视图：请在左侧对象树里点选后再试", .english: "This command needs a selected table or view — pick one in the object tree first"],
         .queryParameterTitle: [.simplifiedChinese: "填参数后执行", .english: "Fill parameters, then run"],
