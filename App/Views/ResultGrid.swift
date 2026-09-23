@@ -15,6 +15,16 @@ import DoyahCore
 ///     系统样式在深浅两种外观下都不受我们的令牌控制，混着用会出现"这块跟别处不是一个色"。
 struct ResultGrid: NSViewRepresentable {
     let result: QueryResult
+    /// 要显示的行。为 nil 时显示结果集的全部行。
+    ///
+    /// 客户端筛选 / 排序 / 分页（FR-RES-08~10）都只改变「显示哪些行」，
+    /// 不改动 `QueryResult` 本身 —— 所以这里传进来的是**视图算好的行**，
+    /// 而复制（⌘C）也必须用同一份，否则复制出来的会是「看不见的那些行」。
+    var displayedRows: [[String?]]?
+    /// 当前排序键（用于同步 AppKit 的表头指示器）。
+    var sortDescriptors: [ResultSortDescriptor] = []
+    /// 表头点击回调：`(列号, 是否按住 Shift)`。
+    var onToggleSort: ((Int, Bool) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -53,48 +63,115 @@ struct ResultGrid: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
 
-        context.coordinator.update(result: result, tableView: tableView)
+        context.coordinator.update(
+            result: result,
+            rows: displayedRows ?? result.rows,
+            sortDescriptors: sortDescriptors,
+            onToggleSort: onToggleSort,
+            tableView: tableView
+        )
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
-        context.coordinator.update(result: result, tableView: tableView)
+        context.coordinator.update(
+            result: result,
+            rows: displayedRows ?? result.rows,
+            sortDescriptors: sortDescriptors,
+            onToggleSort: onToggleSort,
+            tableView: tableView
+        )
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, ResultGridCopying {
 
         private var result: QueryResult?
+        /// 当前显示的行（可能是筛选 / 排序 / 分页后的子集）。
+        private var rows: [[String?]] = []
         private var lastResultID: UUID?
+        /// 以「结果 id + 行数 + 首行 + 末行」判断显示内容是否变了。
+        ///
+        /// 只看 `result.id` 不够：排序、翻页都不换结果 id，但显示的行完全不同。
+        private var lastDisplaySignature: String = ""
+        /// 回调由 SwiftUI 每次更新时刷新（闭包不是值类型，不能靠相等判断）。
+        private var onToggleSort: ((Int, Bool) -> Void)?
+        /// 程序化同步表头指示器时要屏蔽 `sortDescriptorsDidChange`，否则会自激。
+        private var isSyncingSortDescriptors = false
         private var columnSignature: [String] = []
+        /// 上一次建列的来源结果集 id（换结果集必须重建列，哪怕列名一样）。
+        private var lastColumnResultID: UUID?
         /// 每列是否按数值处理（右对齐 + 等宽数字）。列在重建时才变。
         private var columnIsNumeric: [Bool] = []
         /// 上一次的选中集合：用来只重画"选中态真的变了"的那几行。
         private var lastSelectedRows = IndexSet()
 
         func numberOfRows(in tableView: NSTableView) -> Int {
-            result?.rows.count ?? 0
+            rows.count
         }
 
-        func update(result: QueryResult, tableView: NSTableView) {
+        func update(
+            result: QueryResult,
+            rows: [[String?]],
+            sortDescriptors: [ResultSortDescriptor],
+            onToggleSort: ((Int, Bool) -> Void)?,
+            tableView: NSTableView
+        ) {
             self.result = result
-            guard result.id != lastResultID else { return }
-            lastResultID = result.id
-            lastSelectedRows = tableView.selectedRowIndexes
+            self.rows = rows
+            self.onToggleSort = onToggleSort
+            syncSortDescriptors(sortDescriptors, tableView: tableView)
 
-            let signature = result.columns.map { "\($0.name)|\($0.typeName)" }
-            if signature != columnSignature {
-                columnSignature = signature
+            // 换结果集：选中态作废（旧的行号对新数据没有意义）。
+            if result.id != lastResultID {
+                lastResultID = result.id
+                lastSelectedRows = tableView.selectedRowIndexes
+                tableView.deselectAll(nil)
+            }
+
+            // 列定义只在「结果集换了」或「列签名变了」时重建。
+            let columnSignature = result.columns.map { "\($0.name)|\($0.typeName)" }
+            if result.id != lastColumnResultID || columnSignature != self.columnSignature {
+                lastColumnResultID = result.id
+                self.columnSignature = columnSignature
                 columnIsNumeric = result.columns.map { ColumnAlignment.isNumeric(typeName: $0.typeName) }
                 for column in tableView.tableColumns {
                     tableView.removeTableColumn(column)
                 }
                 for (index, meta) in result.columns.enumerated() {
-                    tableView.addTableColumn(Self.makeColumn(index: index, meta: meta, result: result))
+                    tableView.addTableColumn(Self.makeColumn(index: index, meta: meta, rows: rows))
                 }
             }
 
-            tableView.reloadData()
+            // 显示内容没变就不重载：SwiftUI 每次刷新都重载会让滚动位置与选中态跳动。
+            let signature = "\(result.id)|\(rows.count)|\(rows.first ?? [])|\(rows.last ?? [])"
+            if signature != lastDisplaySignature {
+                lastDisplaySignature = signature
+                tableView.reloadData()
+            }
+        }
+
+        /// 按状态里的排序键同步 AppKit 的表头指示器（→ / ↓）。
+        private func syncSortDescriptors(_ descriptors: [ResultSortDescriptor], tableView: NSTableView) {
+            let expected = descriptors.map { descriptor -> NSSortDescriptor in
+                NSSortDescriptor(key: "\(descriptor.columnIndex)", ascending: descriptor.order.isAscending)
+            }
+            let current = tableView.sortDescriptors.map { NSSortDescriptor(key: $0.key, ascending: $0.ascending) }
+            guard current != expected else { return }
+            isSyncingSortDescriptors = true
+            tableView.sortDescriptors = expected
+            isSyncingSortDescriptors = false
+        }
+
+        /// 表头点击 → 交给状态层循环（升序 → 降序 → 取消）。
+        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            guard !isSyncingSortDescriptors else { return }
+            guard let descriptor = tableView.sortDescriptors.first,
+                  let key = descriptor.key,
+                  let columnIndex = Int(key) else { return }
+            // Shift 按住时是「追加次要排序键」而不是替换。
+            let additive = NSEvent.modifierFlags.contains(.shift)
+            onToggleSort?(columnIndex, additive)
         }
 
         // MARK: 行视图（斑马纹 / 选中态 / 发丝线都自己画）
@@ -122,13 +199,13 @@ struct ResultGrid: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard let tableColumn,
                   let result,
-                  result.rows.indices.contains(row),
+                  rows.indices.contains(row),
                   let columnIndex = columnIndex(from: tableColumn),
-                  result.rows[row].indices.contains(columnIndex) else {
+                  rows[row].indices.contains(columnIndex) else {
                 return nil
             }
 
-            let value = result.rows[row][columnIndex]
+            let value = rows[row][columnIndex]
             let isNumeric = columnIsNumeric.indices.contains(columnIndex) && columnIsNumeric[columnIndex]
             let isSelected = tableView.selectedRowIndexes.contains(row)
             let identifier = NSUserInterfaceItemIdentifier("result-cell")
@@ -169,7 +246,7 @@ struct ResultGrid: NSViewRepresentable {
             isNumeric ? Theme.nsFont(.data) : Theme.nsFont(.body)
         }
 
-        private static func makeColumn(index: Int, meta: ColumnMeta, result: QueryResult) -> NSTableColumn {
+        private static func makeColumn(index: Int, meta: ColumnMeta, rows: [[String?]]) -> NSTableColumn {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col-\(index)"))
             let isNumeric = ColumnAlignment.isNumeric(typeName: meta.typeName)
             let header = ResultHeaderCell()
@@ -185,17 +262,19 @@ struct ResultGrid: NSViewRepresentable {
             column.headerCell = header
             column.headerToolTip = "\(meta.name) · \(meta.typeName)"
             column.minWidth = Metrics.minColumnWidth
-            column.width = estimatedWidth(for: meta, index: index, result: result)
+            column.width = estimatedWidth(for: meta, index: index, rows: rows)
+            // 有排序原型，AppKit 才会画表头指示器并派发 sortDescriptorsDidChange。
+            column.sortDescriptorPrototype = NSSortDescriptor(key: "\(index)", ascending: true)
             return column
         }
 
-        private static func estimatedWidth(for meta: ColumnMeta, index: Int, result: QueryResult) -> CGFloat {
+        private static func estimatedWidth(for meta: ColumnMeta, index: Int, rows: [[String?]]) -> CGFloat {
             let font = font(isNumeric: ColumnAlignment.isNumeric(typeName: meta.typeName))
             var width = measuredWidth(meta.name, font: Theme.nsFont(.caption)) + Spacing.xl
-            let sampleCount = min(result.rows.count, Metrics.columnWidthSampleRows)
+            let sampleCount = min(rows.count, Metrics.columnWidthSampleRows)
             for rowIndex in 0..<sampleCount {
-                guard result.rows[rowIndex].indices.contains(index) else { continue }
-                let value = result.rows[rowIndex][index] ?? "NULL"
+                guard rows[rowIndex].indices.contains(index) else { continue }
+                let value = rows[rowIndex][index] ?? "NULL"
                 width = max(width, measuredWidth(value, font: font) + Spacing.l)
             }
             return min(max(width, Metrics.minColumnWidth), Metrics.maxColumnWidth)
@@ -214,8 +293,9 @@ struct ResultGrid: NSViewRepresentable {
 
             var lines: [String] = [result.columns.map { $0.name }.joined(separator: "\t")]
             for rowIndex in selectedRows {
-                guard result.rows.indices.contains(rowIndex) else { continue }
-                let row = result.rows[rowIndex]
+                // 用**当前显示的行**：分页 / 筛选之后，索引指向的是显示顺序。
+                guard rows.indices.contains(rowIndex) else { continue }
+                let row = rows[rowIndex]
                 let cells = (0..<result.columns.count).map { index -> String in
                     guard row.indices.contains(index) else { return "" }
                     return row[index] ?? "NULL"

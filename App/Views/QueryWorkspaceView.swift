@@ -301,6 +301,9 @@ struct QueryEditorView: View {
                 isExecuting: tab.isExecuting,
                 onExport: { format in
                     Task { await appState.exportResult(for: tab.id, format: format) }
+                },
+                onGenerateWhere: { clause in
+                    appState.applyClientFilterWhere(clause, for: tab.id)
                 }
             )
         }

@@ -221,6 +221,44 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultEmptyTitle
     case resultEmptyDescription
 
+    // 结果区：表头排序（FR-RES-08）
+    case resultSortHelp
+    case resultSortClear
+
+    // 结果区：筛选条（FR-RES-09）
+    case resultFilterAdd
+    case resultFilterColumn
+    case resultFilterValue
+    case resultFilterRemove
+    case resultFilterClear
+    case resultFilterCaseSensitive
+    case resultFilterClientOnlyNote
+    case resultFilterGenerateWhere
+    case resultFilterWhereInjected
+    case resultFilterWhereAlreadyPresent
+    case resultFilterWhereFailed
+
+    // 结果区：筛选运算符
+    case filterOpContains
+    case filterOpNotContains
+    case filterOpEquals
+    case filterOpNotEquals
+    case filterOpGreaterThan
+    case filterOpGreaterThanOrEqual
+    case filterOpLessThan
+    case filterOpLessThanOrEqual
+    case filterOpIsEmpty
+    case filterOpIsNotEmpty
+
+    // 结果区：分页条（FR-RES-10）
+    case resultPageIndicator
+    case resultPageSize
+    case resultPageAll
+    case resultPageFirst
+    case resultPagePrevious
+    case resultPageNext
+    case resultPageLast
+
     // 对象树
     case treeLoading
     case treeLoadingObjects
@@ -964,6 +1002,40 @@ public enum LocalizedStrings {
         .resultExecuting: [.simplifiedChinese: "正在执行…", .english: "Executing…"],
         .resultEmptyTitle: [.simplifiedChinese: "暂无结果", .english: "No Results"],
         .resultEmptyDescription: [.simplifiedChinese: "执行 SQL 后，结果会显示在这里", .english: "Run a query to see results here"],
+
+        .resultSortHelp: [.simplifiedChinese: "点击排序：升序 → 降序 → 取消；按住 Shift 点击可加为次要排序键", .english: "Click to sort: ascending → descending → off; Shift-click to add a secondary sort key"],
+        .resultSortClear: [.simplifiedChinese: "清除排序", .english: "Clear Sort"],
+
+        .resultFilterAdd: [.simplifiedChinese: "添加筛选", .english: "Add Filter"],
+        .resultFilterColumn: [.simplifiedChinese: "列", .english: "Column"],
+        .resultFilterValue: [.simplifiedChinese: "比较值", .english: "Value"],
+        .resultFilterRemove: [.simplifiedChinese: "移除这条筛选", .english: "Remove this filter"],
+        .resultFilterClear: [.simplifiedChinese: "清空筛选", .english: "Clear Filters"],
+        .resultFilterCaseSensitive: [.simplifiedChinese: "区分大小写", .english: "Case sensitive"],
+        .resultFilterClientOnlyNote: [.simplifiedChinese: "仅对已加载的 %d 行生效（客户端排序 / 筛选）", .english: "Applies to the %d loaded rows only (client-side sort/filter)"],
+        .resultFilterGenerateWhere: [.simplifiedChinese: "用筛选条件生成 WHERE", .english: "Generate WHERE from filters"],
+        .resultFilterWhereInjected: [.simplifiedChinese: "已在编辑器中插入 WHERE 条件 —— 请过目后再执行", .english: "WHERE clause inserted into the editor — review it before running"],
+        .resultFilterWhereAlreadyPresent: [.simplifiedChinese: "编辑器中的查询已有 WHERE，未自动合并 —— 请把条件手动并进去", .english: "The query already has a WHERE clause; nothing was merged — add the condition manually"],
+        .resultFilterWhereFailed: [.simplifiedChinese: "无法生成 WHERE：%@", .english: "Cannot generate WHERE: %@"],
+
+        .filterOpContains: [.simplifiedChinese: "包含", .english: "contains"],
+        .filterOpNotContains: [.simplifiedChinese: "不包含", .english: "does not contain"],
+        .filterOpEquals: [.simplifiedChinese: "等于", .english: "equals"],
+        .filterOpNotEquals: [.simplifiedChinese: "不等于", .english: "does not equal"],
+        .filterOpGreaterThan: [.simplifiedChinese: "大于", .english: "greater than"],
+        .filterOpGreaterThanOrEqual: [.simplifiedChinese: "大于等于", .english: "greater than or equal"],
+        .filterOpLessThan: [.simplifiedChinese: "小于", .english: "less than"],
+        .filterOpLessThanOrEqual: [.simplifiedChinese: "小于等于", .english: "less than or equal"],
+        .filterOpIsEmpty: [.simplifiedChinese: "为空", .english: "is empty"],
+        .filterOpIsNotEmpty: [.simplifiedChinese: "非空", .english: "is not empty"],
+
+        .resultPageIndicator: [.simplifiedChinese: "第 %d / %d 页 · 共 %d 行", .english: "Page %d / %d · %d rows"],
+        .resultPageSize: [.simplifiedChinese: "每页", .english: "Rows per page"],
+        .resultPageAll: [.simplifiedChinese: "全部", .english: "All"],
+        .resultPageFirst: [.simplifiedChinese: "第一页", .english: "First page"],
+        .resultPagePrevious: [.simplifiedChinese: "上一页", .english: "Previous page"],
+        .resultPageNext: [.simplifiedChinese: "下一页", .english: "Next page"],
+        .resultPageLast: [.simplifiedChinese: "最后一页", .english: "Last page"],
 
         .treeLoading: [.simplifiedChinese: "加载中…", .english: "Loading…"],
         .treeLoadingObjects: [.simplifiedChinese: "加载对象…", .english: "Loading objects…"],

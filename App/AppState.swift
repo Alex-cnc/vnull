@@ -2805,6 +2805,24 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// R-21：把结果区筛出的条件变成 `WHERE` **注入编辑器**（只改文本，**绝不自动执行**）。
+    ///
+    /// 拿不准就明说而不是硬插：已有 `WHERE`、多条语句、含 UNION 时都不动原语句，
+    /// 只给一条提示 —— 悄悄改掉用户的查询比不做更糟。
+    func applyClientFilterWhere(_ whereClause: String, for tabID: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+        switch SQLFilterInjector.inject(whereClause: whereClause, into: tabs[index].sql) {
+        case .injected(let newSQL):
+            updateSQL(newSQL, for: tabID)
+            statusMessage = L(.resultFilterWhereInjected)
+        case .alreadyHasWhere:
+            statusMessage = L(.resultFilterWhereAlreadyPresent)
+        case .unsupported(let reason):
+            statusMessage = L(.resultFilterWhereFailed, reason)
+        }
+    }
+
     func updateSQL(_ sql: String, for tabID: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         tabs[index].sql = sql
