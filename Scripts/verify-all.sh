@@ -20,25 +20,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/7 Core 与平台适配层单测"
+echo "==> 1/8 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/7 Core 平台中立性"
+echo "==> 2/8 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/7 文档表格与派生计数"
+echo "==> 3/8 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 
-echo "==> 4/7 设计令牌棘轮"
+echo "==> 4/8 需求状态一致性（索引表 ↔ 正文定义行）"
+python3 Scripts/check-status-consistency.py
+
+echo "==> 5/8 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 5/7 平台等价矩阵"
+echo "==> 6/8 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 6/7 平台中立性棘轮"
+echo "==> 7/8 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 7/7 打包 .app（沙箱）"
+echo "==> 8/8 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
 echo "✅ 验证闭环全部通过"
