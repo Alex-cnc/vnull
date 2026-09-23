@@ -26,10 +26,10 @@ struct ObjectTreeView: View {
     @State private var createTableTarget: DatabaseObject?
     /// 「编辑表结构」的目标表节点；非 nil 时呈现表设计面板（编辑模式）。
     @State private var alterTableTarget: DatabaseObject?
-    /// 为什么"按条件浏览 / 合成数据"不再有本地 `@State` 目标：
-    /// 这两个面板的入口有两个（右键菜单与 ⌘K 命令面板），目标统一取
-    /// `appState.selectedTreeObject`、呈现开关统一取 AppState 的标志位。
-    /// 本地 state 与全局标志位各存一份，迟早出现"面板开了、对象却是上一个"。
+    // 注：「按条件浏览 / 合成数据」这两个面板**没有**本地目标 state。
+    // 它们的入口有两个（右键菜单与 ⌘K 命令面板），目标统一取 `appState.selectedTreeObject`、
+    // 呈现开关统一取 AppState 的标志位 —— 本地 state 与全局标志位各存一份，
+    // 迟早出现"面板开了、对象却是上一个"。
     /// 库属性 / 删除数据库（FR-SESS-05）。
     @State private var isPropertiesPresented = false
     @State private var isDropDatabasePresented = false
