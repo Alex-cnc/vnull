@@ -520,6 +520,10 @@ final class AppState: ObservableObject {
     /// 审计日志（追加式 JSONL）；导出前脱敏在 Core 里完成（NFR-AI-03）。
     private let agentAuditLog = AgentAuditLog.shared
     private let egressLog = EgressLog.shared
+    /// 浏览器页签的会话持久化（恢复**不自动请求**，见 `BrowserTabStore` 的说明）。
+    private let browserTabStore = BrowserTabStore.shared
+    /// 引擎是否已经为某个页签发过请求 —— 用来区分「恢复出来还没加载」与「已在浏览」。
+    @Published var browserEngineLoadedPageIDs: Set<UUID> = []
 
 
     /// 连接缓存键：同一个「已保存连接」可以在多个数据库上各持有一条连接。
@@ -552,6 +556,32 @@ final class AppState: ObservableObject {
         Task {
             await loadConnections()
             await loadSavedQueries()
+            await restoreBrowserTabs()
+        }
+    }
+
+    /// 恢复上次的浏览器页签：**只恢复地址与历史，不发起任何请求**。
+    ///
+    /// 恢复完不自动选中它们 —— 用户上次在写 SQL，就该回到 SQL（选中态不持久化是刻意的：
+    /// 把"上次在看某个网页"当成默认状态，反而会在启动时把一个空白浏览器推到眼前）。
+    private func restoreBrowserTabs() async {
+        do {
+            browserPages = try await browserTabStore.load()
+        } catch {
+            // 文件损坏之类：如实说出来，但不要打断启动。
+            statusMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 任何页签变化都落盘（失败只提示，不影响使用）。
+    private func persistBrowserTabs() {
+        let pages = browserPages
+        Task {
+            do {
+                try await browserTabStore.save(pages)
+            } catch {
+                statusMessage = ErrorPresenter.message(for: error)
+            }
         }
     }
 
@@ -1443,6 +1473,7 @@ final class AppState: ObservableObject {
         let page = BrowserPage()
         browserPages.append(page)
         selectedBrowserID = page.id
+        persistBrowserTabs()
         return page.id
     }
 
@@ -1454,6 +1485,8 @@ final class AppState: ObservableObject {
     func closeBrowserTab(_ id: UUID) {
         browserPages.removeAll { $0.id == id }
         browserEngines[id] = nil
+        browserEngineLoadedPageIDs.remove(id)
+        persistBrowserTabs()
         if selectedBrowserID == id {
             selectedBrowserID = browserPages.last?.id
         }
@@ -1469,6 +1502,9 @@ final class AppState: ObservableObject {
         // 界面就停在旧状态；`setUpdateHandler` 在主线程回调，直接转发即可。
         engine.setUpdateHandler { [weak self] updated in
             self?.applyBrowserUpdate(updated)
+            if !updated.isLoading, updated.url != nil {
+                self?.browserEngineLoadedPageIDs.insert(updated.id)
+            }
         }
         browserEngines[page.id] = engine
         return engine
@@ -1478,6 +1514,13 @@ final class AppState: ObservableObject {
     func applyBrowserUpdate(_ page: BrowserPage) {
         guard let index = browserPages.firstIndex(where: { $0.id == page.id }) else { return }
         browserPages[index] = page
+        // 标题 / 地址变化也落盘：否则下次恢复出来的是上次启动时的旧地址。
+        persistBrowserTabs()
+    }
+
+    /// 这个页签是否已经加载过（false = 从会话里恢复出来、还没发过请求）。
+    func isBrowserPagePristine(_ id: UUID) -> Bool {
+        !browserEngineLoadedPageIDs.contains(id)
     }
 
     /// 地址栏提交：解析 → 交给引擎（引擎内部先过 Core 策略、再写外发日志）。

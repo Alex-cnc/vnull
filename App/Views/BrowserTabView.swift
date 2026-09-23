@@ -110,7 +110,32 @@ struct BrowserTabView: View {
 
     @ViewBuilder
     private var content: some View {
-        if page.url == nil {
+        if page.url != nil, appState.isBrowserPagePristine(page.id) {
+            // 从会话恢复出来的页签：**不自动请求**（否则只是打开应用，数据就已经出网了）。
+            // 给出明确的一步：用户点了才加载。
+            VStack(spacing: Spacing.s) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .imageScale(.large)
+                    .foregroundStyle(Theme.text(.secondary))
+                Text(L(.browserRestoredTitle))
+                    .font(Theme.font(.body))
+                    .foregroundStyle(Theme.text(.primary))
+                Text(page.url?.absoluteString ?? "")
+                    .font(Theme.font(.monoSmall))
+                    .foregroundStyle(Theme.text(.secondary))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(L(.browserRestoredHint))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+                Button(L(.browserReload)) {
+                    let engine = appState.browserEngine(for: page)
+                    Task { await engine.reload() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if page.url == nil {
             // 空白页：明确写出「还没有发起任何请求」——空态本身就是承诺的展示。
             ContentUnavailableView(
                 L(.browserTitle),
