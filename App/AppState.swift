@@ -3,6 +3,7 @@ import Combine
 import AppKit
 import UniformTypeIdentifiers
 import DoyahCore
+import DoyahPlatform
 
 struct QueryTab: Identifiable {
     let id: UUID
@@ -642,7 +643,7 @@ final class AppState: ObservableObject {
     func refreshSQLArchiveStatus() async {
         do {
             let bookmark = try await sqlArchiveBookmarks.all().first
-            let chosenStatus = bookmark.map { SecureDirectoryAccess.status(for: $0) }
+            let chosenStatus = bookmark.map { MacDirectoryAccess.status(for: $0) }
             // **优先级：单独指定 > 工作区 > 没有**（判定收在 Core 的 ArchiveLocation，可单测）
             guard let resolved = ArchiveLocation.queriesDirectory(
                 chosenPath: chosenStatus?.path,
@@ -673,7 +674,7 @@ final class AppState: ObservableObject {
         do {
             guard let url = try dataTaskDirectoryPicker.pickDirectory(prompt: L(.archiveChooseDirectory))
             else { return }
-            let bookmark = try SecureDirectoryAccess.makeBookmark(for: url, displayName: L(.archiveTitle))
+            let bookmark = try MacDirectoryAccess.makeBookmark(for: url, displayName: L(.archiveTitle))
             _ = try await sqlArchiveBookmarks.save(bookmark)
             await refreshSQLArchiveStatus()
         } catch {
@@ -721,7 +722,7 @@ final class AppState: ObservableObject {
                 defer { grant?.stopAccessing() }
                 var chosenPath: String?
                 if let bookmark = try await self.sqlArchiveBookmarks.all().first {
-                    let opened = try SecureDirectoryAccess.open(bookmark)
+                    let opened = try MacDirectoryAccess.open(bookmark)
                     grant = opened
                     chosenPath = opened.url.path
                 }
@@ -1813,7 +1814,7 @@ final class AppState: ObservableObject {
     ) async -> DataTaskDefinition.ExportSettings? {
         dataTaskError = nil
         do {
-            guard let settings = try SecureDirectoryAccess.requestExportSettings(
+            guard let settings = try MacDirectoryAccess.requestExportSettings(
                 prompt: L(.dataTaskChooseDirectory),
                 format: format,
                 fileNameTemplate: fileNameTemplate,
@@ -1846,10 +1847,10 @@ final class AppState: ObservableObject {
     func dataTaskDirectoryStatus(
         _ settings: DataTaskDefinition.ExportSettings?
     ) -> DirectoryAccessStatus? {
-        guard let settings, let bookmark = SecureDirectoryAccess.bookmark(from: settings) else {
+        guard let settings, let bookmark = MacDirectoryAccess.bookmark(from: settings) else {
             return nil
         }
-        return SecureDirectoryAccess.status(for: bookmark)
+        return MacDirectoryAccess.status(for: bookmark)
     }
 
     /// 验证授权目录真的可写：把「任务定义 + 试运行预览」写成一份说明文件。
@@ -1859,14 +1860,14 @@ final class AppState: ObservableObject {
     @discardableResult
     func verifyDataTaskExportDirectory(_ task: DataTaskDefinition) async -> Bool {
         guard let settings = task.output,
-              let bookmark = SecureDirectoryAccess.bookmark(from: settings)
+              let bookmark = MacDirectoryAccess.bookmark(from: settings)
         else {
             dataTaskError = DataTaskRunError.missingExportSettings.errorDescription
             return false
         }
 
         do {
-            let grant = try SecureDirectoryAccess.open(bookmark)
+            let grant = try MacDirectoryAccess.open(bookmark)
             defer { grant.stopAccessing() }
             let url = try DataTaskRunner.exportPreviewReport(
                 for: task,
@@ -1887,10 +1888,10 @@ final class AppState: ObservableObject {
         from settings: DataTaskDefinition.ExportSettings,
         displayName: String
     ) async {
-        guard var bookmark = SecureDirectoryAccess.bookmark(from: settings, displayName: displayName) else {
+        guard var bookmark = MacDirectoryAccess.bookmark(from: settings, displayName: displayName) else {
             return
         }
-        if case .granted(let path, _) = SecureDirectoryAccess.status(for: bookmark) {
+        if case .granted(let path, _) = MacDirectoryAccess.status(for: bookmark) {
             bookmark.lastKnownPath = path
         }
         if let existing = storedDirectoryBookmarks.first(where: {
@@ -2038,11 +2039,11 @@ final class AppState: ObservableObject {
     /// 读源表 → 按任务导出设置写进**授权目录**（目录来自书签解析，不硬编码）。
     private func exportDataTaskArtifact(_ task: DataTaskDefinition) async throws -> String {
         guard let settings = task.output,
-              let bookmark = SecureDirectoryAccess.bookmark(from: settings)
+              let bookmark = MacDirectoryAccess.bookmark(from: settings)
         else { throw DataTaskRunError.missingExportSettings }
         guard let configuration = selectedConnection else { throw AppError.notConnected }
 
-        let grant = try SecureDirectoryAccess.open(bookmark)
+        let grant = try MacDirectoryAccess.open(bookmark)
         defer { grant.stopAccessing() }
 
         let service = try await ensureService(

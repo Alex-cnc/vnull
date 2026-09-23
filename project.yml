@@ -36,9 +36,27 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0
     dependencies:
-      - sdk: Security.framework
+      # Core 依赖 PostgresNIO（跨平台），但**不依赖 Security.framework** ——
+      # 系统凭据存储的实现在 DoyahPlatform 里。
       - package: PostgresNIO
         product: PostgresNIO
+
+  DoyahPlatform:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Platform/macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahPlatform
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+    dependencies:
+      - target: DoyahCore
+      - sdk: Security.framework
 
   DoyahStudio:
     type: application
@@ -52,6 +70,7 @@ targets:
           - "Resources/AppIcon-1024.png"
     dependencies:
       - target: DoyahCore
+      - target: DoyahPlatform
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahStudio
@@ -69,9 +88,23 @@ targets:
       - path: Tests
     dependencies:
       - target: DoyahCore
+      - target: DoyahPlatform
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahStudioTests
+        GENERATE_INFOPLIST_FILE: YES
+
+  DoyahPlatformTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: TestsPlatform
+    dependencies:
+      - target: DoyahCore
+      - target: DoyahPlatform
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: studio.doyah.DoyahPlatformTests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
@@ -79,11 +112,14 @@ schemes:
     build:
       targets:
         DoyahCore: all
+        DoyahPlatform: all
         DoyahStudioTests: [test]
+        DoyahPlatformTests: [test]
     test:
       config: Debug
       targets:
         - DoyahStudioTests
+        - DoyahPlatformTests
   DoyahStudio:
     build:
       targets:

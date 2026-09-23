@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import DoyahCore
+import DoyahPlatform
 
 /// 工作区状态（FR-EDIT-32）：用户自选目录 + 沙箱授权书签 + 一层懒加载的文件树。
 ///
@@ -119,7 +120,7 @@ final class WorkspaceStore: ObservableObject {
         isBusy = true
         defer { isBusy = false }
         do {
-            let created = try SecureDirectoryAccess.makeBookmark(for: url)
+            let created = try MacDirectoryAccess.makeBookmark(for: url)
             // 工作区只保留一个：先清空再存，免得「已授权目录」列表越滚越长。
             try await store.removeAll()
             let saved = try await store.save(created)
@@ -212,7 +213,7 @@ final class WorkspaceStore: ObservableObject {
 
     /// 采用一份书签：解析状态 → 取用授权 → 读根目录。
     private func adopt(_ bookmark: DirectoryBookmark) {
-        let resolved = SecureDirectoryAccess.status(for: bookmark)
+        let resolved = MacDirectoryAccess.status(for: bookmark)
         grant?.stopAccessing()
         grant = nil
         childrenCache.removeAll()
@@ -225,7 +226,7 @@ final class WorkspaceStore: ObservableObject {
             return
         }
         do {
-            grant = try SecureDirectoryAccess.open(bookmark)
+            grant = try MacDirectoryAccess.open(bookmark)
         } catch {
             // 解析得到路径但取用失败：仍然把目录显示出来（非沙箱下这是常态），只记下原因。
             loadError = ErrorPresenter.message(for: error)

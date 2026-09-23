@@ -347,7 +347,7 @@ func drawWorkspaceExplorer(_ c: Canvas, theme: Theme, accent: Accent, x: CGFloat
     c.hairline(x: x, y: footerY, length: width, vertical: false, color: theme.hairline)
     c.fill(NSRect(x: x + 16, y: footerY + 12, width: 6, height: 6), theme.success)
     c.text(
-        "已授权读写：/Users/alex/.dsh/projects/DoyahStudio",
+        "已授权读写：/Users/me/Documents/Doyah 工作区",
         at: CGPoint(x: x + 28, y: footerY + 8),
         font: Typography.caption,
         color: theme.textTertiary

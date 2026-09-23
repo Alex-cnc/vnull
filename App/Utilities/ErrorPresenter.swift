@@ -13,8 +13,8 @@ enum ErrorPresenter {
                 return L(.errorNotConnected)
             case .notImplemented(let feature):
                 return L(.errorNotImplemented, feature)
-            case .keychain(let status):
-                return L(.errorKeychain, status)
+            case .credentialStore(let code):
+                return L(.errorKeychain, code)
             case .persistence(let reason):
                 return L(.errorPersistence, reason)
             case .queryFailed(let message):
