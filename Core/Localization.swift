@@ -259,6 +259,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case resultPageNext
     case resultPageLast
 
+    // 连接配置迁移（FR-CONN-10）
+    case connectionMigrated
+    case connectionNewerVersionKept
+
     // 事务模式（FR-EXEC-15）
     case transactionModeAuto
     case transactionModeManual
@@ -1053,6 +1057,9 @@ public enum LocalizedStrings {
         .resultPagePrevious: [.simplifiedChinese: "上一页", .english: "Previous page"],
         .resultPageNext: [.simplifiedChinese: "下一页", .english: "Next page"],
         .resultPageLast: [.simplifiedChinese: "最后一页", .english: "Last page"],
+
+        .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
+        .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 
         .transactionModeAuto: [.simplifiedChinese: "自动提交", .english: "Auto-commit"],
         .transactionModeManual: [.simplifiedChinese: "手工事务", .english: "Manual transaction"],

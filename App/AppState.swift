@@ -615,7 +615,17 @@ final class AppState: ObservableObject {
 
     func loadConnections() async {
         do {
-            connections = try await store.load()
+            // 迁移与提示一起处理（FR-CONN-10）：老格式静默升级，来自更新版本的配置
+            // 必须**说出来** —— 否则用户只会看到"我的连接怎么少字段了"（见 R-40）。
+            let (loaded, migration) = try await store.loadWithReport()
+            connections = loaded
+            if migration.didMigrate {
+                statusMessage = L(.connectionMigrated, migration.migrated.count)
+            }
+            if migration.didSkipNewer {
+                let versions = migration.skippedNewerVersions.keys.sorted().map(String.init).joined(separator: "、")
+                errorMessage = L(.connectionNewerVersionKept, versions)
+            }
             canCreateDatabase = nil
             if selectedConnectionID == nil {
                 // 上次选中的连接仍然存在时优先恢复（FR-CONN-11），否则退回第一条。
