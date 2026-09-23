@@ -83,24 +83,52 @@ public enum LocalSecretsLocation {
     public static let directoryName = ".secrets"
     public static let fileName = "credentials.json"
 
-    public static func directory(
+    /// 口令文件的**候选目录**，按优先级排列。
+    ///
+    /// 为什么是"候选"而不是"一个位置"：**沙箱构建的应用读不到工作区之外的路径** ——
+    /// 只认工程目录时，沙箱版应用读不到口令，就会报「读取密码失败」（实测踩到）。
+    /// 所以读的时候按顺序找、写的时候**每个可写的都写一份**：
+    ///   · 非沙箱构建 / CLI：项目内 + 容器各一份，两边一致；
+    ///   · 沙箱构建：项目内那份写不进去（会失败被跳过），容器那份成功 → 照样能用。
+    /// 只要写入都经过本类，多份之间就不会漂移。
+    public static func candidateDirectories(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundleURL: URL = Bundle.main.bundleURL,
         applicationSupport: URL? = nil
-    ) -> URL {
+    ) -> [URL] {
+        var candidates: [URL] = []
         if let override = environment["DOYAH_SECRETS_DIR"], !override.isEmpty {
-            return URL(fileURLWithPath: override, isDirectory: true)
+            candidates.append(URL(fileURLWithPath: override, isDirectory: true))
         }
         if let root = projectRoot(startingAt: bundleURL) {
-            return root.appendingPathComponent(directoryName, isDirectory: true)
+            candidates.append(root.appendingPathComponent(directoryName, isDirectory: true))
         }
         let base = applicationSupport ?? FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base
-            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
-            .appendingPathComponent(directoryName, isDirectory: true)
+        candidates.append(
+            base
+                .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+                .appendingPathComponent(directoryName, isDirectory: true)
+        )
+
+        // 去重（同一路径只留一次），保持优先级顺序。
+        var seen: Set<String> = []
+        return candidates.filter { seen.insert($0.standardizedFileURL.path).inserted }
+    }
+
+    /// 首选位置（用于展示与"写到哪儿"的提示）：候选里的第一个。
+    public static func directory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundleURL: URL = Bundle.main.bundleURL,
+        applicationSupport: URL? = nil
+    ) -> URL {
+        candidateDirectories(
+            environment: environment,
+            bundleURL: bundleURL,
+            applicationSupport: applicationSupport
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
     }
 
     /// 从应用包往上找工程根：为**开发形态**服务（包在 `dist/` 下，往上两层就是仓库根）。
@@ -126,16 +154,29 @@ public enum LocalSecretsLocation {
 
 /// 文件形态的口令存储（开发 / 验收用；见 `LocalSecretsCipher` 的安全边界）。
 public final class FileSecretStore: SecretStore, @unchecked Sendable {
-    private let fileURL: URL
+    /// 候选文件（按优先级）；读时先命中先用，写时每个可写的都写。
+    private let fileURLs: [URL]
     private let lock = NSLock()
 
     public init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? LocalSecretsLocation.fileURL(
-            directory: LocalSecretsLocation.directory()
-        )
+        if let fileURL {
+            self.fileURLs = [fileURL]
+        } else {
+            self.fileURLs = LocalSecretsLocation.candidateDirectories().map(
+                LocalSecretsLocation.fileURL(directory:)
+            )
+        }
     }
 
-    public func location() -> URL { fileURL }
+    public init(fileURLs: [URL]) {
+        self.fileURLs = fileURLs
+    }
+
+    /// 首选位置（展示用）。
+    public func location() -> URL { fileURLs[0] }
+
+    /// 实际会读/写的所有位置 —— 报错时把它说出来，省得下次又靠猜。
+    public func searchedLocations() -> [URL] { fileURLs }
 
     public func setPassword(_ password: String, for connectionID: UUID) throws {
         try mutate { store in
@@ -159,8 +200,18 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     }
 
     public func deletePassword(for connectionID: UUID) throws {
+        // `mutate` 会把合并后的内容写回**所有**可写候选，因此这里删一次就够了 ——
+        // 但如果某一份不可写（沙箱），那份可能残留；用 removeAll 语义补齐。
         try mutate { store in
             store.entries.removeValue(forKey: connectionID.uuidString)
+        }
+        for fileURL in fileURLs where FileManager.default.fileExists(atPath: fileURL.path) {
+            guard let data = try? Data(contentsOf: fileURL), !data.isEmpty,
+                  var store = try? JSONDecoder().decode(Store.self, from: data) else { continue }
+            store.entries.removeValue(forKey: connectionID.uuidString)
+            if let payload = try? JSONEncoder().encode(store) {
+                try? payload.write(to: fileURL, options: .atomic)
+            }
         }
     }
 
@@ -175,48 +226,73 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
     private func read<T>(_ body: (Store) -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return body(Store()) }
-        do {
-            let data = try Data(contentsOf: fileURL)
-            guard !data.isEmpty else { return body(Store()) }
-            return body(try JSONDecoder().decode(Store.self, from: data))
-        } catch {
-            // 损坏要**如实抛错**：静默返回 nil 会让"密码怎么没了"变成无解悬案。
-            throw AppError.persistence("口令文件读取失败：\(error.localizedDescription)")
+        for fileURL in fileURLs {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { continue }
+            do {
+                let data = try Data(contentsOf: fileURL)
+                guard !data.isEmpty else { continue }
+                return body(try JSONDecoder().decode(Store.self, from: data))
+            } catch {
+                // 损坏要**如实抛错**：静默返回 nil 会让"密码怎么没了"变成无解悬案。
+                // 同时把路径说出来 —— 多候选之后，不说路径就没法判断读的是哪一份。
+                throw AppError.persistence(
+                    "口令文件读取失败（\(fileURL.path)）：\(error.localizedDescription)"
+                )
+            }
         }
+        return body(Store())
     }
 
     private func mutate(_ body: (inout Store) -> Void) throws {
         lock.lock()
         defer { lock.unlock() }
+
+        // 以第一份**可读**的为准（保证多份之间以它为基础合并），没有就从空开始。
         var store = Store()
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                let data = try Data(contentsOf: fileURL)
-                if !data.isEmpty {
-                    store = try JSONDecoder().decode(Store.self, from: data)
-                }
-            } catch {
-                throw AppError.persistence("口令文件读取失败：\(error.localizedDescription)")
+        for fileURL in fileURLs where FileManager.default.fileExists(atPath: fileURL.path) {
+            if let data = try? Data(contentsOf: fileURL), !data.isEmpty,
+               let decoded = try? JSONDecoder().decode(Store.self, from: data) {
+                store = decoded
+                break
             }
         }
         body(&store)
 
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let payload: Data
         do {
-            try FileManager.default.createDirectory(
-                at: fileURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(store).write(to: fileURL, options: .atomic)
-            // 权限 0600：同机其他用户读不到（尽力而为，失败不阻断）。
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: fileURL.path
-            )
+            payload = try encoder.encode(store)
         } catch {
-            throw AppError.persistence("口令文件写入失败：\(error.localizedDescription)")
+            throw AppError.persistence("口令文件编码失败：\(error.localizedDescription)")
+        }
+
+        // 写到**每一个可写**的候选：沙箱构建只写得进容器那份，非沙箱与 CLI 两份都写。
+        var written: [URL] = []
+        var lastError: (any Error)?
+        for fileURL in fileURLs {
+            do {
+                try FileManager.default.createDirectory(
+                    at: fileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try payload.write(to: fileURL, options: .atomic)
+                // 权限 0600：同机其他用户读不到（尽力而为，失败不阻断）。
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: fileURL.path
+                )
+                written.append(fileURL)
+            } catch {
+                lastError = error
+            }
+        }
+
+        guard !written.isEmpty else {
+            throw AppError.persistence(
+                "口令文件写入失败（已尝试：\(fileURLs.map(\.path).joined(separator: "、"))）："
+                + "\(lastError?.localizedDescription ?? "未知原因")"
+            )
         }
     }
 }
@@ -224,13 +300,17 @@ public final class FileSecretStore: SecretStore, @unchecked Sendable {
 /// 智能体 API Key 的文件形态存储（同上，单条目）。
 public final class FileAgentKeyStore: AgentKeyStore, @unchecked Sendable {
     private let entryKey = "agent.api-key"
-    private let fileURL: URL
+    private let fileURLs: [URL]
     private let lock = NSLock()
 
     public init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? LocalSecretsLocation.fileURL(
-            directory: LocalSecretsLocation.directory()
-        )
+        if let fileURL {
+            self.fileURLs = [fileURL]
+        } else {
+            self.fileURLs = LocalSecretsLocation.candidateDirectories().map(
+                LocalSecretsLocation.fileURL(directory:)
+            )
+        }
     }
 
     public func setAPIKey(_ key: String) throws {
@@ -261,35 +341,52 @@ public final class FileAgentKeyStore: AgentKeyStore, @unchecked Sendable {
     private func read<T>(_ body: (FileSecretStore.Store) -> T) throws -> T {
         lock.lock()
         defer { lock.unlock() }
-        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty,
-              let store = try? JSONDecoder().decode(FileSecretStore.Store.self, from: data) else {
-            return body(FileSecretStore.Store())
+        for fileURL in fileURLs {
+            guard let data = try? Data(contentsOf: fileURL), !data.isEmpty,
+                  let store = try? JSONDecoder().decode(FileSecretStore.Store.self, from: data) else {
+                continue
+            }
+            return body(store)
         }
-        return body(store)
+        return body(FileSecretStore.Store())
     }
 
     private func mutate(_ body: (inout FileSecretStore.Store) -> Void) throws {
         lock.lock()
         defer { lock.unlock() }
         var store = FileSecretStore.Store()
-        if let data = try? Data(contentsOf: fileURL), !data.isEmpty {
-            store = (try? JSONDecoder().decode(FileSecretStore.Store.self, from: data)) ?? store
+        for fileURL in fileURLs where FileManager.default.fileExists(atPath: fileURL.path) {
+            if let data = try? Data(contentsOf: fileURL), !data.isEmpty,
+               let decoded = try? JSONDecoder().decode(FileSecretStore.Store.self, from: data) {
+                store = decoded
+                break
+            }
         }
         body(&store)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let payload: Data
         do {
-            try FileManager.default.createDirectory(
+            payload = try encoder.encode(store)
+        } catch {
+            throw AppError.persistence("口令文件编码失败：\(error.localizedDescription)")
+        }
+        var written = 0
+        for fileURL in fileURLs {
+            guard (try? FileManager.default.createDirectory(
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(store).write(to: fileURL, options: .atomic)
+            )) != nil else { continue }
+            guard (try? payload.write(to: fileURL, options: .atomic)) != nil else { continue }
             try? FileManager.default.setAttributes(
                 [.posixPermissions: 0o600],
                 ofItemAtPath: fileURL.path
             )
-        } catch {
-            throw AppError.persistence("口令文件写入失败：\(error.localizedDescription)")
+            written += 1
+        }
+        guard written > 0 else {
+            throw AppError.persistence("口令文件写入失败（所有候选都不可写）")
         }
     }
 }

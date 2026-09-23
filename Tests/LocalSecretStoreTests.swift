@@ -179,4 +179,70 @@ final class LocalSecretStoreTests: XCTestCase {
         try store.deleteAPIKey()
         XCTAssertNil(try store.apiKey())
     }
+
+    // MARK: - 多候选（项目内 + 容器）：沙箱构建读的是容器那份
+
+    /// 写入镜像到所有可写候选；任一候选都能独立解出同一个口令。
+    func testWriteMirrorsAcrossAllCandidates() throws {
+        let repo = directory.appendingPathComponent("repo/credentials.json")
+        let container = directory.appendingPathComponent("container/credentials.json")
+        let store = FileSecretStore(fileURLs: [repo, container])
+        let id = UUID()
+
+        try store.setPassword("mirrored", for: id)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: container.path))
+        XCTAssertEqual(try FileSecretStore(fileURL: repo).password(for: id), "mirrored")
+        XCTAssertEqual(try FileSecretStore(fileURL: container).password(for: id), "mirrored")
+    }
+
+    /// 读时按候选顺序回退：第一份不存在/没有该条目，就用下一份 ——
+    /// 这正是"沙箱应用读不到项目内那份"时的活路。
+    func testReadFallsBackToLaterCandidate() throws {
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        let id = UUID()
+
+        // 只写第二份（模拟：项目内那份在沙箱里不可读 / 不存在）
+        try FileSecretStore(fileURL: second).setPassword("only-in-container", for: id)
+
+        let store = FileSecretStore(fileURLs: [first, second])
+        XCTAssertEqual(try store.password(for: id), "only-in-container")
+    }
+
+    /// 删除要把所有候选里的条目都清掉，不能只清第一份。
+    func testDeleteClearsEveryCandidate() throws {
+        let first = directory.appendingPathComponent("repo/credentials.json")
+        let second = directory.appendingPathComponent("container/credentials.json")
+        let store = FileSecretStore(fileURLs: [first, second])
+        let id = UUID()
+        try store.setPassword("x", for: id)
+
+        try store.deletePassword(for: id)
+
+        XCTAssertNil(try FileSecretStore(fileURL: first).password(for: id))
+        XCTAssertNil(try FileSecretStore(fileURL: second).password(for: id))
+    }
+
+    /// 全部候选都不可写时，要抛出**说得出路径**的错误。
+    func testWriteFailureListsAttemptedPaths() throws {
+        let blocked = directory.appendingPathComponent("blocked-file")
+        try Data("not a directory".utf8).write(to: blocked)
+        let store = FileSecretStore(fileURLs: [blocked.appendingPathComponent("credentials.json")])
+
+        do {
+            try store.setPassword("x", for: UUID())
+            XCTFail("不可写时应当抛错")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("已尝试"), error.localizedDescription)
+        }
+    }
+
+    /// `searchedLocations()` 供界面把"找过哪些路径"显示出来（排障用）。
+    func testSearchedLocationsExposed() {
+        let first = directory.appendingPathComponent("a/credentials.json")
+        let second = directory.appendingPathComponent("b/credentials.json")
+        XCTAssertEqual(FileSecretStore(fileURLs: [first, second]).searchedLocations().count, 2)
+    }
 }

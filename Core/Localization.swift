@@ -671,6 +671,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case stateFinishedEmpty
     case stateQueryNoResultSet
     case stateMissingPassword
+    case statePasswordSearched
 
     // 错误提示
     case errorInvalidConfiguration
@@ -1252,6 +1253,7 @@ public enum LocalizedStrings {
         .stateFinishedEmpty: [.simplifiedChinese: "执行完成，无结果集", .english: "Finished with no result set"],
         .stateQueryNoResultSet: [.simplifiedChinese: "查询没有返回结果集", .english: "The query returned no result set"],
         .stateMissingPassword: [.simplifiedChinese: "连接缺少密码，请重新编辑连接并保存密码", .english: "Password missing; edit the connection and save the password"],
+        .statePasswordSearched: [.simplifiedChinese: "已查找口令文件：%@", .english: "Looked for the secret file at: %@"],
 
         .errorInvalidConfiguration: [.simplifiedChinese: "连接配置无效：%@", .english: "Invalid connection configuration: %@"],
         .errorNotConnected: [.simplifiedChinese: "当前没有已建立的数据库连接", .english: "No database connection is established"],

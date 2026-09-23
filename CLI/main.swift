@@ -27,7 +27,14 @@ struct DoyahCLI {
     ///   DoyahCLI secret delete --id <连接 UUID>
     ///   DoyahCLI secret path                                 # 打印口令文件路径
     static func runSecretCommand(arguments: [String]) async -> Int32 {
-        let store = FileSecretStore()
+        // `--file <path>`：只针对某一个口令文件操作（多候选之后，验证与排障都需要它 ——
+        // 否则读操作会回退到别的候选，"读到了"并不能证明指定那份是好的）。
+        let store: FileSecretStore
+        if let index = arguments.firstIndex(of: "--file"), index + 1 < arguments.count {
+            store = FileSecretStore(fileURL: URL(fileURLWithPath: arguments[index + 1]))
+        } else {
+            store = FileSecretStore()
+        }
         func value(of flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
             return arguments[index + 1]

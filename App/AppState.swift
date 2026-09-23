@@ -919,6 +919,16 @@ final class AppState: ObservableObject {
 
     func password(for configuration: ConnectionConfig) -> String? {
         do {
+            if let fileStore = secretStore as? FileSecretStore {
+                // 多候选之后，"口令读不到"必须能自己说清是在哪儿找的 ——
+                // 否则沙箱构建读不到项目内那份时，只能靠人猜（本轮就踩过这个坑）。
+                if let password = try fileStore.password(for: configuration.id) {
+                    return password
+                }
+                let searched = fileStore.searchedLocations().map(\.path).joined(separator: "、")
+                errorMessage = L(.stateMissingPassword) + "\n" + L(.statePasswordSearched, searched)
+                return nil
+            }
             return try secretStore.password(for: configuration.id)
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
