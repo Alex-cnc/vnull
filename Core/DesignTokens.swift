@@ -173,7 +173,11 @@ public enum StatusTone: String, CaseIterable, Sendable {
 ///
 /// 与状态色分开是有意的：把 GBase 的橙当成"警告"会让状态色失去含义 ——
 /// 用户看到橙色分不清"这是这个引擎的颜色"还是"这里有问题"。
-public enum CategoricalTone: String, CaseIterable, Sendable {
+/// 分类色（身份色，不是状态色）。
+///
+/// `Codable` 是 FR-CONN-16 需要：连接的**自选颜色**按**名字**存（`"teal"`），
+/// 不存具体色值 —— 色值随主题演化，存了它就要为"颜色改了、旧配置怎么办"再写一次迁移。
+public enum CategoricalTone: String, CaseIterable, Codable, Sendable {
     case blue
     case teal
     case magenta

@@ -13,6 +13,11 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
     public var sslMode: SSLMode
     public var timeout: Int
     public var schemaVersion: Int
+    /// 环境标签（FR-CONN-16）。`nil` = 没标 —— 不硬塞默认值：没标就是没标，
+    /// 假装"默认是生产"会让每个连接都变成红色警告，反而失去意义。
+    public var environment: ConnectionEnvironment?
+    /// 用户自选颜色（FR-CONN-16）。环境标签的语义色优先于它。
+    public var colorTag: CategoricalTone?
 
     public init(
         id: UUID = UUID(),
@@ -24,7 +29,9 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         username: String = "",
         sslMode: SSLMode? = nil,
         timeout: Int = 5,
-        schemaVersion: Int = ConnectionConfig.currentSchemaVersion
+        schemaVersion: Int = ConnectionConfig.currentSchemaVersion,
+        environment: ConnectionEnvironment? = nil,
+        colorTag: CategoricalTone? = nil
     ) {
         self.id = id
         self.name = name
@@ -36,6 +43,13 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         self.sslMode = sslMode ?? dbType.defaultSSLMode
         self.timeout = timeout
         self.schemaVersion = schemaVersion
+        self.environment = environment
+        self.colorTag = colorTag
+    }
+
+    /// 显示用的外观（环境标签 + 自选色）。各处显示都走它，保证一致。
+    public var appearance: ConnectionAppearance {
+        ConnectionAppearance(environment: environment, colorTag: colorTag)
     }
 
     public var isValid: Bool {

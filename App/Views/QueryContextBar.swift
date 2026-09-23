@@ -22,7 +22,12 @@ struct QueryContextBar: View {
                         .tag(AppState.unboundConnectionID)
                 }
                 ForEach(appState.connections) { configuration in
-                    Text(serverTitle(configuration)).tag(configuration.id)
+                    // 服务器选择器里也带上环境徽标：**这里是"我现在连着哪台库"的最直接指示**。
+                    HStack(spacing: Spacing.xs) {
+                        Text(serverTitle(configuration))
+                        ConnectionEnvironmentBadge(appearance: configuration.appearance, isCompact: true)
+                    }
+                    .tag(configuration.id)
                 }
             }
             .labelsHidden()
@@ -89,6 +94,12 @@ struct QueryContextBar: View {
             get: { appState.selectedDatabase ?? "" },
             set: { appState.selectedDatabase = $0 }
         )
+    }
+
+    /// 环境徽标（FR-CONN-16）：与侧边栏用**同一个组件**，保证"到处一致"。
+    @ViewBuilder
+    private func environmentBadge(_ configuration: ConnectionConfig) -> some View {
+        ConnectionEnvironmentBadge(appearance: configuration.appearance)
     }
 
     private func serverTitle(_ configuration: ConnectionConfig) -> String {

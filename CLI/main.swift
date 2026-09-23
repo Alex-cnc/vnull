@@ -110,6 +110,14 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // connections：列出已保存的连接及其环境标签 / 颜色（FR-CONN-16）。
+        // 为什么要它：标签是"存在配置里、显示在界面上"的东西，**界面没法进脚本**，
+        // 于是"写进去的东西读得回来"需要一条命令行出口。
+        if arguments.first == "connections" {
+            let code = await runConnectionsCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         let host = environment["PGHOST"] ?? "127.0.0.1"
         let port = Int(environment["PGPORT"] ?? "5432") ?? 5432
         let username = environment["PGUSER"] ?? "postgres"
@@ -501,6 +509,42 @@ struct DoyahCLI {
         }
         print("整库导出完成：\(tables.count) 张表")
         return 0
+    }
+
+    /// `connections [--dir <配置目录>] [--json]`
+    ///
+    /// 默认读应用数据目录（与 App 一致）；`--dir` 用于验证脚本指向临时目录。
+    private static func runConnectionsCommand(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        let store = ConnectionStore(directoryURL: value(for: "--dir").map { URL(fileURLWithPath: $0) })
+        do {
+            let (configurations, summary) = try await store.loadWithReport()
+            if arguments.contains("--json") {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(configurations)
+                print(String(data: data, encoding: .utf8) ?? "")
+                return 0
+            }
+
+            print("连接配置：\(configurations.count) 条（文件 \(await store.fileLocation().path)）")
+            if summary.didMigrate {
+                print("（本次读入时迁移了 \(summary.migrated.count) 条）")
+            }
+            for configuration in configurations {
+                let environment = configuration.environment?.rawValue ?? "—"
+                let color = configuration.colorTag?.rawValue ?? "—"
+                print("  \(configuration.name)\t\(configuration.endpointDescription)\t环境=\(environment)\t颜色=\(color)")
+            }
+            return 0
+        } catch {
+            print("读取连接配置失败：\(error.localizedDescription)")
+            return 66
+        }
     }
 
     /// `search-objects <关键词> [--schema S] [--limit N] [--kind table|view|column|function]`

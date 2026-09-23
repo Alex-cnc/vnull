@@ -537,8 +537,13 @@ final class AppState: ObservableObject {
     }
 
     /// 当前生效的执行安全策略。
+    ///
+    /// **生产标签会强制高危确认**（FR-CONN-16 与 FR-EXEC-16 的联动）：
+    /// 用户把 Safe Mode 总开关关掉也照样提示 —— 总开关的语义是"别烦我"，
+    /// 但生产库上误删的代价与该诉求不对称。
     var executionSafetyPolicy: ExecutionSafetyPolicy {
-        ExecutionSafetyPolicy(
+        ExecutionSafetyPolicy.policy(
+            for: selectedConnection?.appearance ?? ConnectionAppearance(),
             isEnabled: isSafeModeEnabled,
             confirmAllWrites: isConfirmAllWritesEnabled
         )

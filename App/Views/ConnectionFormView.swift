@@ -13,6 +13,8 @@ struct ConnectionFormView: View {
     @State private var port: String
     @State private var database: String
     @State private var username: String
+    @State private var environment: ConnectionEnvironment?
+    @State private var colorTag: CategoricalTone?
     @State private var password: String
     @State private var sslMode: SSLMode
     @State private var timeout: Int
@@ -35,6 +37,9 @@ struct ConnectionFormView: View {
         _password = State(initialValue: "")
         _sslMode = State(initialValue: configuration?.sslMode ?? DatabaseType.postgresql.defaultSSLMode)
         _timeout = State(initialValue: configuration?.timeout ?? 5)
+        // 编辑已有连接时把标签带进来 —— 否则"编辑一次就丢标签"（这类丢失很难被发现）。
+        _environment = State(initialValue: configuration?.environment)
+        _colorTag = State(initialValue: configuration?.colorTag)
     }
 
     var body: some View {
@@ -84,6 +89,41 @@ struct ConnectionFormView: View {
                 TextField(L(.connectionFormDatabase), text: $database)
 
                 TextField(L(.connectionFormUsername), text: $username)
+
+                // 环境标签与颜色（FR-CONN-16）：**生产标签会让高危语句强制确认**，
+                // 因此这里不是"外观选项"，而是安全设置的一部分。
+                HStack(spacing: Spacing.m) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.connectionEnvironmentLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        Picker("", selection: $environment) {
+                            Text(L(.connectionEnvironmentNone)).tag(ConnectionEnvironment?.none)
+                            ForEach(ConnectionEnvironment.orderedForPick, id: \.self) { value in
+                                Text(L(value.labelKey)).tag(ConnectionEnvironment?.some(value))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 140)
+                    }
+
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.connectionColorLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        Picker("", selection: $colorTag) {
+                            Text(L(.connectionColorNone)).tag(CategoricalTone?.none)
+                            ForEach(CategoricalTone.allCases, id: \.self) { tone in
+                                Text(tone.rawValue).tag(CategoricalTone?.some(tone))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 140)
+                    }
+
+                    ConnectionEnvironmentBadge(appearance: ConnectionAppearance(environment: environment, colorTag: colorTag))
+                    Spacer()
+                }
 
                 SecureASCIIField(text: $password, placeholder: configuration == nil ? L(.connectionFormPassword) : L(.connectionFormPasswordKeep))
                     .frame(height: 22)
@@ -161,7 +201,9 @@ struct ConnectionFormView: View {
             username: username.trimmingCharacters(in: .whitespacesAndNewlines),
             sslMode: sslMode,
             timeout: timeout,
-            schemaVersion: ConnectionConfig.currentSchemaVersion
+            schemaVersion: ConnectionConfig.currentSchemaVersion,
+            environment: environment,
+            colorTag: colorTag
         )
     }
 }

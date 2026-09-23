@@ -8,13 +8,39 @@ public struct ExecutionSafetyPolicy: Equatable, Sendable {
     /// 默认只确认**高危**语句 —— 凡事都弹窗会让人养成闭眼点「继续」的习惯。
     public var confirmAllWrites: Bool
 
-    public init(isEnabled: Bool = true, confirmAllWrites: Bool = false) {
+    /// 生产连接上的**强制确认**（FR-CONN-16 与 FR-EXEC-16 的联动）。
+    ///
+    /// 为 true 时：即使用户把 Safe Mode 总开关关掉，**高危语句仍然要确认**。
+    /// 为什么不允许关：总开关的语义是"我知道自己在做什么、别烦我"，
+    /// 而生产库上误删的代价与该诉求不对称 —— 这条联动就是需求原文里
+    /// 「生产标签需与 FR-EXEC-16 的高危确认联动」的落地。
+    public var forcesConfirmationForHighRisk: Bool
+
+    public init(
+        isEnabled: Bool = true,
+        confirmAllWrites: Bool = false,
+        forcesConfirmationForHighRisk: Bool = false
+    ) {
         self.isEnabled = isEnabled
         self.confirmAllWrites = confirmAllWrites
+        self.forcesConfirmationForHighRisk = forcesConfirmationForHighRisk
     }
 
     /// 默认：开启，只确认高危语句。
     public static let `default` = ExecutionSafetyPolicy()
+
+    /// 按连接的外观推导策略：生产标签 → 强制确认高危。
+    public static func policy(
+        for appearance: ConnectionAppearance,
+        isEnabled: Bool = true,
+        confirmAllWrites: Bool = false
+    ) -> ExecutionSafetyPolicy {
+        ExecutionSafetyPolicy(
+            isEnabled: isEnabled,
+            confirmAllWrites: confirmAllWrites,
+            forcesConfirmationForHighRisk: appearance.isProduction
+        )
+    }
 }
 
 /// 高危语句保护（FR-EXEC-16）。
@@ -65,7 +91,8 @@ public enum ExecutionSafety {
         databaseType: DatabaseType = .postgresql,
         policy: ExecutionSafetyPolicy = .default
     ) -> Decision {
-        guard policy.isEnabled else { return .allow }
+        // 总开关关闭时：**生产连接的强制确认仍然生效**（见 policy 的说明）。
+        guard policy.isEnabled || policy.forcesConfirmationForHighRisk else { return .allow }
 
         let statements = StatementSplitter(databaseType: databaseType)
             .split(sql)
@@ -79,7 +106,9 @@ public enum ExecutionSafety {
         databaseType: DatabaseType = .postgresql,
         policy: ExecutionSafetyPolicy = .default
     ) -> Decision {
-        guard policy.isEnabled else { return .allow }
+        // 与上面的单条入口同一口径：生产连接的强制确认在总开关关闭时**仍然生效**，
+        // 否则"生产上不许关高危确认"就只是句口号（这条一致性本轮靠测试发现才补上）。
+        guard policy.isEnabled || policy.forcesConfirmationForHighRisk else { return .allow }
         guard !statements.isEmpty else { return .allow }
 
         var findings: [AgentGuardFinding] = []

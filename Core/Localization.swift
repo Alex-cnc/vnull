@@ -314,6 +314,15 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeDDLReady
 
     // 连接配置迁移（FR-CONN-10）
+    case connectionEnvProduction
+    case connectionEnvStaging
+    case connectionEnvTesting
+    case connectionEnvDevelopment
+    case connectionEnvironmentLabel
+    case connectionEnvironmentNone
+    case connectionColorLabel
+    case connectionColorNone
+    case connectionProductionBadgeHelp
     case connectionMigrated
     case connectionNewerVersionKept
 
@@ -1242,6 +1251,15 @@ public enum LocalizedStrings {
         .treeDDLEmpty: [.simplifiedChinese: "没有取到 %@ 的 DDL —— 可能是权限不足（元数据函数对无权限对象返回空）", .english: "No DDL was returned for %@ — this usually means insufficient privileges (metadata functions return empty for objects you cannot see)"],
         .treeDDLReady: [.simplifiedChinese: "已把 %@ 的 DDL 放进新页签（未执行）", .english: "DDL for %@ was opened in a new tab (not executed)"],
 
+        .connectionEnvProduction: [.simplifiedChinese: "生产", .english: "Production"],
+        .connectionEnvStaging: [.simplifiedChinese: "预发", .english: "Staging"],
+        .connectionEnvTesting: [.simplifiedChinese: "测试", .english: "Testing"],
+        .connectionEnvDevelopment: [.simplifiedChinese: "开发", .english: "Development"],
+        .connectionEnvironmentLabel: [.simplifiedChinese: "环境标签", .english: "Environment"],
+        .connectionEnvironmentNone: [.simplifiedChinese: "未标记", .english: "Not tagged"],
+        .connectionColorLabel: [.simplifiedChinese: "颜色", .english: "Color"],
+        .connectionColorNone: [.simplifiedChinese: "跟随环境标签", .english: "Follow environment"],
+        .connectionProductionBadgeHelp: [.simplifiedChinese: "这是生产连接：高危语句（DROP / TRUNCATE / 无 WHERE 的 UPDATE、DELETE）在执行前一定会要求确认，Safe Mode 总开关关掉也如此", .english: "This is a production connection: high-risk statements always ask for confirmation, even with Safe Mode off"],
         .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
         .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 

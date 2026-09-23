@@ -75,9 +75,13 @@ private struct ConnectionRow: View {
                 .frame(width: 9, height: 9)
 
             VStack(alignment: .leading, spacing: Spacing.hair) {
-                Text(configuration.displayTitle(untitled: L(.connectionUntitled)))
-                    .font(Theme.font(.body))
-                    .lineLimit(1)
+                HStack(spacing: Spacing.xs) {
+                    Text(configuration.displayTitle(untitled: L(.connectionUntitled)))
+                        .font(Theme.font(.body))
+                        .lineLimit(1)
+                    // 环境徽标（FR-CONN-16）：生产一眼可辨，避免连错库。
+                    ConnectionEnvironmentBadge(appearance: configuration.appearance)
+                }
                 Text("\(configuration.dbType.displayName) · \(configuration.endpointDescription)")
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.text(.secondary))

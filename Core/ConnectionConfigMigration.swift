@@ -93,6 +93,7 @@ public enum ConnectionConfigMigrator {
 extension ConnectionConfig {
     enum CodingKeys: String, CodingKey {
         case id, name, dbType, host, port, database, username, sslMode, timeout, schemaVersion
+        case environment, colorTag
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,5 +109,10 @@ extension ConnectionConfig {
         timeout = try container.decodeIfPresent(Int.self, forKey: .timeout) ?? 5
         // 缺失 = v0：交给迁移器走 0 → 1 的路径，而不是这里假装已经是当前版本。
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+        // FR-CONN-16 的两个字段是**纯新增且可选**，老文件读出来自然是 nil。
+        // 因此**不提升 schemaVersion** —— 版本号留给"读不懂的破坏性变更"用；
+        // 给可选字段升版本只会让老版本应用把文件误判成"来自更新版本"而拒绝改写。
+        environment = try container.decodeIfPresent(ConnectionEnvironment.self, forKey: .environment)
+        colorTag = try container.decodeIfPresent(CategoricalTone.self, forKey: .colorTag)
     }
 }
