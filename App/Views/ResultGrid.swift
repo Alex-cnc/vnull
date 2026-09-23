@@ -25,6 +25,13 @@ struct ResultGrid: NSViewRepresentable {
     var sortDescriptors: [ResultSortDescriptor] = []
     /// 表头点击回调：`(列号, 是否按住 Shift)`。
     var onToggleSort: ((Int, Bool) -> Void)?
+    /// 选中行变化回调。参数是**当前显示顺序里的行号**（分页 / 筛选 / 排序之后的下标），
+    /// 不是原结果集里的行号 —— 调用方要取行必须用同一份 `displayedRows[index]`。
+    ///
+    /// 为什么要在 `tableViewSelectionDidChange` 的早退**之前**发出：那个方法为了少重画几行
+    /// 做了 `guard !changed.isEmpty` 早退，而"选择被清空 / 没有列可重画"恰恰是必须传出去的变化 ——
+    /// 早退会把它吞掉，行详情侧栏就会继续显示上一行的值（欺骗性显示）。
+    var onSelectionChange: ((Set<Int>) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -84,6 +91,7 @@ struct ResultGrid: NSViewRepresentable {
             rows: displayedRows ?? result.rows,
             sortDescriptors: sortDescriptors,
             onToggleSort: onToggleSort,
+            onSelectionChange: onSelectionChange,
             tableView: tableView
         )
         return scrollView
@@ -96,6 +104,7 @@ struct ResultGrid: NSViewRepresentable {
             rows: displayedRows ?? result.rows,
             sortDescriptors: sortDescriptors,
             onToggleSort: onToggleSort,
+            onSelectionChange: onSelectionChange,
             tableView: tableView
         )
     }
@@ -112,6 +121,13 @@ struct ResultGrid: NSViewRepresentable {
         private var lastDisplaySignature: String = ""
         /// 回调由 SwiftUI 每次更新时刷新（闭包不是值类型，不能靠相等判断）。
         private var onToggleSort: ((Int, Bool) -> Void)?
+        /// 选中行变化回调（同上，每次更新时刷新）。
+        private var onSelectionChange: ((Set<Int>) -> Void)?
+        /// 正在**程序化**作废选中态：此时的 `tableViewSelectionDidChange` 不发回调。
+        ///
+        /// 因为这条路径是 `updateNSView` 里触发的，同步回调等于把"改状态"插进 SwiftUI
+        /// 的视图更新过程；而调用方在同一轮更新里已经把自己的选中态清掉了，不会漏信息。
+        private var isResettingSelection = false
         /// 程序化同步表头指示器时要屏蔽 `sortDescriptorsDidChange`，否则会自激。
         private var isSyncingSortDescriptors = false
         private var columnSignature: [String] = []
@@ -131,18 +147,19 @@ struct ResultGrid: NSViewRepresentable {
             rows: [[String?]],
             sortDescriptors: [ResultSortDescriptor],
             onToggleSort: ((Int, Bool) -> Void)?,
+            onSelectionChange: ((Set<Int>) -> Void)?,
             tableView: NSTableView
         ) {
             self.result = result
             self.rows = rows
             self.onToggleSort = onToggleSort
+            self.onSelectionChange = onSelectionChange
             syncSortDescriptors(sortDescriptors, tableView: tableView)
 
             // 换结果集：选中态作废（旧的行号对新数据没有意义）。
             if result.id != lastResultID {
                 lastResultID = result.id
-                lastSelectedRows = tableView.selectedRowIndexes
-                tableView.deselectAll(nil)
+                resetSelection(tableView)
             }
 
             // 列定义只在「结果集换了」或「列签名变了」时重建。
@@ -163,8 +180,22 @@ struct ResultGrid: NSViewRepresentable {
             let signature = "\(result.id)|\(rows.count)|\(rows.first ?? [])|\(rows.last ?? [])"
             if signature != lastDisplaySignature {
                 lastDisplaySignature = signature
+                // 显示的行换了（翻页 / 改每页条数 / 改筛选 / 改排序）：同一个行号从此指向**另一行**，
+                // 旧的选中态就是假的 —— 无论它是被 ⌘C 复制还是被行详情侧栏读取。
+                //
+                // 这里连表格自己的高亮一起撤掉，而不是只清上层状态：表格若还亮着旧行号，
+                // 用户再点"同一个行号"不会产生选中变化事件，靠选中回调驱动的侧栏就永远醒不过来。
+                resetSelection(tableView)
                 tableView.reloadData()
             }
+        }
+
+        /// 作废选中态（换结果集 / 换显示内容）。见 `isResettingSelection` 的说明。
+        private func resetSelection(_ tableView: NSTableView) {
+            isResettingSelection = true
+            tableView.deselectAll(nil)
+            isResettingSelection = false
+            lastSelectedRows = tableView.selectedRowIndexes
         }
 
         /// 按状态里的排序键同步 AppKit 的表头指示器（→ / ↓）。
@@ -201,6 +232,11 @@ struct ResultGrid: NSViewRepresentable {
         /// 选中态变了只重画变化的那几行 —— 顺带让单元格文字颜色跟着切换。
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard let tableView = notification.object as? NSTableView else { return }
+            // **回调先发**：下面的早退（没有列可重画）会把"选择被清空"这类有效变化吞掉，
+            // 而调用方（行详情侧栏）恰恰靠它才知道该收起详情。
+            if !isResettingSelection {
+                onSelectionChange?(Set(tableView.selectedRowIndexes))
+            }
             let changed = lastSelectedRows.symmetricDifference(tableView.selectedRowIndexes)
             lastSelectedRows = tableView.selectedRowIndexes
             guard !changed.isEmpty, tableView.numberOfColumns > 0 else { return }

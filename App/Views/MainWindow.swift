@@ -140,6 +140,22 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isSQLArchivePresented) {
             SQLArchiveSheet()
         }
+        // ⌘K 命令面板里这三条（帮助 / 切换连接 / 全库对象搜索）都挂在**窗口**上：
+        // 工具栏按钮只在某个页签存在时才在，而命令面板是全局入口 ——
+        // 挂在窗口上，无论当前在看哪个视图，命令都不会落空。
+        .sheet(isPresented: $appState.isShortcutHelpCommandPresented) {
+            // 与工具栏「?」气泡**同一份内容**（`ShortcutHelpContent`），只是呈现方式不同。
+            ShortcutHelpContent()
+                .frame(width: 420)
+        }
+        .sheet(isPresented: $appState.isConnectionSwitchPresented) {
+            ConnectionSwitchSheet()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.isObjectSearchPresented) {
+            ObjectSearchPanel()
+                .environmentObject(appState)
+        }
         // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
         .sheet(isPresented: $localization.isRestartPromptPresented) {
             RelaunchPromptSheet()
@@ -168,6 +184,81 @@ struct MainWindow: View {
             Button(L(.commonOk), role: .cancel) {}
         } message: {
             Text(appState.errorMessage ?? "")
+        }
+    }
+}
+
+/// 「切换连接」的**最小可用**面板（⌘K → 切换连接）。
+///
+/// 为什么不复用现成的服务器选择器：它有两处（侧栏连接列表、查询上下文栏），
+/// 但都要求"当前视图里正好有它"——上下文栏只在工作区顶部，命令面板不该依赖这个。
+/// 所以这里给一个窄列表：点一行就切过去，别的不做（新建 / 编辑仍在侧栏，
+/// 不在这里重复一套表单）。
+struct ConnectionSwitchSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            Text(L(.commandSwitchConnection))
+                .font(Theme.font(.title))
+
+            if appState.connections.isEmpty {
+                Text(L(.connectionListEmpty))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(appState.connections) { configuration in
+                            row(configuration)
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+
+            HStack(spacing: Spacing.s) {
+                Spacer()
+                Button(L(.commonClose)) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(Spacing.l)
+        .frame(width: 380)
+        .background(Theme.surface(.panel))
+    }
+
+    private func row(_ configuration: ConnectionConfig) -> some View {
+        let isCurrent = configuration.id == appState.selectedConnectionID
+        return HStack(spacing: Spacing.s) {
+            // 环境徽标与侧栏 / 上下文栏是**同一个组件**：别处一眼能分辨生产库，这里也要能。
+            ConnectionEnvironmentBadge(appearance: configuration.appearance, isCompact: true)
+
+            VStack(alignment: .leading, spacing: Spacing.hair) {
+                Text(configuration.displayTitle(untitled: L(.connectionUntitled)))
+                    .font(Theme.font(.body))
+                    .foregroundStyle(Theme.text(.primary))
+                    .lineLimit(1)
+                Text(configuration.endpointDescription)
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.tertiary))
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if isCurrent {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(Theme.accentColor)
+            }
+        }
+        .padding(.horizontal, Spacing.s)
+        .padding(.vertical, Spacing.xs)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            appState.selectedConnectionID = configuration.id
+            dismiss()
         }
     }
 }

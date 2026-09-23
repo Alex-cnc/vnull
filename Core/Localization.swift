@@ -357,6 +357,26 @@ public enum LKey: String, CaseIterable, Sendable {
     case commandPalettePlaceholder
     case commandPaletteNoMatch
     case commandPaletteHint
+    // 全库对象搜索（FR-META-12 界面）
+    case objectSearchTitle
+    case objectSearchPlaceholder
+    case objectSearchHint
+    case objectSearchNoMatch
+    case objectSearchTruncated
+    case objectSearchBrowse
+    case objectSearchKindTable
+    case objectSearchKindView
+    case objectSearchKindColumn
+    case objectSearchKindFunction
+    case objectSearchKindOther
+    // 行详情侧栏（FR-DATA-05 界面）
+    case rowDetailTitle
+    case rowDetailNoSelection
+    case rowDetailColumnHeader
+    case rowDetailValueHeader
+    case rowDetailCopyValue
+    // 命令面板需要"先选一个对象"时的提示
+    case paletteNeedsTreeObject
     case queryParameterTitle
     case queryParameterHint
     case queryParameterName
@@ -1293,6 +1313,23 @@ public enum LocalizedStrings {
         .commandPalettePlaceholder: [.simplifiedChinese: "输入命令名…（支持首字母缩写与中文）", .english: "Type a command…(acronyms and Chinese work)"],
         .commandPaletteNoMatch: [.simplifiedChinese: "没有匹配的命令", .english: "No matching command"],
         .commandPaletteHint: [.simplifiedChinese: "↑↓ 选择 · ↩ 执行 · esc 关闭", .english: "↑↓ select · ↩ run · esc close"],
+        .objectSearchTitle: [.simplifiedChinese: "全库对象搜索", .english: "Search objects"],
+        .objectSearchPlaceholder: [.simplifiedChinese: "输入名称片段（表 / 视图 / 列 / 函数）…", .english: "Type a name fragment (table / view / column / function)…"],
+        .objectSearchHint: [.simplifiedChinese: "跨 schema 匹配表 / 视图 / 列 / 函数；**空输入不列结果**（全库对象上万条，列前几条只会误导）", .english: "Matches tables / views / columns / functions across schemas; an empty query lists nothing (thousands of objects would only mislead)"],
+        .objectSearchNoMatch: [.simplifiedChinese: "没有匹配的对象", .english: "No matching object"],
+        .objectSearchTruncated: [.simplifiedChinese: "元数据已达 10,000 行上限，结果**可能不完整** —— 用 schema 缩小范围再搜", .english: "Metadata hit the 10,000-row cap; results may be incomplete — narrow by schema and search again"],
+        .objectSearchBrowse: [.simplifiedChinese: "浏览数据", .english: "Browse data"],
+        .objectSearchKindTable: [.simplifiedChinese: "表", .english: "Table"],
+        .objectSearchKindView: [.simplifiedChinese: "视图", .english: "View"],
+        .objectSearchKindColumn: [.simplifiedChinese: "列", .english: "Column"],
+        .objectSearchKindFunction: [.simplifiedChinese: "函数", .english: "Function"],
+        .objectSearchKindOther: [.simplifiedChinese: "其他", .english: "Other"],
+        .rowDetailTitle: [.simplifiedChinese: "行详情", .english: "Row detail"],
+        .rowDetailNoSelection: [.simplifiedChinese: "在上方结果里选中一行，这里按**列顺序竖排**显示全部字段", .english: "Select a row above to see every field listed vertically"],
+        .rowDetailColumnHeader: [.simplifiedChinese: "列", .english: "Column"],
+        .rowDetailValueHeader: [.simplifiedChinese: "值", .english: "Value"],
+        .rowDetailCopyValue: [.simplifiedChinese: "复制值", .english: "Copy value"],
+        .paletteNeedsTreeObject: [.simplifiedChinese: "这条命令需要先选中一个表 / 视图：请在左侧对象树里点选后再试", .english: "This command needs a selected table or view — pick one in the object tree first"],
         .queryParameterTitle: [.simplifiedChinese: "填参数后执行", .english: "Fill parameters, then run"],
         .queryParameterHint: [.simplifiedChinese: "值会做**类型化转义**（文本自动加引号并转义单引号，数字不加引号，避免索引失效）；**编辑器里的占位符不会被改写**", .english: "Values are escaped by type (text is quoted and single quotes doubled; numbers stay unquoted so indexes still apply); the placeholders in the editor are left untouched"],
         .queryParameterName: [.simplifiedChinese: "参数", .english: "Parameter"],

@@ -143,4 +143,39 @@ final class ObjectSearchTests: XCTestCase {
         let suffix = try XCTUnwrap(ObjectSearch.search("email", in: hits).first { $0.hit.name == "orders.email" })
         XCTAssertEqual(suffix.highlighted, [7, 8, 9, 10, 11], "`orders.email` 里 email 从第 7 个字符开始")
     }
+
+    // MARK: 结果快照（Outcome）
+
+    /// 空关键词：不列结果，但"在多少个对象里搜"仍要如实给出 ——
+    /// 界面据此显示"在 N 个对象里没搜到"，而不是假装库里空空如也。
+    func testOutcomeWithEmptyKeywordKeepsTotalHits() {
+        let outcome = ObjectSearch.outcome(keyword: "   ", in: hits)
+        XCTAssertTrue(outcome.matches.isEmpty)
+        XCTAssertEqual(outcome.totalHits, hits.count)
+        XCTAssertFalse(outcome.isTruncated)
+    }
+
+    /// 元数据行数到顶 → 标出"可能不完整"，不假装搜遍了全库。
+    func testOutcomeMarksTruncationAtMetadataLimit() {
+        let truncated = ObjectSearch.outcome(keyword: "order", in: hits, metadataLimit: hits.count)
+        XCTAssertTrue(truncated.isTruncated, "行数 **等于**上限也算到顶")
+
+        let abundant = ObjectSearch.outcome(keyword: "order", in: hits, metadataLimit: hits.count + 1)
+        XCTAssertFalse(abundant.isTruncated)
+    }
+
+    /// 命中数按 `limit` 截断，但 `totalHits` 说的是**过滤前**的元数据总数。
+    func testOutcomeTotalHitsIsPreFilterCount() {
+        let outcome = ObjectSearch.outcome(keyword: "order", in: hits, limit: 2)
+        XCTAssertEqual(outcome.matches.count, 2)
+        XCTAssertEqual(outcome.totalHits, hits.count)
+    }
+
+    /// 排序沿用 `search` 的稳定顺序：打乱输入顺序，快照里的命中次序不变。
+    func testOutcomeKeepsSearchOrder() {
+        let forward = ObjectSearch.outcome(keyword: "order", in: hits)
+        let reversed = ObjectSearch.outcome(keyword: "order", in: hits.reversed())
+        XCTAssertEqual(forward.matches, reversed.matches)
+        XCTAssertEqual(forward.matches, ObjectSearch.search("order", in: hits))
+    }
 }

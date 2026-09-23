@@ -38,3 +38,7 @@ xcuserdata/
 
 # 图标中间产物（可由 Scripts/make-app-icon.swift 从 AppIcon-source.png 重新生成）
 App/Resources/AppIcon-1024.png
+
+# 并行代理各自使用的独立 SwiftPM 构建目录（避免同一 scratch 的锁竞争），只在本机存在
+/.build-agent-*/
+/.build-cache-*/

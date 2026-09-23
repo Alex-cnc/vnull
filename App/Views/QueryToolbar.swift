@@ -220,57 +220,11 @@ struct QueryToolbar: View {
 
     /// 帮助面板：直接由 `AppShortcut` 生成完整快捷键表，
     /// 与按钮上挂的是同一份定义，不会出现「提示与实键不一致」。
+    ///
+    /// 内容抽在 `ShortcutHelpContent` 里：⌘K 命令面板那条「帮助」也要显示**同一份**清单 ——
+    /// 两处各抄一份快捷键表，迟早只改一处。
     private var shortcutList: some View {
-        VStack(alignment: .leading, spacing: Spacing.s) {
-            Text(L(.helpShortcutsTitle))
-                .font(Theme.font(.bodyStrong))
-
-            ForEach(Array(Self.shortcutRows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
-                    Text(L(row.title))
-                        .font(Theme.font(.caption))
-                        .frame(width: 190, alignment: .leading)
-                    Text(row.shortcut.display)
-                        .font(Theme.font(.mono))
-                        .foregroundStyle(Theme.text(.secondary))
-                }
-            }
-        }
-        .padding(Spacing.l)
-        .frame(width: 360)
-    }
-
-    /// 帮助面板里展示的条目（顺序即阅读顺序）。
-    private static var shortcutRows: [(title: LKey, shortcut: AppShortcut)] {
-        [
-            (.toolbarExecuteHelp, .execute),
-            (.toolbarStopHelp, .stop),
-            (.toolbarCheckHelp, .check),
-            (.toolbarPlanHelp, .executionPlan),
-            (.toolbarOpenFileHelp, .openFile),
-            (.toolbarSaveFileHelp, .saveFile),
-            (.toolbarSaveAs, .saveFileAs),
-            (.toolbarSaveQueryHelp, .saveQuery),
-            (.toolbarSavedQueriesHelp, .savedQueries),
-            (.historyHelp, .history),
-            (.editMenuFind, .find),
-            (.editMenuReplace, .replace),
-            (.editMenuGoToLine, .goToLine),
-            (.editMenuIndent, .indent),
-            (.editMenuOutdent, .outdent),
-            (.editMenuClear, .clearEditor),
-            (.editMenuFormat, .format),
-            (.runScopeAll, .scopeAll),
-            (.runScopeCurrentStatement, .scopeCurrentStatement),
-            (.runScopeSelection, .scopeSelection),
-            (.safetySafeMode, .safeMode),
-            (.safetyConfirmAllWrites, .confirmAllWrites),
-            (.menuAgentAudit, .agentAudit),
-            (.menuDataTask, .dataTask),
-            (.lowerPaneToggle, .terminal),
-            (.archiveTitle, .archive),
-            (.toolbarHelpHelp, .help)
-        ]
+        ShortcutHelpContent()
     }
 
     private var openFileButton: some View {
@@ -362,6 +316,9 @@ struct QueryToolbar: View {
         .keyboardShortcut(AppShortcut.help.key, modifiers: AppShortcut.help.modifiers)
         .popover(isPresented: $isHelpPresented, arrowEdge: .bottom) {
             shortcutList
+                // 气泡比 sheet 窄：它贴着工具栏弹出，宽度由这里的调用点决定（内容自己不带宽度，
+                // 否则 ⌘K 的 sheet 会被那个固定宽度带着走）。
+                .frame(width: 360)
         }
     }
 
@@ -515,4 +472,64 @@ struct QueryToolbar: View {
             .frame(width: Metrics.toolbarButtonWidth, height: Metrics.toolbarButtonHeight)
             .contentShape(Rectangle())
     }
+}
+
+/// 快捷键帮助的**内容**（不含呈现方式）。
+///
+/// 为什么单独抽出来：同一份清单有两个入口 —— 工具栏「?」的 popover 与 ⌘K 命令面板里的
+/// 「帮助与快捷键」sheet。清单只留一份，就不会出现"气泡里改了、sheet 里没改"。
+struct ShortcutHelpContent: View {
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            Text(L(.helpShortcutsTitle))
+                .font(Theme.font(.bodyStrong))
+
+            ForEach(Array(Self.rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: Spacing.m) {
+                    Text(L(row.title))
+                        .font(Theme.font(.caption))
+                        .frame(width: 190, alignment: .leading)
+                    Text(row.shortcut.display)
+                        .font(Theme.font(.mono))
+                        .foregroundStyle(Theme.text(.secondary))
+                }
+            }
+        }
+        .padding(Spacing.l)
+    }
+
+    /// 展示的条目（顺序即阅读顺序）。
+    ///
+    /// 事实来源是 `AppShortcut`：这里只写"哪一条"，键位由它给 ——
+    /// 于是"改了快捷键、提示还是旧的"这种事不可能发生。
+    static let rows: [(title: LKey, shortcut: AppShortcut)] = [
+        (.toolbarExecuteHelp, .execute),
+        (.toolbarStopHelp, .stop),
+        (.toolbarCheckHelp, .check),
+        (.toolbarPlanHelp, .executionPlan),
+        (.toolbarOpenFileHelp, .openFile),
+        (.toolbarSaveFileHelp, .saveFile),
+        (.toolbarSaveAs, .saveFileAs),
+        (.toolbarSaveQueryHelp, .saveQuery),
+        (.toolbarSavedQueriesHelp, .savedQueries),
+        (.historyHelp, .history),
+        (.editMenuFind, .find),
+        (.editMenuReplace, .replace),
+        (.editMenuGoToLine, .goToLine),
+        (.editMenuIndent, .indent),
+        (.editMenuOutdent, .outdent),
+        (.editMenuClear, .clearEditor),
+        (.editMenuFormat, .format),
+        (.runScopeAll, .scopeAll),
+        (.runScopeCurrentStatement, .scopeCurrentStatement),
+        (.runScopeSelection, .scopeSelection),
+        (.safetySafeMode, .safeMode),
+        (.safetyConfirmAllWrites, .confirmAllWrites),
+        (.menuAgentAudit, .agentAudit),
+        (.menuDataTask, .dataTask),
+        (.lowerPaneToggle, .terminal),
+        (.archiveTitle, .archive),
+        (.toolbarHelpHelp, .help)
+    ]
 }

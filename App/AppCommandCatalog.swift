@@ -26,6 +26,8 @@ enum AppCommandCatalog {
             item("exportJSON", .commandExportJSON, "export json 导出", "export json", .paletteCategoryResult),
             item("browseRows", .commandBrowseRows, "browse rows 浏览 表", "browse rows", .paletteCategoryObject),
             item("tableDDL", .commandTableDDL, "ddl 查看 建表 结构", "view ddl", .paletteCategoryObject),
+            // 全库对象搜索（FR-META-12）：与对象树工具条的放大镜打开同一个面板。
+            item("objectSearch", .objectSearchTitle, "search 搜索 找 对象 表 视图 列 函数", "search objects find", .paletteCategoryObject),
             item("sessions", .commandSessions, "sessions 会话", "server sessions", .paletteCategoryServer),
             item("locks", .commandLocks, "locks 锁 阻塞", "locks blocking", .paletteCategoryServer),
             item("switchConnection", .commandSwitchConnection, "connection conn 切换 连接", "switch connection", .paletteCategoryServer),

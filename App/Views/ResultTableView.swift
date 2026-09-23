@@ -24,6 +24,12 @@ struct ResultTableView: View {
     /// 表头排序 / 筛选条 / 分页条的状态。
     @State private var gridState = ResultGridState()
 
+    /// 结果表里选中的行。**是分页内索引**（`ResultGrid` 渲染的是 `page.rows`），
+    /// 所以取行必须用 `page.rows[index]`；一旦"显示的是哪些行"变了，这个索引就指向另一行了。
+    @State private var selectedRows: Set<Int> = []
+    /// 行详情侧栏是否打开（FR-DATA-05）。
+    @State private var isRowDetailPresented = false
+
     var body: some View {
         Group {
             if let result {
@@ -43,30 +49,31 @@ struct ResultTableView: View {
 
                     if result.columns.isEmpty {
                         emptyResultSet(result)
-                    } else {
-                        ResultGrid(
-                            result: result,
-                            displayedRows: page.rows,
-                            sortDescriptors: gridState.sortDescriptors,
-                            onToggleSort: { columnIndex, additive in
-                                gridState.toggleSort(columnIndex: columnIndex, additive: additive)
-                            }
-                        )
-                        if gridState.isPaged {
-                            HairlineView()
-                            ResultPagerBar(
-                                page: page,
-                                pageSize: gridState.pageSize,
-                                onChangePageSize: { size in gridState.setPageSize(size) },
-                                onGoToPage: { index in gridState.adopt(pageIndex: index) }
-                            )
+                    } else if isRowDetailPresented {
+                        // 打开侧栏时改成左右分栏：左边表格 + 分页条，右边竖排的单行详情。
+                        // 子视图数量按分支写死（`HSplitView` 的分隔项必须在构建时固定）。
+                        HSplitView {
+                            gridSection(for: result, page: page)
+                                .frame(minWidth: RowDetailMetrics.minGridWidth)
+                            detailPanel(for: result, page: page)
                         }
+                    } else {
+                        gridSection(for: result, page: page)
                     }
                 }
                 // 换结果集（重新执行 / 切结果集页签）时把客户端视图归零：
                 // 上一批数据上的筛选条件套到新数据上，只会让人以为"查询结果不对"。
                 .onChange(of: result.id) { _, _ in
                     gridState = ResultGridState()
+                    // 行号在新结果集里从零开始：旧索引只会指向另一行，必须作废。
+                    selectedRows = []
+                }
+                // "显示的是哪些行"变了就作废选中索引：翻页、改每页条数、改筛选、改排序
+                // 都会让同一个索引落到**另一行**上 —— 留着它，侧栏就会拿别行的值冒充
+                // 用户选中的那行（欺骗性显示）。`ResultGridState` 只被用户动作改变，
+                // 所以拿它整体当信号既够敏感也够准，不必逐个字段去凑。
+                .onChange(of: gridState) { _, _ in
+                    selectedRows = []
                 }
             } else if isExecuting {
                 VStack(spacing: Spacing.m) {
@@ -108,6 +115,16 @@ struct ResultTableView: View {
             }
 
             Spacer()
+
+            // 行详情侧栏（FR-DATA-05）：宽表与长 JSON 竖排看。
+            // 没有列可展示时**禁用而不是隐藏**：能力要让人看见（结果表自己空着的时候
+            // 打开一个空侧栏只会更让人费解）。
+            Toggle(isOn: $isRowDetailPresented) {
+                Label(L(.rowDetailTitle), systemImage: "sidebar.trailing")
+            }
+            .toggleStyle(.button)
+            .disabled(result.columns.isEmpty)
+            .help(L(.rowDetailTitle))
 
             if let onExport, ResultExporter.hasExportableContent(result) {
                 Menu {
@@ -185,6 +202,64 @@ struct ResultTableView: View {
         onGenerateWhere?(clause)
     }
 
+    // MARK: 结果表本体与行详情侧栏（FR-DATA-05）
+
+    /// 结果表 + 分页条。侧栏收起时它就是整个结果区，打开时它是左半边 ——
+    /// 分页条跟着表格走（它描述的是表格，不是详情）。
+    private func gridSection(for result: QueryResult, page: ResultPage) -> some View {
+        VStack(spacing: 0) {
+            ResultGrid(
+                result: result,
+                displayedRows: page.rows,
+                sortDescriptors: gridState.sortDescriptors,
+                onToggleSort: { columnIndex, additive in
+                    gridState.toggleSort(columnIndex: columnIndex, additive: additive)
+                },
+                onSelectionChange: { selection in
+                    // 选中回调给的是**分页内索引**，原样存下；取行的地方统一走
+                    // `selectedDetailRow(in:)`，那里会丢掉越界索引。
+                    selectedRows = selection
+                }
+            )
+
+            if gridState.isPaged {
+                HairlineView()
+                ResultPagerBar(
+                    page: page,
+                    pageSize: gridState.pageSize,
+                    onChangePageSize: { size in gridState.setPageSize(size) },
+                    onGoToPage: { index in gridState.adopt(pageIndex: index) }
+                )
+            }
+        }
+    }
+
+    /// 右侧的行详情。行必须取自 `page.rows`（与 `ResultGrid` 渲染的是同一份），
+    /// 否则侧栏显示的就是"另一行"。
+    private func detailPanel(for result: QueryResult, page: ResultPage) -> some View {
+        let selection = selectedDetailRow(in: page)
+        return RowDetailPanel(
+            columns: result.columns,
+            row: selection?.row,
+            rowNumber: selection?.number
+        )
+        .frame(
+            minWidth: RowDetailMetrics.minPanelWidth,
+            idealWidth: RowDetailMetrics.idealPanelWidth,
+            maxWidth: RowDetailMetrics.maxPanelWidth
+        )
+    }
+
+    /// 当前选中行（值已按**分页内索引**取好）。
+    ///
+    /// 只认在这一页里真实存在的索引：越界的（例如刚翻完页、作废还没跑到）一律当"没选中"——
+    /// 宁可不显示，也不能拿邻行的值顶上。多选（结果表支持 ⌘ 多选）时取最小的那个索引：
+    /// 详情只讲一行，规则必须简单且稳定，取"最先出现的那个"最容易说清楚。
+    private func selectedDetailRow(in page: ResultPage) -> (row: [String?], number: Int)? {
+        guard let index = selectedRows.filter({ page.rows.indices.contains($0) }).min() else { return nil }
+        return (page.rows[index], page.startRowIndex + index + 1)
+    }
+
     // MARK: 没有结果集的语句（DDL / DML）
 
     private func emptyResultSet(_ result: QueryResult) -> some View {
@@ -203,4 +278,17 @@ struct ResultTableView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+/// 行详情侧栏的宽度。
+///
+/// 需求给的区间是 280~340，取中值 320 当默认：再窄，列名 + 类型名 + 复制按钮会挤到换行；
+/// 再宽，就从结果表手里抢横向空间了 —— 结果表本身就是宽表，横向空间比侧栏更值钱。
+/// 允许拖到 440：长 JSON 想看得舒服时用户自己拉宽。
+private enum RowDetailMetrics {
+    static let minPanelWidth: CGFloat = 280
+    static let idealPanelWidth: CGFloat = 320
+    static let maxPanelWidth: CGFloat = 440
+    /// 左半边表格的最小宽度：分隔条不能被拖到把表格挤没（拖没之后想拖回来都找不到把手）。
+    static let minGridWidth: CGFloat = 240
 }

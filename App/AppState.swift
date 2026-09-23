@@ -1076,6 +1076,19 @@ final class AppState: ObservableObject {
 
     // MARK: - 元数据（对象树）
 
+    /// 对象树里当前选中的节点。
+    ///
+    /// 为什么由 AppState 持有、而不是留在 `ObjectTreeView` 的 `@State`：
+    /// ⌘K 命令面板是**全局**入口，而「浏览数据 / 查看 DDL / 合成数据」都必须作用在
+    /// "用户在树里选中的那个对象"上。面板自己猜一个对象比直说"请先选中"更糟，
+    /// 所以选中项必须放在两个入口都能读到的地方。
+    @Published var selectedTreeObject: DatabaseObject?
+
+    /// 全库对象搜索面板（FR-META-12 的界面部分）的呈现开关。
+    ///
+    /// 面板挂在 `MainWindow` 上（那里永远在视图树里），由对象树的工具条按钮与 ⌘K 一起打开。
+    @Published var isObjectSearchPresented = false
+
     // MARK: - 对象树：连接 / 断开 / 建库权限（FR-META-11）
 
     /// 当前连接是否已建立（对象树根部以此决定菜单里「连接 / 断开」的可用性）。
@@ -2127,6 +2140,27 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 对象搜索结果 → 「浏览数据」：在新页签里打开前 N 行（FR-META-12 的界面动作）。
+    ///
+    /// 复用 `RowBrowsingQuery`，不在这里手拼 `SELECT * FROM …` ——
+    /// 手拼就会漏掉方言的标识符引号（限定名里的点、大小写都要靠它）。
+    func browseSearchHit(schema: String?, name: String) {
+        guard let configuration = selectedConnection else {
+            errorMessage = L(.stateSelectConnectionFirst)
+            return
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let filter = RowBrowsingQuery.Filter()
+        switch RowBrowsingQuery.browse(table: name, schema: schema, filter: filter, dialect: dialect) {
+        case .success(let sql):
+            // `execute: true`：语句完全由搜索结果决定（没有用户输入），
+            // 而且用户点这个按钮就是想看数据 —— 只往编辑器里塞一句等于没反应。
+            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true)
+        case .failure(let error):
+            errorMessage = L(.browseSheetRefused, error.identifier)
+        }
+    }
+
     /// 当前是否允许外发，以及原因（界面与后续 AI 功能共用这一处判定）。
     var agentOutboundDecision: AgentOutboundDecision {
         AgentGate.decide(configuration: agentConfiguration, apiKey: agentAPIKey)
@@ -2762,32 +2796,87 @@ final class AppState: ObservableObject {
         case "exportJSON":
             guard let tabID = activeQueryTab?.id else { return }
             Task { await exportResult(for: tabID, format: .json) }
-        case "browseRows": isBrowseRowsCommandPresented = true
-        case "tableDDL": isTableDDLCommandPresented = true
-        case "sessions": isSessionCommandPresented = true
-        case "locks": isLockCommandPresented = true
-        case "switchConnection": isConnectionPickerPresented = true
-        case "agentSQL": isAgentSQLCommandPresented = true
-        case "syntheticData": isSyntheticCommandPresented = true
+        case "browseRows":
+            // 面板的目标 = 对象树当前选中项（`isBrowseRowsCommandPresented` 的 sheet 读它），
+            // 选中项不够格就由 `paletteTreeObject` 给出可读提示。
+            guard paletteTreeObject(where: { ObjectTreeActions.isAvailable(.browseRows, for: $0.kind) }) != nil else { return }
+            isBrowseRowsCommandPresented = true
+        case "tableDDL":
+            // 「查看 DDL」在对象树里**没有面板**：它就是"生成建表 / 视图定义语句进新页签"。
+            // 所以这条命令直接走同一个既有入口，不摆一个假界面。
+            guard let object = paletteTreeObject(where: { ObjectTreeActions.isAvailable(.viewDDL, for: $0.kind) }) else { return }
+            Task { await performTreeAction(.viewDDL, on: object) }
+        case "sessions":
+            guard prepareObjectTreePanel() else { return }
+            isSessionCommandPresented = true
+        case "locks":
+            guard prepareObjectTreePanel() else { return }
+            isLockCommandPresented = true
+        case "switchConnection": isConnectionSwitchPresented = true
+        case "agentSQL":
+            // 这里必须设 `isAgentSQLPresented` —— 界面订阅的是它（与「智能体」菜单同一个开关）。
+            // 原来这里设的是一个名字很像的 `isAgentSQLCommandPresented`：两条命令因此
+            // **设了一个没人看的标志位**，点了完全没反应。这是这一批命令的共同病根。
+            isAgentSQLPresented = true
+        case "syntheticData":
+            // 合成数据只对**表**成立（视图不可写、序列没有列）—— 与对象树右键菜单同一条规则。
+            guard paletteTreeObject(where: { $0.kind == .table }) != nil else { return }
+            isSyntheticCommandPresented = true
         case "egressLog": isEgressLogPresented = true
         case "help": isShortcutHelpCommandPresented = true
+        case "objectSearch": isObjectSearchPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
         }
     }
 
+    /// 命令面板里"需要对象上下文"的三条命令（浏览数据 / 查看 DDL / 合成数据）取目标的方式。
+    ///
+    /// 面板是全局入口，它**不知道用户在树里选了谁**：所以目标只认对象树当前选中项，
+    /// 没有、或类型不够格就直说一句 —— 不猜对象，也不留下一个没人消费的标志位
+    /// （那正是这批命令"点了没反应"的成因）。
+    private func paletteTreeObject(where isEligible: (DatabaseObject) -> Bool) -> DatabaseObject? {
+        guard let object = selectedTreeObject, isEligible(object) else {
+            statusMessage = L(.paletteNeedsTreeObject)
+            return nil
+        }
+        focusObjectTreeSidebar()
+        return object
+    }
+
+    /// 会话 / 锁这类"作用在当前连接上"的命令：没连接就直接说，别开一个必然报错的面板。
+    private func prepareObjectTreePanel() -> Bool {
+        guard selectedConnection != nil else {
+            statusMessage = L(.stateSelectConnectionFirst)
+            return false
+        }
+        focusObjectTreeSidebar()
+        return true
+    }
+
+    /// 上述面板都住在**数据库侧栏的对象树**里：命令面板是全局入口，先把它切出来，
+    /// 否则请求会落在一个没挂载的视图上 —— 那又是一次"点了没反应"。
+    private func focusObjectTreeSidebar() {
+        if selectedActivityItem != .database {
+            selectedActivityItem = .database
+        }
+    }
+
     /// 面板里"浏览/DDL/会话"等条目需要宿主视图提供对象；这里用标志位把请求交回界面，
-    /// 由它在**选中的对象**上打开对应面板 —— 面板是通用入口，不该硬编码某个对象。
+    /// 由它在**当前选中的对象**（`selectedTreeObject`）上打开对应面板 ——
+    /// 面板是通用入口，不该硬编码某个对象、也不该自己猜一个。
     @Published var isBrowseRowsCommandPresented = false
-    @Published var isTableDDLCommandPresented = false
     @Published var isSessionCommandPresented = false
     @Published var isLockCommandPresented = false
-    @Published var isConnectionPickerPresented = false
-    @Published var isAgentSQLCommandPresented = false
     @Published var isSyntheticCommandPresented = false
+    /// 切换连接（⌘K → 切换连接）：侧栏与查询上下文栏都有连接选择器，但没有全局入口，
+    /// 所以这条命令弹一个**最小可用的**切换 sheet（见 `MainWindow` 的 `ConnectionSwitchSheet`）。
+    @Published var isConnectionSwitchPresented = false
     // 注意：`isEgressLogPresented` 已经存在（外发日志面板用的就是它），
     // 这里**不要**再声明一遍 —— 本轮我就多写了一次，编译报 "ambiguous use"。
+    /// 快捷键帮助（⌘K → 帮助）：与工具栏那个 help 气泡共用 `ShortcutHelpContent`，
+    /// 不在这里再抄一份快捷键清单（抄两份迟早只改一处）。
     @Published var isShortcutHelpCommandPresented = false
 
     private var activeTabIDForEditor: UUID { activeQueryTab?.id ?? UUID() }
@@ -3065,6 +3154,27 @@ final class AppState: ObservableObject {
             database: database
         )
         return try await metadata.loadChildren(of: object)
+    }
+
+    /// 全库对象搜索（FR-META-12）：**一次**元数据查询取回表 / 视图 / 列 / 函数，
+    /// 过滤与排序都由 Core 的 `ObjectSearch` 负责（那里可单测）。
+    ///
+    /// 这里**不查方言能力**：`ObjectSearch.query` 是固定的 PostgreSQL 系统目录口径
+    /// （`information_schema` + `pg_proc`），方言层还没有对应的能力开关。
+    /// 在别的方言上它会以一条可读的 SQL 错误抛出、由面板显示出来 ——
+    /// 比在这里猜一个"支持 / 不支持"的判定诚实。
+    func searchObjects(_ keyword: String, schema: String? = nil) async throws -> ObjectSearch.Outcome {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        guard let query = ObjectSearch.query(schema: schema) else {
+            throw AppError.notImplemented(L(.objectSearchTitle))
+        }
+
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(query, on: service)
+        return ObjectSearch.outcome(keyword: keyword, in: ObjectSearch.hits(from: result))
     }
 
     private func makeMetadataService(

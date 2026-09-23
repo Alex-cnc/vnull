@@ -10,7 +10,7 @@ import SwiftUI
 /// - 不占用系统级快捷键（⌘Q / ⌘W / ⌘H / ⌘M / ⌘,）；
 /// - 高频动作用最短的组合（执行 ⌘↩、停止 ⌘.、查找 ⌘F）；
 /// - 成组的动作用同一前缀（运行范围 ⌥⌘1/2/3、保存类 ⌘S / ⇧⌘S / ⌘D / ⇧⌘D）；
-/// - ⌘K 预留给命令面板（FR-EDIT-25），此处不得占用。
+/// - ⌘K 归命令面板（FR-EDIT-25），登记为 `.commandPalette`，此处不得再占用。
 enum AppShortcut: CaseIterable {
     /// 执行查询（需求 FR-EDIT-08 / FR-EXEC-13 明确指定 ⌘↩）。
     case execute
@@ -53,6 +53,12 @@ enum AppShortcut: CaseIterable {
     /// 数据任务面板（FR-AI-05 / FR-AI-06 / FR-AI-08）。
     case dataTask
 
+    /// 命令面板（FR-EDIT-25）：⌘K。
+    ///
+    /// 在此之前 ⌘K **只写在文件头的注释里"预留"**，帮助面板因此列不出它 ——
+    /// 功能有、入口也做了，但用户不知道有这个入口，等于没有。
+    case commandPalette
+
     case help
 
     /// 底部终端面板（显示 / 隐藏）。
@@ -89,6 +95,7 @@ enum AppShortcut: CaseIterable {
         case .egressLog: return "e"
         case .newBrowserTab: return "b"
         case .dataTask: return "t"
+        case .commandPalette: return "k"
         case .help: return "/"
         case .terminal: return "j"
         case .archive: return "r"
@@ -97,7 +104,7 @@ enum AppShortcut: CaseIterable {
 
     var modifiers: EventModifiers {
         switch self {
-        case .execute, .openFile, .saveFile, .saveQuery, .indent, .outdent, .goToLine, .find:
+        case .execute, .openFile, .saveFile, .saveQuery, .indent, .outdent, .goToLine, .find, .commandPalette:
             return [.command]
         case .stop:
             return [.command]

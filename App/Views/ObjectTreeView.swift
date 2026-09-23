@@ -26,18 +26,15 @@ struct ObjectTreeView: View {
     @State private var createTableTarget: DatabaseObject?
     /// 「编辑表结构」的目标表节点；非 nil 时呈现表设计面板（编辑模式）。
     @State private var alterTableTarget: DatabaseObject?
-    /// 按条件浏览 / 统计行数（FR-DATA-02）。
-    @State private var browseRowsTarget: DatabaseObject?
+    /// 为什么"按条件浏览 / 合成数据"不再有本地 `@State` 目标：
+    /// 这两个面板的入口有两个（右键菜单与 ⌘K 命令面板），目标统一取
+    /// `appState.selectedTreeObject`、呈现开关统一取 AppState 的标志位。
+    /// 本地 state 与全局标志位各存一份，迟早出现"面板开了、对象却是上一个"。
     /// 库属性 / 删除数据库（FR-SESS-05）。
     @State private var isPropertiesPresented = false
     @State private var isDropDatabasePresented = false
-    /// 权限与锁面板（FR-SESS-04 / FR-DIAG-05）。
+    /// 权限面板（FR-SESS-04）。
     @State private var isPrivilegePanelPresented = false
-    @State private var isLockPanelPresented = false
-    /// 服务器会话面板（FR-SESS-01 / 02）。
-    @State private var isSessionPanelPresented = false
-    /// 合成数据面板（FR-AI-07）。
-    @State private var syntheticDataTarget: DatabaseObject?
     /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
     @State private var groupByType = false
 
@@ -116,11 +113,13 @@ struct ObjectTreeView: View {
                 }
             }
         }
-        .sheet(item: $browseRowsTarget) { target in
-            BrowseRowsSheet(object: target) {
-                browseRowsTarget = nil
+        .sheet(isPresented: $appState.isBrowseRowsCommandPresented) {
+            if let target = appState.selectedTreeObject {
+                BrowseRowsSheet(object: target) {
+                    appState.isBrowseRowsCommandPresented = false
+                }
+                .environmentObject(appState)
             }
-            .environmentObject(appState)
         }
         .sheet(item: $alterTableTarget) { target in
             TableDesignSheet(
@@ -155,15 +154,17 @@ struct ObjectTreeView: View {
         .sheet(isPresented: $isPrivilegePanelPresented) {
             PrivilegePanel()
         }
-        .sheet(item: $syntheticDataTarget) { target in
-            SyntheticDataPanel(object: target)
-                .environmentObject(appState)
+        .sheet(isPresented: $appState.isSyntheticCommandPresented) {
+            if let target = appState.selectedTreeObject {
+                SyntheticDataPanel(object: target)
+                    .environmentObject(appState)
+            }
         }
-        .sheet(isPresented: $isSessionPanelPresented) {
+        .sheet(isPresented: $appState.isSessionCommandPresented) {
             SessionPanel()
                 .environmentObject(appState)
         }
-        .sheet(isPresented: $isLockPanelPresented) {
+        .sheet(isPresented: $appState.isLockCommandPresented) {
             LockPanel()
         }
     }
@@ -260,6 +261,19 @@ struct ObjectTreeView: View {
             .help(L(.treeGroupByType))
 
             Spacer()
+
+            // 全库对象搜索（FR-META-12）：与 ⌘K 里那条命令打开**同一个**面板。
+            // 放这里是因为"找对象"是看着树时才有的念头，不必先想起来有命令面板。
+            Button {
+                appState.isObjectSearchPresented = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+            }
+            .buttonStyle(.plain)
+            .help(L(.objectSearchTitle))
+
             Button {
                 Task { await reloadRoot() }
             } label: {
@@ -314,15 +328,29 @@ struct ObjectTreeView: View {
             }
             .padding(.leading, CGFloat(row.depth) * Metrics.listIndent)
             .contentShape(Rectangle())
+            // 选中态要看得见：⌘K 里"浏览数据 / 查看 DDL / 合成数据"都作用在选中项上，
+            // 没有可见的选中标记时那句"请先在对象树里点选"会让人莫名其妙。
+            .background(
+                row.object.id == appState.selectedTreeObject?.id
+                    ? Theme.accentColor.opacity(
+                        Theme.isDarkAppearance ? Overlay.Selection.darkAlpha : Overlay.Selection.lightAlpha
+                    )
+                    : Color.clear
+            )
             // 双击表 / 视图 → 浏览前 N 行（FR-DATA-01）。
             // 双击手势必须写在单击之前，否则会被单击吞掉。
             .onTapGesture(count: 2) {
                 guard !row.isGroupHeader else { return }
                 guard ObjectTreeActions.isAvailable(.browseRows, for: row.object.kind) else { return }
+                select(row.object)
                 Task { await appState.performTreeAction(.browseRows, on: row.object) }
             }
             .onTapGesture {
-                guard !row.isGroupHeader, row.isExpandable else { return }
+                guard !row.isGroupHeader else { return }
+                // 单击既"选中"也"展开"：表 / 视图这类节点本来就靠单击展开看列，
+                // 分两次点击才叫选中会让命令面板的目标变得不可预期。
+                select(row.object)
+                guard row.isExpandable else { return }
                 toggle(row.object)
             }
             .contextMenuIf(treeMenuKinds.contains(row.object.kind) && !row.isGroupHeader) {
@@ -404,14 +432,17 @@ struct ObjectTreeView: View {
 
         if ObjectTreeActions.isAvailable(.browseRows, for: object.kind) {
             Button(L(.treeActionBrowseWithCondition)) {
-                browseRowsTarget = object
+                // 先记下目标（面板读的就是它），再开面板 —— 与 ⌘K 那条命令同一个入口。
+                select(object)
+                appState.isBrowseRowsCommandPresented = true
             }
         }
 
         // 合成数据（FR-AI-07）：只对表提供 —— 视图不可写，序列没有列。
         if object.kind == .table {
             Button(L(.syntheticGenerate) + "…") {
-                syntheticDataTarget = object
+                select(object)
+                appState.isSyntheticCommandPresented = true
             }
         }
 
@@ -455,6 +486,12 @@ struct ObjectTreeView: View {
 
     private func runTreeAction(_ action: ObjectTreeAction, on object: DatabaseObject) {
         Task { await appState.performTreeAction(action, on: object) }
+    }
+
+    /// 记下"这次操作针对谁"。右键菜单入口与 ⌘K 命令面板读的是**同一个**字段，
+    /// 这样"面板开了、对象却是上一个"这种漂移不可能发生。
+    private func select(_ object: DatabaseObject) {
+        appState.selectedTreeObject = object
     }
 
     /// 服务器节点的右键菜单（FR-META-11）。
@@ -506,14 +543,14 @@ struct ObjectTreeView: View {
         .disabled(!isConnected)
 
         Button(L(.objectTreeMenuLocks)) {
-            isLockPanelPresented = true
+            appState.isLockCommandPresented = true
         }
         .disabled(!isConnected)
 
         // 服务器会话（FR-SESS-01 / 02）。这个 builder 本来就是**服务器节点专用菜单**，
         // 所以不需要再判节点类型 —— 会话是整个实例的概念（本轮我先多写了一次判断，编译才发现）。
         Button(L(.sessionTitle) + "…") {
-            isSessionPanelPresented = true
+            appState.isSessionCommandPresented = true
         }
         .disabled(!isConnected)
 
@@ -583,6 +620,7 @@ struct ObjectTreeView: View {
             expandedIDs = []
             errors = [:]
             rootError = nil
+            appState.selectedTreeObject = nil
             return
         }
 
@@ -597,12 +635,16 @@ struct ObjectTreeView: View {
             childrenCache = [:]
             expandedIDs = []
             errors = [:]
+            // 树的内容换了（换连接 / 新建立了对象），旧的选中项可能已经不存在：
+            // 留着它会让 ⌘K 里的"浏览数据"作用在一个陈旧的节点上。
+            appState.selectedTreeObject = nil
         } catch {
             roots = []
             childrenCache = [:]
             expandedIDs = []
             errors = [:]
             rootError = ErrorPresenter.message(for: error)
+            appState.selectedTreeObject = nil
         }
         if isLoadingRoot { isLoadingRoot = false }
     }

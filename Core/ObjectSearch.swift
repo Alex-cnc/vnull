@@ -71,6 +71,26 @@ public enum ObjectSearch {
         }
     }
 
+    /// 一次搜索的结果快照。
+    ///
+    /// 为什么把这一步也收进 Core：界面上要说的三句话（"在 N 个对象里搜的"、
+    /// "命中多少"、"元数据可能不全"）都来自同一份输入，散在视图里各拼一遍迟早不一致；
+    /// 而且它是纯函数，单测能直接断言"到顶了就标出来"。
+    public struct Outcome: Equatable, Sendable {
+        /// 过滤 + 排序后的命中（已按 `limit` 截断）。
+        public var matches: [Match]
+        /// 元数据命中总数（**关键词过滤之前**）：界面用来说明"在多少个对象里搜"。
+        public var totalHits: Int
+        /// 元数据行数到达上限 —— 结果可能不完整（R-11）。不假装搜遍了全库。
+        public var isTruncated: Bool
+
+        public init(matches: [Match], totalHits: Int, isTruncated: Bool) {
+            self.matches = matches
+            self.totalHits = totalHits
+            self.isTruncated = isTruncated
+        }
+    }
+
     /// 分档（与命令面板同一套思路：档位关系一目了然，便于断言）。
     enum Score {
         static let exact = 1000
@@ -176,6 +196,26 @@ public enum ObjectSearch {
             return lhs.hit.qualifiedName < rhs.hit.qualifiedName
         }
         return Array(matches.prefix(max(0, limit)))
+    }
+
+    /// 把「元数据命中」算成界面 / CLI 要的结果快照。纯函数：同样的输入永远同样的输出。
+    ///
+    /// 口径：
+    /// - 空关键词 → `matches` 为空，但 `totalHits` **如实给出** —— "在 N 个对象里搜"这句话
+    ///   即使没输入也成立（空输入不列结果是因为上万条列表没意义，不是因为没搜到）；
+    /// - `hits.count >= metadataLimit` → `isTruncated`：元数据已经装不下更多对象，结果可能不全。
+    public static func outcome(
+        keyword: String,
+        in hits: [Hit],
+        limit: Int = 200,
+        metadataLimit: Int = ObjectSearch.defaultLimit
+    ) -> Outcome {
+        Outcome(
+            // 排序沿用 `search` 的稳定顺序：界面、CLI、单测看到的是同一个先后。
+            matches: search(keyword, in: hits, limit: limit),
+            totalHits: hits.count,
+            isTruncated: hits.count >= metadataLimit
+        )
     }
 
     public static func match(_ query: String, hit: Hit) -> Match? {
