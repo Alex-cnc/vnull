@@ -25,6 +25,7 @@ enum Metrics {
     static let toolbarHeight: CGFloat = 44
     static let statusHeight: CGFloat = 24
     static let sidebarWidth: CGFloat = 248
+    static let activityWidth: CGFloat = 46      // 最左侧活动栏（VS Code 同构）
 }
 
 enum Typography {
@@ -127,6 +128,13 @@ struct Theme {
     func accentFill(_ accent: NSColor, _ alpha: CGFloat) -> NSColor {
         accent.withAlphaComponent(alpha)
     }
+}
+
+/// 侧栏当前显示哪个视图 —— 由最左侧活动栏切换（VS Code 的信息架构：
+/// 「看哪个视图」与「视图里看什么」分开）。
+enum SidebarMode {
+    case database    // 连接 + 对象树（已有）
+    case workspace   // 工作区 Explorer（新需求：用户自选目录，供 AI 开发）
 }
 
 struct Accent {
@@ -251,6 +259,97 @@ final class Canvas {
     }
 }
 
+// MARK: - 活动栏 与 工作区 Explorer
+
+/// 最左侧窄边栏：上排视图切换，最底下是设置 / 账户。
+/// 选中项用「左侧 2pt 强调条 + 图标提亮」，不铺整块背景 —— 窄条上铺背景会很脏。
+func drawActivityBar(_ c: Canvas, theme: Theme, accent: Accent, top: CGFloat, height: CGFloat, mode: SidebarMode) {
+    let width = Metrics.activityWidth
+    c.fill(NSRect(x: 0, y: top, width: width, height: height), theme.window)
+
+    let items: [(String, SidebarMode?, String)] = [
+        ("cylinder.split.1x2", .database, "数据库"),
+        ("folder", .workspace, "工作区"),
+        ("clock.arrow.circlepath", nil, "查询历史"),
+        ("magnifyingglass", nil, "搜索")
+    ]
+    var y = top + 8
+    for (symbolName, itemMode, _) in items {
+        let active = itemMode != nil && itemMode == mode
+        if active {
+            c.rounded(NSRect(x: 0, y: y + 8, width: 2, height: 28), 1, accent.color)
+        }
+        c.symbol(symbolName, in: NSRect(x: (width - 20) / 2, y: y + 12, width: 20, height: 20),
+                 color: active ? theme.textPrimary : theme.textTertiary, pointSize: 17)
+        y += 44
+    }
+
+    // 底部：设置 / 账户
+    var bottomY = top + height - 8 - 44
+    for symbolName in ["person.crop.circle", "gearshape"] {
+        c.symbol(symbolName, in: NSRect(x: (width - 20) / 2, y: bottomY + 12, width: 20, height: 20),
+                 color: theme.textTertiary, pointSize: 17)
+        bottomY -= 44
+    }
+    c.hairline(x: 8, y: bottomY + 52, length: width - 16, vertical: false, color: theme.hairline)
+}
+
+/// 工作区视图：用户自选一个目录（沙箱下走「选择文件夹」授权），供 AI 开发与终端使用。
+func drawWorkspaceExplorer(_ c: Canvas, theme: Theme, accent: Accent, x: CGFloat, top: CGFloat, height: CGFloat) {
+    let width = Metrics.sidebarWidth
+    c.fill(NSRect(x: x, y: top, width: width, height: height), theme.sidebar)
+    c.hairline(x: x + width - Metrics.hairline, y: top, length: height, vertical: true, color: theme.hairline)
+
+    var y = top + 14
+    c.text("工作区", at: CGPoint(x: x + 16, y: y), font: Typography.caption, color: theme.textTertiary)
+    y += 18
+
+    // 当前工作区 + 切换入口
+    let headerRect = NSRect(x: x + 8, y: y, width: width - 16, height: Metrics.sidebarRow)
+    c.rounded(headerRect, Metrics.radiusControl, theme.raised)
+    c.symbol("folder.fill", in: NSRect(x: x + 18, y: y + 7, width: 13, height: 13), color: accent.color, pointSize: 11)
+    c.text("DoyahStudio", at: CGPoint(x: x + 36, y: y + 5), font: Typography.bodyStrong, color: theme.textPrimary)
+    c.symbol("chevron.up.chevron.down", in: NSRect(x: x + width - 32, y: y + 8, width: 12, height: 12), color: theme.textTertiary, pointSize: 10)
+    y += Metrics.sidebarRow + 4
+
+    // 路径（三级省略，只有中间省略在 SwiftUI 里才不会把根目录吃掉）
+    c.text("~/…/projects/DoyahStudio", at: CGPoint(x: x + 18, y: y), font: Typography.caption, color: theme.textTertiary)
+    y += 22
+
+    let tree: [(Int, String, String, Bool)] = [
+        (0, "folder", ".dsh", false),
+        (0, "folder", "App", false),
+        (0, "folder", "Core", false),
+        (1, "doc.text", "AgentSQLGenerator.swift", false),
+        (1, "doc.text", "DesignTokens.swift", false),
+        (1, "doc.text", "TerminalScreen.swift", true),
+        (0, "folder", "Docs", false),
+        (0, "folder", "Scripts", false),
+        (0, "folder", "Tests", false),
+        (0, "doc.text", "AGENTS.md", false),
+        (0, "doc.plaintext", "Package.swift", false),
+        (0, "doc.text", "README.md", false)
+    ]
+    for (depth, symbolName, name, selected) in tree {
+        let indent = x + 16 + CGFloat(depth) * 14
+        if selected {
+            c.rounded(NSRect(x: x + 8, y: y, width: width - 16, height: Metrics.sidebarRow), Metrics.radiusControl, accent.color.withAlphaComponent(theme.isDark ? 0.14 : 0.10))
+            c.rounded(NSRect(x: x + 8, y: y + 5, width: 3, height: Metrics.sidebarRow - 10), 1.5, accent.color)
+        }
+        c.symbol(symbolName, in: NSRect(x: indent, y: y + 7, width: 13, height: 13),
+                 color: selected ? accent.color : theme.textTertiary, pointSize: 11)
+        c.text(name, at: CGPoint(x: indent + 20, y: y + 5), font: Typography.body,
+               color: selected ? theme.textPrimary : theme.textSecondary)
+        y += Metrics.sidebarRow
+    }
+
+    // 底部：沙箱授权状态（这是工作区在 macOS 上的真实约束，必须给用户看见）
+    let footerY = top + height - 30
+    c.hairline(x: x, y: footerY, length: width, vertical: false, color: theme.hairline)
+    c.fill(NSRect(x: x + 16, y: footerY + 12, width: 6, height: 6), theme.success)
+    c.text("已授权读写 · 沙箱书签有效", at: CGPoint(x: x + 28, y: footerY + 8), font: Typography.caption, color: theme.textTertiary)
+}
+
 // MARK: - 窗口样张
 
 /// 一行结果数据
@@ -275,7 +374,7 @@ let sampleRows: [Row] = [
     Row(id: "10234", channel: "App Store", orders: "147", gmv: "38,442.10", created: "2026-09-23 08:58:52", status: "paid") { $0.success }
 ]
 
-func renderWindow(theme: Theme, accent: Accent, tabs: Bool = true) -> Data {
+func renderWindow(theme: Theme, accent: Accent, mode: SidebarMode = .database) -> Data {
     let W: CGFloat = 1440
     let H: CGFloat = 900
     let canvas = Canvas(width: W, height: H, scale: 2)
@@ -330,8 +429,13 @@ func renderWindow(theme: Theme, accent: Accent, tabs: Bool = true) -> Data {
     let bodyTop = titlebarHeight
     let statusHeight = Metrics.statusHeight
     let bodyHeight = H - titlebarHeight - statusHeight
-    c.fill(NSRect(x: 0, y: bodyTop, width: Metrics.sidebarWidth, height: bodyHeight), theme.sidebar)
-    c.hairline(x: Metrics.sidebarWidth - Metrics.hairline, y: bodyTop, length: bodyHeight, vertical: true, color: theme.hairline)
+    drawActivityBar(c, theme: theme, accent: accent, top: bodyTop, height: bodyHeight, mode: mode)
+
+    let sidebarX = Metrics.activityWidth
+    c.fill(NSRect(x: sidebarX, y: bodyTop, width: Metrics.sidebarWidth, height: bodyHeight), theme.sidebar)
+    c.hairline(x: sidebarX + Metrics.sidebarWidth - Metrics.hairline, y: bodyTop, length: bodyHeight, vertical: true, color: theme.hairline)
+    c.ctx.saveGState()
+    c.ctx.translateBy(x: sidebarX, y: 0)
 
     var y = bodyTop + 14
     c.text("连接", at: CGPoint(x: 16, y: y), font: Typography.caption, color: theme.textTertiary)
@@ -386,8 +490,14 @@ func renderWindow(theme: Theme, accent: Accent, tabs: Bool = true) -> Data {
         y += Metrics.sidebarRow
     }
 
+    c.ctx.restoreGState()
+
+    if mode == .workspace {
+        drawWorkspaceExplorer(c, theme: theme, accent: accent, x: sidebarX, top: bodyTop, height: bodyHeight)
+    }
+
     // ---- 主区 ----
-    let mainX = Metrics.sidebarWidth
+    let mainX = Metrics.activityWidth + Metrics.sidebarWidth
     let mainWidth = W - mainX
     c.fill(NSRect(x: mainX, y: bodyTop, width: mainWidth, height: bodyHeight), theme.content)
 
@@ -765,7 +875,14 @@ struct WindowSamples {
     var checks: [Check]
 }
 
-func verifyWindow(_ data: Data, theme: Theme, accent: Accent, label: String) -> WindowSamples {
+func verifyWindow(
+    _ data: Data,
+    theme: Theme,
+    accent: Accent,
+    label: String,
+    barPoint: CGPoint = CGPoint(x: 55, y: 95),      // 侧栏里那一行选中的强调条
+    buttonPoint: CGPoint = CGPoint(x: 345, y: 100)  // 查询工具条上的主按钮
+) -> WindowSamples {
     guard let rep = NSBitmapImageRep(data: data) else {
         return WindowSamples(accentButton: nil, selectionBar: nil, checks: [Check(ok: false, note: "\(label): PNG 解不开")])
     }
@@ -778,8 +895,8 @@ func verifyWindow(_ data: Data, theme: Theme, accent: Accent, label: String) -> 
     let sidebar = sample(120, 500)
     let content = sample(1400, 585)   // 网格末行与下方面板之间的空白，避开当前行高亮与面板
     let header = sample(1400, 348)
-    let button = sample(280, 100)
-    let bar = sample(9, 95)
+    let button = sample(buttonPoint.x, buttonPoint.y)
+    let bar = sample(barPoint.x, barPoint.y)
 
     print("  取样 \(label): 底 \(window?.hexString ?? "-") 标题栏 \(titlebar?.hexString ?? "-") 侧栏 \(sidebar?.hexString ?? "-") 内容 \(content?.hexString ?? "-") 表头 \(header?.hexString ?? "-") 按钮 \(button?.hexString ?? "-") 强调条 \(bar?.hexString ?? "-")")
 
@@ -863,6 +980,11 @@ if darkButtons.count == 3 {
         }
     }
 }
+
+let workspaceData = renderWindow(theme: proDark, accent: Accent.candidates[0], mode: .workspace)
+allChecks += verifyWindow(workspaceData, theme: proDark, accent: Accent.candidates[0], label: "深色-A-工作区视图",
+                          barPoint: CGPoint(x: 55, y: 271)).checks   // 工作区视图里选中的是第 6 行文件
+write(workspaceData, "样张-深色-A-工作区视图.png")
 
 let lightData = renderWindow(theme: nativeLight, accent: Accent.candidates[0])
 allChecks += verifyWindow(lightData, theme: nativeLight, accent: Accent.candidates[0], label: "浅色-\(Accent.candidates[0].name)").checks
