@@ -271,6 +271,17 @@ struct DoyahCLI {
             }
         }
 
+        // backup：备份 / 恢复的**真实执行**（FR-IO-04）。
+        // 走 `BackupCommand` 生成 argv（**不经过 shell**）+ `BackupExecutor` 起进程，
+        // 密码只经 `PGPASSWORD` 环境变量传给子进程，不进 argv。
+        if arguments.first == "backup" {
+            let code = await runBackupCommand(
+                arguments: Array(arguments.dropFirst()),
+                environment: environment
+            )
+            exit(code)
+        }
+
         // export：**流式**导出（FR-RES-13 的「取」那一半）。
         // 走服务端游标逐页取、逐页写盘：内存占用与总行数无关，也不用 OFFSET 翻页（大表上那是 O(n²)）。
         if arguments.contains("--export") || arguments.first == "export" {
@@ -349,6 +360,157 @@ struct DoyahCLI {
             await service.disconnect()
             exit(2)
         }
+    }
+
+    /// `backup --kind dump|dumpall|restore --out <路径> [--database 库] [--host H] [--port P] [--user U]
+    ///         [--format plain|custom|directory] [--jobs N] [--tool <pg_dump 绝对路径>] [--clean] [--dry-run]`
+    ///
+    /// 为什么 CLI 也要有这条：备份是"必须有人真的跑一遍才知道对不对"的功能，
+    /// 而图形界面里点一次没法进回归脚本。`--dry-run` 只打印将要执行的命令行（密码显示为 `***`）。
+    private static func runBackupCommand(
+        arguments: [String],
+        environment: [String: String]
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        let kindRaw = (value(for: "--kind") ?? "dump").lowercased()
+        let kind: BackupPlan.Kind
+        switch kindRaw {
+        case "dump": kind = .dump
+        case "dumpall", "dump-all": kind = .dumpAll
+        case "restore": kind = .restore
+        default:
+            print("--kind 只支持 dump / dumpall / restore")
+            return 64
+        }
+
+        let format: BackupCommand.Format
+        switch (value(for: "--format") ?? "plain").lowercased() {
+        case "plain": format = .plain
+        case "custom": format = .custom
+        case "directory", "dir": format = .directory
+        default:
+            print("--format 只支持 plain / custom / directory")
+            return 64
+        }
+
+        guard let outputPath = value(for: "--out") else {
+            print("缺少 --out <路径>")
+            return 64
+        }
+
+        let host = value(for: "--host") ?? environment["PGHOST"] ?? "127.0.0.1"
+        let port = Int(value(for: "--port") ?? environment["PGPORT"] ?? "5432") ?? 5432
+        let user = value(for: "--user") ?? environment["PGUSER"]
+        let database = value(for: "--database") ?? environment["PGDATABASE"]
+        let password = environment["PGPASSWORD"]
+
+        let plan = BackupPlan(
+            kind: kind,
+            target: BackupCommand.Target(host: host, port: port, user: user, database: database),
+            format: format,
+            filePath: outputPath,
+            jobs: value(for: "--jobs").flatMap(Int.init),
+            noOwner: arguments.contains("--no-owner"),
+            clean: arguments.contains("--clean"),
+            rolesOnly: arguments.contains("--roles-only"),
+            globalsOnly: arguments.contains("--globals-only"),
+            noRolePasswords: arguments.contains("--no-role-passwords"),
+            // `--tool` 允许指定绝对路径：GUI / CI 的 PATH 里通常没有 pg_dump（本机就如此）。
+            executableName: value(for: "--tool") ?? BackupPlan.defaultExecutable(for: kind)
+        )
+
+        print("命令：\(plan.displayCommand(password: password))")
+        if arguments.contains("--dry-run") {
+            print("（--dry-run：不执行）")
+            return 0
+        }
+
+        // 前置版本检查（FR-IO-04）：`pg_dump` 只能处理不比自己新的服务器 ——
+        // 不先查一次，用户会等到跑到一半才看到一句并不直观的服务端报错。
+        if !arguments.contains("--no-version-check") {
+            let serverVersion = await fetchServerVersion(host: host, port: port, user: user, database: database, password: password)
+            let toolVersion = await fetchToolVersion(plan: plan, password: password)
+            let compatibility = BackupToolCheck.evaluate(toolVersion: toolVersion, serverVersion: serverVersion)
+            if !compatibility.isUsable, !arguments.contains("--force") {
+                if let diagnosis = BackupToolCheck.diagnosis(for: compatibility, toolName: plan.executableName) {
+                    print(diagnosis)
+                }
+                print("（如确认要试：加 --force；跳过检查：加 --no-version-check）")
+                return 65
+            }
+        }
+
+        do {
+            let result = try await BackupExecutor().execute(plan, password: password) { line in
+                print("  \(line)")
+            }
+            if result.isFailure {
+                print("执行失败（退出码 \(result.exitCode)）：")
+                print(result.failureSummary ?? "")
+                return 1
+            }
+            print("完成：\(result.outputLineCount) 行输出。")
+            return 0
+        } catch {
+            print("无法执行：\(error.localizedDescription)")
+            return 68
+        }
+    }
+
+    /// 取服务器版本（只为前置检查；拿不到就返回 nil，由判定逻辑说"不确定"）。
+    private static func fetchServerVersion(
+        host: String,
+        port: Int,
+        user: String?,
+        database: String?,
+        password: String?
+    ) async -> DatabaseVersion? {
+        var config = ConnectionConfig(
+            name: "backup-check",
+            dbType: .postgresql,
+            host: host,
+            port: port,
+            database: database ?? "",
+            username: user ?? "",
+            sslMode: .prefer,
+            timeout: 10
+        )
+        config.database = database ?? "postgres"
+        let service = PostgresService(config: config, password: password)
+        do {
+            _ = try await service.connect()
+            defer { Task { await service.disconnect() } }
+            var raw: String?
+            for try await event in service.execute("SHOW server_version", options: .default) {
+                if case .resultSet(let result) = event {
+                    raw = result.rows.first?.first ?? nil
+                }
+            }
+            await service.disconnect()
+            guard let raw else { return nil }
+            return PostgresDialect().parseServerVersion(raw)
+        } catch {
+            await service.disconnect()
+            return nil
+        }
+    }
+
+    /// 执行 `<tool> --version` 并解析。
+    private static func fetchToolVersion(plan: BackupPlan, password: String?) async -> DatabaseVersion? {
+        var output = ""
+        let runner = FoundationProcessRunner()
+        _ = try? await runner.run(
+            executable: plan.executableName,
+            arguments: ["--version"],
+            environment: password.map { ["PGPASSWORD": $0] } ?? [:]
+        ) { line in
+            output += line + "\n"
+        }
+        return BackupToolCheck.parseToolVersion(output)
     }
 
     /// `agent-sql --endpoint http://127.0.0.1:11434 --model qwen2.5:7b "指令" [--schema t1,t2] [--api-key K] [--show-egress]`
