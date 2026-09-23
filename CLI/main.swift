@@ -307,8 +307,34 @@ struct DoyahCLI {
 
         let sql = resolveSQL(arguments: arguments) ?? "SELECT version(), current_database(), current_user;"
 
+        // 查询参数（FR-EXEC-17）：`--param name=value[:type]`，类型缺省为 text。
+        // 绑定发生在**执行之前**，且只替换代码区的占位符（字符串 / 注释里的不动）。
+        var boundSQL = sql
+        let rawParams = Self.parameterFlags(arguments: arguments)
+        if !rawParams.isEmpty {
+            var values: [String: (type: SQLParameters.ValueType, raw: String)] = [:]
+            for entry in rawParams {
+                values[entry.name] = (entry.type, entry.value)
+            }
+            switch SQLParameters.bind(sql: sql, values: values) {
+            case .success(let bound):
+                boundSQL = bound.sql
+                if !bound.unusedNames.isEmpty {
+                    print("提示：这些参数没有在 SQL 里用到 —— \(bound.unusedNames.joined(separator: "、"))")
+                }
+            case .failure(let error):
+                print("参数绑定失败：\(error.localizedDescription)")
+                exit(70)
+            }
+        } else if SQLParameters.hasParameters(sql) {
+            let names = SQLParameters.extract(from: sql).map(\.identifier)
+            print("这条 SQL 需要参数，但没有提供：\(names.joined(separator: "、"))")
+            print("用法：--param 名字=值[:text|number|boolean|null]")
+            exit(70)
+        }
+
         print("SQL：")
-        print(sql)
+        print(boundSQL)
         print("")
 
         // --cancel-after <秒>：用于验证服务端取消（FR-EXEC-08）。
@@ -318,7 +344,7 @@ struct DoyahCLI {
             // CLI 也走**句柄化**取消：`--cancel-after` 验证的正是"停止能不能下发到服务端"，
             // 拿不到句柄就没法定向，也就验证不了这条契约。
             let handle = ExecutionHandle()
-            let stream = service.execute(sql, options: .default, handle: handle)
+            let stream = service.execute(boundSQL, options: .default, handle: handle)
 
             let canceller: Task<Void, Never>? = cancelDelay.map { delay in
                 Task {
@@ -848,6 +874,35 @@ struct DoyahCLI {
             print("导出失败：\(error.localizedDescription)")
             return 67
         }
+    }
+
+    /// 解析 `--param 名字=值[:类型]`（可重复）。
+    static func parameterFlags(arguments: [String]) -> [(name: String, value: String, type: SQLParameters.ValueType)] {
+        var result: [(String, String, SQLParameters.ValueType)] = []
+        var index = 0
+        while index < arguments.count {
+            if arguments[index] == "--param", index + 1 < arguments.count {
+                let raw = arguments[index + 1]
+                if let equals = raw.firstIndex(of: "=") {
+                    let name = String(raw[..<equals])
+                    var rest = String(raw[raw.index(after: equals)...])
+                    var type: SQLParameters.ValueType = .text
+                    // 类型后缀只在**最后一段**且是已知类型时才切（值里的冒号不该被误切）。
+                    if let colon = rest.lastIndex(of: ":") {
+                        let suffix = String(rest[rest.index(after: colon)...]).lowercased()
+                        if let parsed = SQLParameters.ValueType(rawValue: suffix) {
+                            type = parsed
+                            rest = String(rest[..<colon])
+                        }
+                    }
+                    result.append((name, rest, type))
+                }
+                index += 2
+                continue
+            }
+            index += 1
+        }
+        return result
     }
 
     /// 支持三种输入方式：`-c "SQL"`、`--command "SQL"`，或从标准输入管道读取。

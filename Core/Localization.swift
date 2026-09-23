@@ -317,6 +317,15 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionNewerVersionKept
 
     // 事务模式（FR-EXEC-15）
+    case queryParameterTitle
+    case queryParameterHint
+    case queryParameterName
+    case queryParameterValue
+    case queryParameterType
+    case queryParameterRun
+    case queryParameterMissing
+    case queryParameterUnused
+    case queryParameterEmpty
     case syntheticTitle
     case syntheticRows
     case syntheticSeed
@@ -1204,6 +1213,15 @@ public enum LocalizedStrings {
         .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
         .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 
+        .queryParameterTitle: [.simplifiedChinese: "填参数后执行", .english: "Fill parameters, then run"],
+        .queryParameterHint: [.simplifiedChinese: "值会做**类型化转义**（文本自动加引号并转义单引号，数字不加引号，避免索引失效）；**编辑器里的占位符不会被改写**", .english: "Values are escaped by type (text is quoted and single quotes doubled; numbers stay unquoted so indexes still apply); the placeholders in the editor are left untouched"],
+        .queryParameterName: [.simplifiedChinese: "参数", .english: "Parameter"],
+        .queryParameterValue: [.simplifiedChinese: "值", .english: "Value"],
+        .queryParameterType: [.simplifiedChinese: "类型", .english: "Type"],
+        .queryParameterRun: [.simplifiedChinese: "绑定并执行", .english: "Bind and run"],
+        .queryParameterMissing: [.simplifiedChinese: "还有参数没填", .english: "Some parameters are still empty"],
+        .queryParameterUnused: [.simplifiedChinese: "这些参数没有在语句里用到：%@", .english: "These parameters were not used in the statement: %@"],
+        .queryParameterEmpty: [.simplifiedChinese: "该语句没有参数", .english: "This statement has no parameters"],
         .syntheticTitle: [.simplifiedChinese: "生成测试数据：%@", .english: "Generate test data: %@"],
         .syntheticRows: [.simplifiedChinese: "行数", .english: "Rows"],
         .syntheticSeed: [.simplifiedChinese: "随机种子", .english: "Seed"],

@@ -2660,6 +2660,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 查询参数（FR-EXEC-17）
+
+    /// 待填参数的执行请求（弹面板用）。
+    struct PendingQueryParameters: Equatable {
+        var tabID: UUID
+        /// 抠出运行范围之后、**尚未绑定**的语句。
+        var sql: String
+
+        var parameters: [SQLParameters.Parameter] { SQLParameters.extract(from: sql) }
+    }
+
+    @Published var pendingQueryParameters: PendingQueryParameters?
+    @Published var isQueryParameterSheetPresented = false
+
+    /// 面板确认：绑定后执行（**不改写编辑器**）。
+    func runPendingQueryParameters(values: [String: (type: SQLParameters.ValueType, raw: String)]) async {
+        guard let pending = pendingQueryParameters else { return }
+        switch SQLParameters.bind(sql: pending.sql, values: values) {
+        case .success(let bound):
+            pendingQueryParameters = nil
+            isQueryParameterSheetPresented = false
+            if !bound.unusedNames.isEmpty {
+                statusMessage = L(.queryParameterUnused, bound.unusedNames.joined(separator: "、"))
+            }
+            await executeQuery(for: pending.tabID, bypassingSafetyCheck: true, sqlOverride: bound.sql)
+        case .failure(let error):
+            // 面板上就地显示（`queryParameterError`），不静默、也不执行。
+            queryParameterError = error.localizedDescription
+        }
+    }
+
+    /// 面板取消：**什么也不执行**（不是"用空值执行"）。
+    func cancelPendingQueryParameters() {
+        pendingQueryParameters = nil
+        isQueryParameterSheetPresented = false
+        queryParameterError = nil
+    }
+
+    @Published var queryParameterError: String?
+
     // MARK: - 合成数据（FR-AI-07）
 
     /// 面板上的错误 / 提示（与其它面板一致：不弹窗打断，就地显示）。
@@ -3385,7 +3425,13 @@ final class AppState: ObservableObject {
         executionTasks[tabID] = task
     }
 
-    func executeQuery(for tabID: UUID, bypassingSafetyCheck: Bool = false) async {
+    /// - Parameter sqlOverride: 参数绑定后的语句（FR-EXEC-17）。传了就执行它，
+    ///   **不改写编辑器** —— 占位符是可复用的模板，不该被一次取值覆盖掉。
+    func executeQuery(
+        for tabID: UUID,
+        bypassingSafetyCheck: Bool = false,
+        sqlOverride: String? = nil
+    ) async {
         guard let tabIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         guard !tabs[tabIndex].isExecuting else { return }
 
@@ -3413,7 +3459,15 @@ final class AppState: ObservableObject {
             return
         }
 
-        let sql = resolution.sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sql = (sqlOverride ?? resolution.sql).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 查询参数（FR-EXEC-17）：有占位符就先弹面板填值，**不在没填值的情况下执行**。
+        // `sqlOverride != nil` 说明值已经填过一轮了，不会再弹（避免自激）。
+        if sqlOverride == nil, SQLParameters.hasParameters(sql) {
+            pendingQueryParameters = PendingQueryParameters(tabID: tabID, sql: sql)
+            isQueryParameterSheetPresented = true
+            return
+        }
         guard !sql.isEmpty else {
             updateTab(tabID) {
                 $0.errorMessage = L(.stateSQLEmpty)

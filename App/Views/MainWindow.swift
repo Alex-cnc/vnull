@@ -81,6 +81,11 @@ struct MainWindow: View {
                 }
             }
         }
+        // 查询参数面板（FR-EXEC-17）：执行时若有占位符就弹出来填值。
+        .sheet(isPresented: $appState.isQueryParameterSheetPresented) {
+            QueryParameterSheet()
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.isAgentSettingsPresented) {
             AgentSettingsSheet()
         }
