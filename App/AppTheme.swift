@@ -79,9 +79,34 @@ enum Theme {
         }
     }
 
+    // MARK: 强调色（AppKit 自绘视图用）
+    //
+    // 从 `AccentManager` 现取而不是缓存：强调色是用户可配置的，
+    // 缓存下来就会出现"改了强调色但结果表的选中条还是旧的"。
+
+    static var accentNSColor: NSColor { AccentManager.shared.accentNSColor }
+
+    /// 选中行的淡填充（与活动栏、侧栏同一套语言）。
+    static var accentTintNSColor: NSColor {
+        AccentManager.shared.accentNSColor.withAlphaComponent(isDarkAppearance ? 0.14 : 0.10)
+    }
+
+    /// 发丝线颜色（叠加在表面上，故用低透明度而不是不透明灰）。
+    static var hairlineNSColor: NSColor {
+        isDarkAppearance
+            ? NSColor.white.withAlphaComponent(Hairline.darkAlpha)
+            : NSColor.black.withAlphaComponent(Hairline.lightAlpha)
+    }
+
+    /// 当前绘图外观是否深色。
+    static var isDarkAppearance: Bool {
+        NSAppearance.current.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     // MARK: 底层
 
     // AppKit 视图（编辑器 / 结果网格 / 终端）需要 NSColor，这里给三个语义重载。
+    static func nsColor(_ surface: Surface) -> NSColor { nsColor(surface.color) }
     static func nsColor(_ tone: TextTone) -> NSColor { nsColor(tone.color) }
     static func nsColor(_ tone: SyntaxTone) -> NSColor { nsColor(tone.color) }
     static func nsColor(_ tone: StatusTone) -> NSColor { nsColor(tone.color) }

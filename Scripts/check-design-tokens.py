@@ -14,7 +14,7 @@
        需要放宽时必须显式 `--force`，好让"放宽"这件事在 code review 里看得见）。
 
 规则：
-    bare-color    裸颜色（Color.orange / NSColor.systemRed / NSColor(calibratedRed:...)…）
+    bare-color    裸颜色（Color.orange / NSColor.systemRed / NSColor.labelColor / .separatorColor…）
     bare-font     裸字号（.font(.system(size: 14)) / NSFont.systemFont(ofSize: 14)…）
     bare-spacing  裸间距（.padding(6) / VStack(spacing: 3)…）
     bare-radius   裸圆角（cornerRadius: 5）
@@ -43,9 +43,16 @@ FONT_SCALE = {11, 12, 13, 15, 17}
 RADIUS_SCALE = {1, 4, 6, 8, 10}
 
 BARE_COLOR = re.compile(
+    # 具体色名（橙 / 红 / 蓝…）
     r"\b(?:Color|NSColor)\.(?:orange|red|blue|yellow|green|purple|pink|gray|grey|brown|cyan|indigo|mint|teal)\b"
     r"|\bNSColor\.system(?:Red|Orange|Yellow|Green|Blue|Purple|Pink|Gray|Brown|Teal|Indigo|Mint|Cyan)\b"
     r"|\bNSColor\(calibratedRed:|\bNSColor\(deviceRed:"
+    # 系统的**语义色**也算裸色：设计令牌里有对应的 TextTone / Surface / StatusTone，
+    # 混用系统的 labelColor / separatorColor 会让某一块与相邻面板"差一点点"，
+    # 而"差一点点"正是这次外观改造要消灭的东西（结果网格原先就漏在这条规则外）。
+    r"|\bNSColor\.(?:labelColor|secondaryLabelColor|tertiaryLabelColor|quaternaryLabelColor)\b"
+    r"|\bNSColor\.(?:separatorColor|gridColor|controlBackgroundColor|windowBackgroundColor|textBackgroundColor)\b"
+    r"|\.(?:secondaryLabelColor|tertiaryLabelColor|separatorColor)\b"
 )
 FONT_SIZE = re.compile(
     r"\.system\(size:\s*([0-9.]+)|systemFont\(ofSize:\s*([0-9.]+)|monospacedSystemFont\(ofSize:\s*([0-9.]+)"

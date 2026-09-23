@@ -8,6 +8,7 @@
       "bare-spacing": 8
     },
     "App/Views/AgentSQLPanel.swift": {
+      "bare-color": 1,
       "bare-spacing": 4
     },
     "App/Views/AgentSettingsSheet.swift": {
@@ -24,11 +25,11 @@
       "bare-spacing": 1
     },
     "App/Views/DataTaskPanel.swift": {
-      "bare-color": 1,
+      "bare-color": 2,
       "bare-spacing": 11
     },
     "App/Views/DataTaskSpecSheet.swift": {
-      "bare-color": 1,
+      "bare-color": 2,
       "bare-spacing": 2
     },
     "App/Views/DatabasePropertiesSheet.swift": {
@@ -48,6 +49,7 @@
       "bare-spacing": 6
     },
     "App/Views/ObjectTreeView.swift": {
+      "bare-color": 1,
       "bare-font": 1,
       "bare-spacing": 4
     },
@@ -86,7 +88,7 @@
     }
   },
   "totals": {
-    "bare-color": 8,
+    "bare-color": 12,
     "bare-font": 3,
     "bare-radius": 1,
     "bare-spacing": 76

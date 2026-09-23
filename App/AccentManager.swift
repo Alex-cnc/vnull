@@ -32,6 +32,9 @@ final class AccentManager: ObservableObject {
     /// 主色：选中条 / 图标 / 焦点环 / 淡填充底色。
     var accentColor: Color { Color(nsColor: Self.dynamic(theme.accentHex)) }
 
+    /// 同上的 `NSColor` 形态（AppKit 自绘视图用，如结果表选中条）。
+    var accentNSColor: NSColor { Self.dynamic(theme.accentHex) }
+
     /// 实心按钮的填充色（已压暗到白字能过 WCAG AA，见 `AccentTheme` 的注释）。
     var fillColor: Color { Color(nsColor: Self.dynamic(theme.fillHex)) }
 
