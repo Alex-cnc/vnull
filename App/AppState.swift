@@ -2660,6 +2660,83 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 服务器会话（FR-SESS-01 / FR-SESS-02）
+
+    /// 读取当前实例的会话列表（按「等待中 → 活跃 → 空闲」排序，排序规则在 Core 里可单测）。
+    func loadServerSessions() async throws -> [ServerSession] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.serverActivityQuery() else {
+            throw AppError.notImplemented(L(.sessionUnsupported))
+        }
+
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(query, on: service)
+        return SessionMonitor.sorted(SessionMonitor.sessions(from: result))
+    }
+
+    /// 「取消当前语句」：温和（语句被中断，连接还在）。返回**空串表示成功**，否则是可读错误。
+    ///
+    /// 为什么用"空串=成功"这种不优雅的约定：这个方法被面板直接用来填错误区，
+    /// 成功时不该弹任何东西；返回 `String?` 会让调用方写成两层判断，反而更容易漏。
+    func cancelSessionStatement(pid: Int) async -> String {
+        await runSessionSignal(pid: pid, kind: .cancel)
+    }
+
+    /// 「终止会话」：掐断整条连接（不可逆），界面必须二次确认后调它。
+    func terminateSession(pid: Int) async -> String {
+        await runSessionSignal(pid: pid, kind: .terminate)
+    }
+
+    private enum SessionSignal {
+        case cancel
+        case terminate
+
+        var isDestructive: Bool { self == .terminate }
+    }
+
+    private func runSessionSignal(pid: Int, kind: SessionSignal) async -> String {
+        guard let configuration = selectedConnection else {
+            return L(.stateSelectConnectionFirst)
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let statement: String?
+        switch kind {
+        case .cancel: statement = dialect.cancelSessionStatement(pid: pid)
+        case .terminate: statement = dialect.terminateSessionStatement(pid: pid)
+        }
+        guard let statement else {
+            return L(.sessionSignalUnsupported)
+        }
+
+        do {
+            let database = currentDatabaseName(for: configuration)
+            let service = try await ensureService(for: configuration, database: database)
+            let result = try await runSingleQuery(statement, on: service)
+            // 服务端返回布尔：false 通常意味着**权限不够**（PG 要求同用户或 pg_signal_backend）。
+            // 这一步必须如实区分，否则用户会以为"点了没反应"。
+            let succeeded = result.rows.first?.first??.lowercased()
+            switch succeeded {
+            case "t", "true", "1":
+                statusMessage = kind.isDestructive
+                    ? L(.sessionTerminated, pid)
+                    : L(.sessionStatementCancelled, pid)
+                return ""
+            case .some:
+                return L(.sessionSignalDenied, pid)
+            case nil:
+                // 没有返回值的方言（例如 GBase 的 KILL）：只能按"语句执行成功"处理，并如实说明。
+                statusMessage = kind.isDestructive ? L(.sessionTerminated, pid) : L(.sessionStatementCancelled, pid)
+                return ""
+            }
+        } catch {
+            return ErrorPresenter.message(for: error)
+        }
+    }
+
     // MARK: - 锁与阻塞链（FR-DIAG-05）
 
     /// 查询锁等待关系；方言不支持时抛可读错误。

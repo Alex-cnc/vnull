@@ -317,6 +317,27 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionNewerVersionKept
 
     // 事务模式（FR-EXEC-15）
+    case sessionTitle
+    case sessionRefresh
+    case sessionPermissionNote
+    case sessionLoading
+    case sessionEmpty
+    case sessionCount
+    case sessionWaiting
+    case sessionElapsed
+    case sessionCancelStatement
+    case sessionCancelStatementHelp
+    case sessionTerminate
+    case sessionTerminateHelp
+    case sessionTerminateConfirmTitle
+    case sessionTerminateConfirm
+    case sessionTerminateConfirmMessage
+    case sessionLoadFailed
+    case sessionUnsupported
+    case sessionSignalUnsupported
+    case sessionSignalDenied
+    case sessionTerminated
+    case sessionStatementCancelled
     case transactionModeAuto
     case transactionModeManual
     case transactionCommit
@@ -1167,6 +1188,27 @@ public enum LocalizedStrings {
         .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
         .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 
+        .sessionTitle: [.simplifiedChinese: "服务器会话", .english: "Server Sessions"],
+        .sessionRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .sessionPermissionNote: [.simplifiedChinese: "普通用户只能操作自己的会话（PostgreSQL 需同用户或 pg_signal_backend 权限）；「终止会话」会掐断整条连接，不可恢复", .english: "You can only act on your own sessions (PostgreSQL requires the same user or pg_signal_backend); terminating drops the whole connection and cannot be undone"],
+        .sessionLoading: [.simplifiedChinese: "正在读取会话列表…", .english: "Loading sessions…"],
+        .sessionEmpty: [.simplifiedChinese: "没有读到会话（或该数据库类型不支持读取）", .english: "No sessions were read (or this database type does not support it)"],
+        .sessionCount: [.simplifiedChinese: "共 %d 个会话", .english: "%d sessions"],
+        .sessionWaiting: [.simplifiedChinese: "等待中", .english: "waiting"],
+        .sessionElapsed: [.simplifiedChinese: "已运行 %d 秒", .english: "running %ds"],
+        .sessionCancelStatement: [.simplifiedChinese: "取消当前语句", .english: "Cancel statement"],
+        .sessionCancelStatementHelp: [.simplifiedChinese: "中断这条会话上正在执行的语句，连接保留", .english: "Interrupt the running statement on this session; the connection stays"],
+        .sessionTerminate: [.simplifiedChinese: "终止会话…", .english: "Terminate session…"],
+        .sessionTerminateHelp: [.simplifiedChinese: "掐断整条连接（不可恢复，需确认）", .english: "Drop the whole connection (irreversible, needs confirmation)"],
+        .sessionTerminateConfirmTitle: [.simplifiedChinese: "终止会话 %d？", .english: "Terminate session %d?"],
+        .sessionTerminateConfirm: [.simplifiedChinese: "终止会话", .english: "Terminate"],
+        .sessionTerminateConfirmMessage: [.simplifiedChinese: "用户 %@ 在库 %@ 上的连接会被立刻掐断，未提交的事务会回滚。", .english: "The connection for user %@ on database %@ will be dropped immediately; uncommitted work will roll back."],
+        .sessionLoadFailed: [.simplifiedChinese: "读取会话失败：%@", .english: "Could not load sessions: %@"],
+        .sessionUnsupported: [.simplifiedChinese: "该数据库类型暂不支持读取服务器会话", .english: "Reading server sessions is not supported on this database type"],
+        .sessionSignalUnsupported: [.simplifiedChinese: "该数据库类型暂不支持取消 / 终止会话", .english: "Cancelling or terminating sessions is not supported on this database type"],
+        .sessionSignalDenied: [.simplifiedChinese: "服务端拒绝了这次操作（会话 %d）—— 通常是权限不足：只能操作自己的会话", .english: "The server refused this operation (session %d) — usually insufficient privileges: you can only act on your own sessions"],
+        .sessionTerminated: [.simplifiedChinese: "已终止会话 %d", .english: "Session %d terminated"],
+        .sessionStatementCancelled: [.simplifiedChinese: "已取消会话 %d 上的语句", .english: "Statement on session %d cancelled"],
         .transactionModeAuto: [.simplifiedChinese: "自动提交", .english: "Auto-commit"],
         .transactionModeManual: [.simplifiedChinese: "手工事务", .english: "Manual transaction"],
         .transactionCommit: [.simplifiedChinese: "提交", .english: "Commit"],

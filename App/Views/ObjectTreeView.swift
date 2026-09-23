@@ -34,6 +34,8 @@ struct ObjectTreeView: View {
     /// 权限与锁面板（FR-SESS-04 / FR-DIAG-05）。
     @State private var isPrivilegePanelPresented = false
     @State private var isLockPanelPresented = false
+    /// 服务器会话面板（FR-SESS-01 / 02）。
+    @State private var isSessionPanelPresented = false
     /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
     @State private var groupByType = false
 
@@ -150,6 +152,10 @@ struct ObjectTreeView: View {
         }
         .sheet(isPresented: $isPrivilegePanelPresented) {
             PrivilegePanel()
+        }
+        .sheet(isPresented: $isSessionPanelPresented) {
+            SessionPanel()
+                .environmentObject(appState)
         }
         .sheet(isPresented: $isLockPanelPresented) {
             LockPanel()
@@ -488,6 +494,13 @@ struct ObjectTreeView: View {
 
         Button(L(.objectTreeMenuLocks)) {
             isLockPanelPresented = true
+        }
+        .disabled(!isConnected)
+
+        // 服务器会话（FR-SESS-01 / 02）。这个 builder 本来就是**服务器节点专用菜单**，
+        // 所以不需要再判节点类型 —— 会话是整个实例的概念（本轮我先多写了一次判断，编译才发现）。
+        Button(L(.sessionTitle) + "…") {
+            isSessionPanelPresented = true
         }
         .disabled(!isConnected)
 
