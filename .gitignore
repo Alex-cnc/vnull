@@ -29,6 +29,9 @@ xcuserdata/
 !/Docs/产品能力规划说明书.md
 !/Docs/概要设计.md
 !/Docs/平台实现状态.json
+# 设计说明（浏览器页签等）也属于交接资料，随三书一起入库
+!/Docs/design/
+!/Docs/design/*.md
 
 # 图标中间产物（可由 Scripts/make-app-icon.swift 从 AppIcon-source.png 重新生成）
 App/Resources/AppIcon-1024.png
