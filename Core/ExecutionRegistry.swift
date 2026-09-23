@@ -59,6 +59,8 @@ public struct ExecutionRegistry: Sendable {
     private var active: ExecutionHandle?
     private var queued: Set<ExecutionHandle> = []
     private var cancelled: Set<ExecutionHandle> = []
+    /// 因**语句超时**而取消的句柄（与「人按了停止」分开记 —— 两者的可读原因不同）。
+    private var timedOut: Set<ExecutionHandle> = []
 
     public init() {}
 
@@ -86,10 +88,32 @@ public struct ExecutionRegistry: Sendable {
         }
         queued.remove(handle)
         cancelled.remove(handle)
+        timedOut.remove(handle)
     }
 
     public func isCancelled(_ handle: ExecutionHandle) -> Bool {
         cancelled.contains(handle)
+    }
+
+    public func isTimedOut(_ handle: ExecutionHandle) -> Bool {
+        timedOut.contains(handle)
+    }
+
+    /// 语句超时到点：标记为「已取消 + 超时」，并告知调用方是否可以真的下发服务端取消。
+    ///
+    /// 超时**必须**也进 `cancelled`：生产端的每条语句前只查一个标记，
+    /// 两套标记会让"超时后剩余语句照旧执行"重新出现。
+    public mutating func markTimedOut(_ handle: ExecutionHandle) -> CancelDecision {
+        timedOut.insert(handle)
+        if active == handle {
+            cancelled.insert(handle)
+            return .cancelActive
+        }
+        if queued.contains(handle) {
+            cancelled.insert(handle)
+            return .markOnly
+        }
+        return .alreadyFinished
     }
 
     /// 请求取消某个句柄，并告知调用方该怎么处理。

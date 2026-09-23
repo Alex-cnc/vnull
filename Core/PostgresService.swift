@@ -26,6 +26,16 @@ public actor PostgresService: DatabaseService {
         self.password = password
     }
 
+    deinit {
+        // R-33 收尾：对象销毁时若连接还开着，至少把 socket 关掉（尽力而为）。
+        // actor 的 deinit 不能 `await`，所以用非 async 的 `close()`（返回 EventLoopFuture）。
+        if let connection {
+            // 显式标注类型以消歧（`close()` 另有 async 版本）
+            let closing: EventLoopFuture<Void> = connection.close()
+            _ = closing
+        }
+    }
+
     public func connect() async throws -> ServerInfo {
         let postgresConfiguration = try makePostgresConfiguration()
         let newConnection = try await PostgresConnection.connect(
@@ -126,7 +136,9 @@ public actor PostgresService: DatabaseService {
                         continuation: continuation
                     )
                 } catch {
-                    continuation.finish(throwing: error)
+                    // 超时与「人按停止」都会让查询抛错；这里把超时换成人能看懂的说法
+                    // （否则用户看到的是一句 PostgresNIO 的取消报文描述）。
+                    continuation.finish(throwing: await self.mapTimeoutIfNeeded(error, handle: handle))
                 }
             }
 
@@ -163,6 +175,20 @@ public actor PostgresService: DatabaseService {
         case .alreadyFinished:
             return .notActive
         }
+    }
+
+    /// 语句超时到点：标记 + 下发服务端取消。
+    private func statementTimedOut(_ handle: ExecutionHandle) async {
+        guard case .cancelActive = registry.withLock({ $0.markTimedOut(handle) }) else { return }
+        logger.warning("语句执行超时，正在向服务端发送取消")
+        _ = await cancelServerSide(handle)
+    }
+
+    /// 把超时引起的底层错误换成人能看懂的说法。
+    private func mapTimeoutIfNeeded(_ error: any Error, handle: ExecutionHandle) -> any Error {
+        registry.withLock { $0.isTimedOut(handle) }
+            ? AppError.queryFailed("语句执行超时，已向服务端发送取消")
+            : error
     }
 
     /// 消费者走开时的服务端收尾（`onTermination` 调用）。
@@ -296,6 +322,19 @@ public actor PostgresService: DatabaseService {
                 break
             }
 
+            // R-31：语句超时。`QueryOptions.statementTimeout` 此前**声明了却从未使用** ——
+            // 一条慢查询会一直挂到用户自己失去耐心。PostgresNIO 不认 Swift 任务的取消，
+            // 所以到点必须自己下发服务端取消（与用户取消共用同一条通道）。
+            var timeoutWatchdog: Task<Void, Never>?
+            if let timeout = options.statementTimeout, timeout > 0 {
+                timeoutWatchdog = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    await self?.statementTimedOut(handle)
+                }
+            }
+            defer { timeoutWatchdog?.cancel() }
+
             continuation.yield(.started(statementIndex: index))
 
             let statementStart = Date()
@@ -349,9 +388,18 @@ public actor PostgresService: DatabaseService {
             executedCount += 1
         }
 
+        if registry.withLock({ $0.isTimedOut(handle) }) {
+            // 超时：给出可读原因（而不是让上层猜"为什么被取消了"）。
+            let seconds = options.statementTimeout.map { String(Int($0)) } ?? "—"
+            continuation.finish(
+                throwing: AppError.queryFailed("语句执行超过 \(seconds) 秒，已向服务端发送取消")
+            )
+            return
+        }
+
         if Task.isCancelled || registry.withLock({ $0.isCancelled(handle) }) {
             // 取消是"半途而止"，不是正常收尾：不发 `.finished`，让上层走取消路径
-            // （App 侧据此记 `succeeded: false`，见 R-31）。
+            // （App 侧据此记 `succeeded: false`）。
             continuation.finish(throwing: CancellationError())
             return
         }

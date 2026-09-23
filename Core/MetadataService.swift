@@ -174,7 +174,12 @@ public struct MetadataService: Sendable {
 
     private func run(_ sql: String) async throws -> QueryResult {
         var lastResult: QueryResult?
-        let stream = service.execute(sql, options: QueryOptions(maxRows: 10_000))
+        // 元数据查询给一个有界超时（R-31）：对象树转圈时用户需要的是一个明确的失败，
+        // 而不是无限等待。30 秒对系统目录查询足够宽裕。
+        let stream = service.execute(
+            sql,
+            options: QueryOptions(maxRows: 10_000, statementTimeout: 30)
+        )
         for try await event in stream {
             if case .resultSet(let result) = event {
                 lastResult = result

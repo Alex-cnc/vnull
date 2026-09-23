@@ -94,4 +94,43 @@ final class ExecutionRegistryTests: XCTestCase {
         XCTAssertFalse(CancelOutcome.failed(reason: "未取得后端 PID").didCancel,
                        "下发失败时上层要如实告诉用户查询可能还在跑")
     }
+
+    // MARK: - 超时（R-31）
+
+    /// 语句超时到点：既要能下发服务端取消，也要让生产端**停下来** ——
+    /// 所以超时必须同时进 `cancelled`（每条语句前只查这一个标记）。
+    func testTimeoutMarksBothCancelledAndTimedOut() {
+        var registry = ExecutionRegistry()
+        let run = ExecutionHandle()
+        registry.enqueue(run)
+        XCTAssertTrue(registry.begin(run))
+
+        XCTAssertEqual(registry.markTimedOut(run), .cancelActive)
+        XCTAssertTrue(registry.isTimedOut(run))
+        XCTAssertTrue(registry.isCancelled(run), "超时必须也让循环停下来")
+    }
+
+    /// 排队期间超时：只标记，不碰别人的语句，且不会开始执行。
+    func testTimeoutWhileQueuedNeverStarts() {
+        var registry = ExecutionRegistry()
+        let run = ExecutionHandle()
+        registry.enqueue(run)
+
+        XCTAssertEqual(registry.markTimedOut(run), .markOnly)
+        XCTAssertFalse(registry.begin(run))
+        XCTAssertTrue(registry.isTimedOut(run))
+    }
+
+    /// 结束后不留残迹：超时标记同样要被清掉（否则下一次复用同一句柄会误判）。
+    func testFinishClearsTimeoutFlag() {
+        var registry = ExecutionRegistry()
+        let run = ExecutionHandle()
+        registry.enqueue(run)
+        _ = registry.begin(run)
+        _ = registry.markTimedOut(run)
+        registry.finish(run)
+
+        XCTAssertFalse(registry.isTimedOut(run))
+        XCTAssertFalse(registry.isCancelled(run))
+    }
 }
