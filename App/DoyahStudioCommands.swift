@@ -69,6 +69,11 @@ struct DoyahStudioCommands: Commands {
             }
             .keyboardShortcut(AppShortcut.agentAudit.key, modifiers: AppShortcut.agentAudit.modifiers)
 
+            Button(L(.menuNewBrowserTab)) {
+                appState.openBrowserTab()
+            }
+            .keyboardShortcut(AppShortcut.newBrowserTab.key, modifiers: AppShortcut.newBrowserTab.modifiers)
+
             Button(L(.menuEgressLog)) {
                 appState.isEgressLogPresented = true
             }

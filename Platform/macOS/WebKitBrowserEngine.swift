@@ -63,33 +63,29 @@ public final class WebKitBrowserEngine: NSObject, BrowserEngine {
         handler(page)
     }
 
-    public func load(_ url: URL) {
-        // 地址栏导航：标记为"用户显式发起"，然后同样**经过策略**（策略是唯一出口）。
-        explicitLoadRequested = true
-        navigate(to: url, isUserInitiated: true)
+    public func load(_ url: URL) async {
+        // 地址栏导航：用户显式发起，但仍**必须过策略**（策略是唯一出口）。
+        await navigate(to: url, isUserInitiated: true)
     }
 
-    public func goBack() {
-        explicitLoadRequested = true
+    public func goBack() async {
         guard let url = page.goBack() else { return }
-        view.load(URLRequest(url: url))
         publish()
+        await navigate(to: url, isUserInitiated: true)
     }
 
-    public func goForward() {
-        explicitLoadRequested = true
+    public func goForward() async {
         guard let url = page.goForward() else { return }
-        view.load(URLRequest(url: url))
         publish()
+        await navigate(to: url, isUserInitiated: true)
     }
 
-    public func reload() {
-        explicitLoadRequested = true
-        if let url = page.url {
-            view.load(URLRequest(url: url))
-        } else {
+    public func reload() async {
+        guard let url = page.url else {
             view.reload()
+            return
         }
+        await navigate(to: url, isUserInitiated: true)
     }
 
     public func stopLoading() {
@@ -99,8 +95,12 @@ public final class WebKitBrowserEngine: NSObject, BrowserEngine {
         publish()
     }
 
-    /// 统一的导航入口：裁决 → 留痕 → 交给 WebView（或就地拒绝）。
-    private func navigate(to url: URL, isUserInitiated: Bool) {
+    /// **唯一**的导航入口：裁决 → 留痕（await，记完才走）→ 交给 WebView 或就地拒绝。
+    ///
+    /// 为什么是 `await` 而不是起一个游离的 `Task`：出网日志的意义就在于"出事时它已经写下了"。
+    /// 游离 Task 既没有时序保证，也很容易漏掉后退 / 前进 / 刷新这些同样出网的路径
+    /// （它们原来直接调 `view.load`，绕过了一切判定与记录）。
+    private func navigate(to url: URL, isUserInitiated: Bool) async {
         let transition = BrowserSession.navigate(
             page: page,
             to: url,
@@ -110,12 +110,11 @@ public final class WebKitBrowserEngine: NSObject, BrowserEngine {
         page = transition.page
         publish()
 
-        // 留痕（拦截与放行都记）—— 这是"每条出网都进日志"的落点。
-        Task { [transition, origin, log] in
-            await BrowserSession.record(transition, origin: origin, log: log)
-        }
+        await BrowserSession.record(transition, origin: origin, log: log)
 
         guard let loadURL = transition.urlToLoad else { return }
+        // 这一次 `view.load` 是"应用层已裁决过"的，代理里放行即可（一次标记，一次消费）。
+        explicitLoadRequested = true
         view.load(URLRequest(url: loadURL))
     }
 
@@ -130,17 +129,15 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
 
     public func webView(
         _ webView: WKWebView,
-        decidePolicyFor navigationAction: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
-    ) {
+        decidePolicyFor navigationAction: WKNavigationAction
+    ) async -> WKNavigationActionPolicy {
         let url = navigationAction.request.url
 
-        // 应用层显式动作（地址栏 / 后退前进 / 刷新）已经在 `load(_:)` 里裁决过并记过日志，
+        // 应用层显式动作（地址栏 / 后退前进 / 刷新）已在 `navigate(to:)` 里裁决并记过日志，
         // 这里放行即可 —— 但仍然只在"确实标记过"时放行，不让标记无限期生效。
         if explicitLoadRequested {
             explicitLoadRequested = false
-            decisionHandler(.allow)
-            return
+            return .allow
         }
 
         let userInitiated = Self.isUserInitiated(navigationAction.navigationType)
@@ -153,11 +150,10 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
         page = transition.page
         publish()
 
-        Task { [transition, origin, log] in
-            await BrowserSession.record(transition, origin: origin, log: log)
-        }
+        // 页面内点击 / 脚本跳转同样"记完再走"。
+        await BrowserSession.record(transition, origin: origin, log: log)
 
-        decisionHandler(transition.urlToLoad == nil ? .cancel : .allow)
+        return transition.urlToLoad == nil ? .cancel : .allow
     }
 
     /// 由 `navigationType` 判断是否用户发起。

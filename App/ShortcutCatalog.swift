@@ -47,6 +47,9 @@ enum AppShortcut: CaseIterable {
     /// 统一外发日志面板（NFR-SEC-08）。
     case egressLog
 
+    /// 新建浏览器页签（FR-EDIT-34）。
+    case newBrowserTab
+
     /// 数据任务面板（FR-AI-05 / FR-AI-06 / FR-AI-08）。
     case dataTask
 
@@ -84,6 +87,7 @@ enum AppShortcut: CaseIterable {
         case .confirmAllWrites: return "w"
         case .agentAudit: return "a"
         case .egressLog: return "e"
+        case .newBrowserTab: return "b"
         case .dataTask: return "t"
         case .help: return "/"
         case .terminal: return "j"
@@ -97,7 +101,7 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .stop:
             return [.command]
-        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .egressLog, .dataTask, .help, .terminal, .archive:
+        case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .egressLog, .newBrowserTab, .dataTask, .help, .terminal, .archive:
             return [.command, .shift]
         case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
             return [.command, .option]

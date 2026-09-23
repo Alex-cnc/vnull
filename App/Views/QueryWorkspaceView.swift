@@ -6,7 +6,14 @@ struct QueryWorkspaceView: View {
 
     var body: some View {
         Group {
-            if let tab = appState.selectedTab {
+            // 浏览器页签优先：选中它时编辑区就是浏览器（下方面板属于 SQL 页签的上下文）。
+            if let browser = appState.selectedBrowserPage {
+                VStack(spacing: 0) {
+                    tabBar
+                    Divider()
+                    BrowserTabView(page: browser)
+                }
+            } else if let tab = appState.selectedTab {
                 if appState.isLowerPaneVisible, appState.isLowerPaneMaximized {
                     // 最大化：**连查询页签条一起盖住** —— 上下文栏、工具栏、页签条全部让位，
                     // 整个工作区看起来就是面板本身（终端占满时就是一个完整的终端界面）。
@@ -34,6 +41,36 @@ struct QueryWorkspaceView: View {
     private var tabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Spacing.s) {
+                // 浏览器页签排在最前：它们不是「放在某个 SQL 页签里」的东西，
+                // 而是与 SQL 页签同级的一类页签（FR-EDIT-34）。
+                ForEach(appState.browserPages) { page in
+                    HStack(spacing: Spacing.s) {
+                        if page.isLoading {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
+
+                        Button {
+                            appState.selectBrowserTab(page.id)
+                        } label: {
+                            Label(page.title, systemImage: "globe")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.plain)
+                        .fontWeight(appState.selectedBrowserID == page.id ? .semibold : .regular)
+
+                        Button {
+                            appState.closeBrowserTab(page.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(Theme.font(.caption))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, Spacing.m)
+                    .padding(.vertical, Spacing.s)
+                }
+
                 ForEach(appState.tabs) { tab in
                     HStack(spacing: Spacing.s) {
                         if tab.isExecuting {
@@ -43,9 +80,14 @@ struct QueryWorkspaceView: View {
 
                         Button(tab.isDirty ? "\(tab.title) •" : tab.title) {
                             appState.selectedTabID = tab.id
+                            appState.selectedBrowserID = nil
                         }
                         .buttonStyle(.plain)
-                        .fontWeight(appState.selectedTabID == tab.id ? .semibold : .regular)
+                        .fontWeight(
+                            appState.selectedTabID == tab.id && appState.selectedBrowserID == nil
+                                ? .semibold
+                                : .regular
+                        )
 
                         Button {
                             appState.closeTab(tab.id)

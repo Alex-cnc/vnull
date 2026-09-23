@@ -153,11 +153,13 @@ public protocol BrowserEngine: AnyObject, Sendable {
     /// 状态变化回调（实现应保证在主线程调用）。
     @MainActor func setUpdateHandler(_ handler: @escaping @MainActor (BrowserPage) -> Void)
 
-    /// 加载（调用方已通过策略裁决）。
-    @MainActor func load(_ url: URL)
-    @MainActor func goBack()
-    @MainActor func goForward()
-    @MainActor func reload()
+    /// 加载。**实现必须先过策略、先写外发日志，再真的发请求** —— 所以它是 `async`：
+    /// 「记完再走」不能靠一个游离的 `Task` 去碰运气（那样既没有时序保证，
+    /// 也容易漏掉后退/前进/刷新这些同样会出网的路径）。
+    @MainActor func load(_ url: URL) async
+    @MainActor func goBack() async
+    @MainActor func goForward() async
+    @MainActor func reload() async
     @MainActor func stopLoading()
 }
 

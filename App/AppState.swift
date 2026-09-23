@@ -222,6 +222,20 @@ final class AppState: ObservableObject {
 
     /// 「审批与审计…」面板的呈现开关（菜单命令驱动）。
     @Published var isAgentAuditPresented = false
+
+    // MARK: - 浏览器页签（FR-EDIT-34）
+    //
+    // 为什么**不**把浏览器塞进 `QueryTab`：那会把 SQL 专属字段（sql / results / isExecuting…）
+    // 污染成一堆可选值，约百处引用都要跟着改成 `if let`，而且每加一个浏览器字段就再污染一次。
+    // 这里让两套页签并行存在，只用一个"当前选中"把它们连起来 —— SQL 路径零改动。
+
+    /// 打开着的浏览器页签（状态模型在 Core，视图只读它）。
+    @Published var browserPages: [BrowserPage] = []
+    /// 当前选中的浏览器页签；非 nil 时编辑区显示浏览器（SQL 页签的选择保持不变，切回来即可）。
+    @Published var selectedBrowserID: UUID?
+
+    /// 引擎（`WKWebView`）按页签缓存：视图重建时不重新加载页面。
+    private var browserEngines: [UUID: WebKitBrowserEngine] = [:]
     /// 统一外发日志面板（NFR-SEC-08）。
     @Published var isEgressLogPresented = false
     @Published var egressEntries: [EgressEntry] = []
@@ -1415,6 +1429,77 @@ final class AppState: ObservableObject {
             database: selectedConnection.map { queryDatabase(for: $0) },
             model: agentConfiguration.normalizedModel
         )
+    }
+
+    // MARK: - 浏览器页签动作
+
+    var selectedBrowserPage: BrowserPage? {
+        browserPages.first { $0.id == selectedBrowserID }
+    }
+
+    /// 新建浏览器页签。**默认打开空白页** —— 不加载任何远程内容（契约）。
+    @discardableResult
+    func openBrowserTab() -> UUID {
+        let page = BrowserPage()
+        browserPages.append(page)
+        selectedBrowserID = page.id
+        return page.id
+    }
+
+    func selectBrowserTab(_ id: UUID) {
+        guard browserPages.contains(where: { $0.id == id }) else { return }
+        selectedBrowserID = id
+    }
+
+    func closeBrowserTab(_ id: UUID) {
+        browserPages.removeAll { $0.id == id }
+        browserEngines[id] = nil
+        if selectedBrowserID == id {
+            selectedBrowserID = browserPages.last?.id
+        }
+    }
+
+    /// 取（或建）该页签的引擎。视图每次重绘都会调用它，所以必须是幂等的。
+    func browserEngine(for page: BrowserPage) -> WebKitBrowserEngine {
+        if let existing = browserEngines[page.id] {
+            return existing
+        }
+        let engine = WebKitBrowserEngine(pageID: page.id, origin: "浏览器 · 页签")
+        // 引擎回报的状态（加载中 / 标题 / 地址 / 失败原因）写回模型 —— 否则切页签或重绘后
+        // 界面就停在旧状态；`setUpdateHandler` 在主线程回调，直接转发即可。
+        engine.setUpdateHandler { [weak self] updated in
+            self?.applyBrowserUpdate(updated)
+        }
+        browserEngines[page.id] = engine
+        return engine
+    }
+
+    /// 把引擎回报的状态写回模型（引擎在主线程回调，这里只做转发）。
+    func applyBrowserUpdate(_ page: BrowserPage) {
+        guard let index = browserPages.firstIndex(where: { $0.id == page.id }) else { return }
+        browserPages[index] = page
+    }
+
+    /// 地址栏提交：解析 → 交给引擎（引擎内部先过 Core 策略、再写外发日志）。
+    func navigateBrowserTab(_ id: UUID, input: String) {
+        guard let page = browserPages.first(where: { $0.id == id }) else { return }
+        switch BrowserSession.parseAddress(input) {
+        case .success(let url):
+            let engine = browserEngine(for: page)
+            Task { await engine.load(url) }
+        case .failure(let error):
+            var rejected = page
+            rejected.rejectNavigation(reason: error.reason)
+            applyBrowserUpdate(rejected)
+        }
+    }
+
+    /// 在浏览器里打开某个地址（供「用浏览器打开」这类入口复用）。
+    func openInBrowser(_ text: String) {
+        let id = browserPages.contains(where: { $0.id == selectedBrowserID })
+            ? selectedBrowserID!
+            : openBrowserTab()
+        navigateBrowserTab(id, input: text)
     }
 
     /// 追加一条审计记录：先落到内存（面板立刻看得见），再追加到 JSONL。

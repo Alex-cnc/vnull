@@ -367,6 +367,14 @@ public enum LKey: String, CaseIterable, Sendable {
     // 执行审批与审计（FR-AI-09 / NFR-AI-03）
     case menuAgentAudit
     case agentApprovalConnectionMismatch
+    case menuNewBrowserTab
+    case browserTitle
+    case browserAddressPlaceholder
+    case browserBack
+    case browserForward
+    case browserReload
+    case browserStop
+    case browserEmptyHint
     case menuEgressLog
     case egressColumnTime
     case egressColumnKind
@@ -1089,7 +1097,14 @@ public enum LocalizedStrings {
 
         .menuAgentAudit: [.simplifiedChinese: "审批与审计…", .english: "Approvals & Audit…"],
         .menuEgressLog: [.simplifiedChinese: "外发日志…", .english: "Egress Log…"],
-        .agentApprovalConnectionMismatch: [.simplifiedChinese: "审批单上的连接是「%@」，当前选中的是「%@」—— 已拒绝执行。请切回原连接后重新提交。", .english: "This approval was for connection \"%@\" but the current selection is \"%@\" — execution refused. Switch back to that connection and submit again."],
+        .menuNewBrowserTab: [.simplifiedChinese: "新建浏览器页签", .english: "New Browser Tab"],
+        .browserTitle: [.simplifiedChinese: "浏览器", .english: "Browser"],
+        .browserAddressPlaceholder: [.simplifiedChinese: "输入地址后回车（默认不加载任何远程内容）", .english: "Type an address and press Return (nothing remote loads by default)"],
+        .browserBack: [.simplifiedChinese: "后退", .english: "Back"],
+        .browserForward: [.simplifiedChinese: "前进", .english: "Forward"],
+        .browserReload: [.simplifiedChinese: "刷新", .english: "Reload"],
+        .browserStop: [.simplifiedChinese: "停止", .english: "Stop"],
+        .browserEmptyHint: [.simplifiedChinese: "空白页 —— 输入地址才会发起请求；每次出网都会记进「外发日志…」", .english: "Blank page — a request only happens when you navigate; every request is recorded in the Egress Log"],        .agentApprovalConnectionMismatch: [.simplifiedChinese: "审批单上的连接是「%@」，当前选中的是「%@」—— 已拒绝执行。请切回原连接后重新提交。", .english: "This approval was for connection \"%@\" but the current selection is \"%@\" — execution refused. Switch back to that connection and submit again."],
         .egressColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
         .egressColumnKind: [.simplifiedChinese: "类别", .english: "Kind"],
         .egressColumnTarget: [.simplifiedChinese: "目标", .english: "Target"],

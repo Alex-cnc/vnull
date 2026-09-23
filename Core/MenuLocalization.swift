@@ -29,6 +29,7 @@ public enum MenuLocalization {
         .menuDataTask,
         .menuAgentAudit,
         .menuEgressLog,
+        .menuNewBrowserTab,
         .menuLanguage,
         .menuAppearance,
         .menuViewDatabase,
