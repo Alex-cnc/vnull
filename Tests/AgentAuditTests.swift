@@ -303,9 +303,20 @@ final class AgentAuditTests: XCTestCase {
             XCTAssertTrue(exported.contains(AgentAudit.redactionPlaceholder))
         }
 
-        // 原始记录仍在本地（审计不以牺牲完整性为代价，只是导出时脱敏）。
+        // **R-28 回归（2026-09-23 评审）**：落盘也必须是脱敏后的内容。
+        //
+        // 原来是「只在导出时脱敏」，于是带字面量密钥的语句（`ALTER ROLE x PASSWORD '…'`）
+        // 会静静躺在磁盘上，直到有人导出才发现 —— 审计日志自己成了泄漏源。
+        // 现在写入即脱敏；导出那次脱敏保留为双保险。
+        let raw = try String(contentsOf: await log.fileLocation(), encoding: .utf8)
+        XCTAssertFalse(raw.contains("sk-abcdef1234567890"), "落盘的审计记录不得含密钥")
+        XCTAssertFalse(raw.contains("deadbeefdeadbeef"))
+        XCTAssertTrue(raw.contains(AgentAudit.redactionPlaceholder))
+
+        // 审计完整性不受影响：除密钥本身，语句其余部分原样保留。
         let entries = try await log.entries()
-        XCTAssertTrue(entries.first?.sql.contains("sk-abcdef1234567890") ?? false)
+        XCTAssertTrue(entries.first?.sql.contains("SELECT * FROM t") ?? false,
+                      "除密钥本身，语句其余部分必须原样保留（审计完整性不受影响）")
     }
 
     func testRedactionPatterns() {

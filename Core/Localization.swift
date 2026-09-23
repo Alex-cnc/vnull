@@ -366,6 +366,7 @@ public enum LKey: String, CaseIterable, Sendable {
 
     // 执行审批与审计（FR-AI-09 / NFR-AI-03）
     case menuAgentAudit
+    case agentApprovalConnectionMismatch
     case menuEgressLog
     case egressColumnTime
     case egressColumnKind
@@ -1088,6 +1089,7 @@ public enum LocalizedStrings {
 
         .menuAgentAudit: [.simplifiedChinese: "审批与审计…", .english: "Approvals & Audit…"],
         .menuEgressLog: [.simplifiedChinese: "外发日志…", .english: "Egress Log…"],
+        .agentApprovalConnectionMismatch: [.simplifiedChinese: "审批单上的连接是「%@」，当前选中的是「%@」—— 已拒绝执行。请切回原连接后重新提交。", .english: "This approval was for connection \"%@\" but the current selection is \"%@\" — execution refused. Switch back to that connection and submit again."],
         .egressColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
         .egressColumnKind: [.simplifiedChinese: "类别", .english: "Kind"],
         .egressColumnTarget: [.simplifiedChinese: "目标", .english: "Target"],

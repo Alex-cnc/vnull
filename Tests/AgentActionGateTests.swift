@@ -95,8 +95,29 @@ final class AgentActionGateTests: XCTestCase {
         XCTAssertTrue(approval.record.detail?.contains("DROP") ?? false)
     }
 
-    /// 白名单类别免审批，但仍然是「已生成 / 已批准」的一条记录。
+    /// 白名单类别（且**未命中风险点**）免审批，但仍然留下「已批准」的记录。
     func testAllowlistedKindSkipsApprovalButIsStillRecorded() {
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            requireApprovalForWrites: true,
+            allowedKinds: [.schemaChange]
+        )
+        let submission = submit("CREATE TABLE orders (id int)", policy: policy)
+
+        guard case .approved(let approval) = submission else {
+            return XCTFail("白名单类别应当放行，实际：\(submission)")
+        }
+        XCTAssertEqual(approval.state, .approved)
+        XCTAssertEqual(submission.record.statementKind, .schemaChange)
+        XCTAssertEqual(submission.record.outcome, .approved)
+    }
+
+    /// **R-25 回归**：白名单类别里命中风险点的语句（DROP）**仍要逐次审批**。
+    ///
+    /// 这条是把"白名单 = 免整个类别"改成"白名单只免类别带来的审批"的那个决定钉住 ——
+    /// 否则下次有人顺手把 `continue` 改回去，也不会有测试拦他。
+    func testAllowlistedDestructiveStatementStillNeedsApproval() {
         let policy = AgentGuardPolicy(
             readOnly: false,
             requireApprovalForHighRisk: true,
@@ -105,12 +126,10 @@ final class AgentActionGateTests: XCTestCase {
         )
         let submission = submit("DROP TABLE orders", policy: policy)
 
-        guard case .approved(let approval) = submission else {
-            return XCTFail("白名单类别应当放行，实际：\(submission)")
+        guard case .awaitingApproval(let approval) = submission else {
+            return XCTFail("命中了风险点的语句必须等人工批准，实际：\(submission)")
         }
-        XCTAssertEqual(approval.state, .approved)
-        XCTAssertEqual(submission.record.statementKind, .schemaChange)
-        XCTAssertEqual(submission.record.outcome, .approved)
+        XCTAssertTrue(approval.record.findings.contains(.dropStatement))
     }
 
     /// 白名单不能突破只读模式。

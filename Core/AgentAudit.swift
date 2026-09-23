@@ -468,7 +468,12 @@ public actor AgentAuditLog {
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            var line = try encoder.encode(record)
+            // R-28（2026-09-23 评审）：脱敏原来**只在导出路径**上做，落盘的
+            // `agent-audit.jsonl` 是原文 —— 一旦语句里带了字面量密钥（`ALTER ROLE x PASSWORD '…'`），
+            // 它就静静躺在磁盘上，直到有人导出才发现。现在**写入即脱敏**（与 `EgressLog` 一致），
+            // 导出那次脱敏保留为双保险。
+            let encoded = try encoder.encode(record)
+            var line = Data(AgentAudit.redacted(String(decoding: encoded, as: UTF8.self)).utf8)
             line.append(0x0A)
 
             if FileManager.default.fileExists(atPath: fileURL.path) {

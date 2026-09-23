@@ -305,7 +305,10 @@ public enum AgentGuardrail {
         "MERGE", "SHOW", "DESC", "DESCRIBE", "COMMENT", "REINDEX", "CLUSTER", "REFRESH",
         "RESET", "DISCARD", "LOAD", "IMPORT", "DO", "LOCK", "PREPARE", "EXECUTE",
         "DEALLOCATE", "DECLARE", "FETCH", "CLOSE", "START", "ABORT", "RELEASE",
-        "RECURSIVE", "MATERIALIZED", "CONFLICT", "RETURNING", "ANALYSE"
+        "RECURSIVE", "MATERIALIZED", "CONFLICT", "RETURNING", "ANALYSE",
+        // 这三个是**护栏判定的关键**但可能不在方言的高亮关键字表里：
+        // `SELECT … INTO 新表` 会建表；`SET ROLE` / `SET SESSION AUTHORIZATION` 会换身份。
+        "INTO", "ROLE", "AUTHORIZATION"
     ]
 
     /// `EXPLAIN` 的选项词，用来找到它真正解释的那条语句。
@@ -362,8 +365,14 @@ public enum AgentGuardrail {
         let allowlisted = policy.effectiveAllowedKinds
         var pending: [AgentGuardFinding] = []
         for assessment in assessments {
-            // 白名单是唯一的免审批出口（且它不能突破只读模式，只读在上一步已判完）。
-            if allowlisted.contains(assessment.kind) { continue }
+            // 白名单是**唯一**的免审批出口（且它不能突破只读模式，只读在上一步已判完）。
+            //
+            // R-25（2026-09-23 评审）：原来这里是 `if allowlisted.contains(kind) { continue }` ——
+            // 整类跳过连风险点一起免掉。后果是"把结构变更加入白名单"等于把 `DROP` / `TRUNCATE`
+            // 也免了审批，而界面上的文案只是"允许结构变更"，授权半径被悄悄放大。
+            // 现在：**白名单只免"这类语句本来就需要审批"这一条**；一旦命中了风险点（无 WHERE 的
+            // UPDATE / DELETE、DROP、TRUNCATE、权限变更、无法识别…），仍然逐次审批。
+            if allowlisted.contains(assessment.kind), assessment.findings.isEmpty { continue }
 
             if policy.requireApprovalForHighRisk {
                 pending.append(contentsOf: assessment.findings)
@@ -463,9 +472,35 @@ public enum AgentGuardrail {
                 return (.unknown, findings + [.unknownStatement])
             }
             effectiveLeading = innerLeading
+
+            // R-24①（2026-09-23 评审）：**括号里的修改动词原来是被漏掉的**。
+            // `WITH x AS (UPDATE t SET a = 1 RETURNING *) SELECT * FROM x` 的顶层首个起手词是
+            // `SELECT`（收集 topLevel 时 `parenDepth == 0` 把括号里的 UPDATE 滤掉了），
+            // 于是整条语句被判成"只读查询" —— 而它确实在写库。
+            // 现在只要**任意深度**出现修改动词，就升级为按它定性（宁可保守）。
+            let modifiers: Set<String> = ["INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE", "COPY"]
+            if kind(forLeading: effectiveLeading) == .readQuery,
+               let modifying = tokens.first(where: { $0.isKeyword && modifiers.contains($0.text) }) {
+                effectiveLeading = modifying.text
+            }
         }
 
-        let kind = kind(forLeading: effectiveLeading)
+        var kind = kind(forLeading: effectiveLeading)
+
+        // R-24②：`SELECT ... INTO 新表` 会**建表**，不是只读查询。
+        if effectiveLeading == "SELECT",
+           tokens.contains(where: { $0.isKeyword && $0.text == "INTO" && $0.parenDepth == 0 }) {
+            kind = .schemaChange
+        }
+
+        // R-24③：`SET ROLE` / `SET SESSION AUTHORIZATION` 会**改变当前权限身份**，
+        // 不能按普通的会话控制（可白名单）对待。
+        if effectiveLeading == "SET",
+           tokens.contains(where: {
+               $0.isKeyword && ($0.text == "ROLE" || $0.text == "AUTHORIZATION") && $0.parenDepth == 0
+           }) {
+            kind = .privilegeChange
+        }
         findings.append(contentsOf: riskFindings(kind: kind, leading: effectiveLeading, tokens: effectiveTokens))
         return (kind, dedupe(findings))
     }
@@ -481,9 +516,12 @@ public enum AgentGuardrail {
             return .schemaChange
         case "GRANT", "REVOKE":
             return .privilegeChange
+        // R-24④：`DO`（匿名 PL/pgSQL 块）、`PREPARE` / `EXECUTE`（预编译语句可以内含
+        // INSERT / UPDATE / DELETE）**不进会话控制** —— 会话控制是可以进白名单的，
+        // 而这三者能执行任意逻辑。归到 `.unknown`：永远不可白名单、一律需要审批、且带风险点。
         case "BEGIN", "START", "COMMIT", "ROLLBACK", "ABORT", "SAVEPOINT", "RELEASE",
-             "END", "SET", "RESET", "DISCARD", "PREPARE", "EXECUTE", "DEALLOCATE",
-             "DECLARE", "FETCH", "CLOSE", "LOCK", "DO":
+             "END", "SET", "RESET", "DISCARD", "DEALLOCATE",
+             "DECLARE", "FETCH", "CLOSE", "LOCK":
             return .sessionControl
         default:
             return .unknown

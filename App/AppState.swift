@@ -1452,6 +1452,50 @@ final class AppState: ObservableObject {
         if agentApprovalRequest?.id == id { agentApprovalRequest = nil }
 
         if approve {
+            // R-27（2026-09-23 评审）：**先落审计，再执行**。
+            //
+            // 执行是不可逆的；原来是先执行、后追加终态记录 —— 进程若在两者之间死掉，
+            // 日志里就什么都没有：一次真打到库上的写操作，审计上等于没发生过。
+            // 现在先写一条「已批准」（这本身就是必须留痕的事实），写不进去就**不执行**。
+            do {
+                try await agentAuditLog.append(approval.record)
+                agentAuditRecords.append(approval.record)
+            } catch {
+                let message = L(.agentAuditLoadFailed, ErrorPresenter.message(for: error))
+                try? approval.markFailed(detail: message)
+                agentAuditError = message
+                if let pending = pendingDataTaskRuns.removeValue(forKey: id) {
+                    await failDataTaskRun(pending, message: message)
+                }
+                await appendAgentAudit(approval.record)
+                return
+            }
+
+            // R-26（同日评审）：**执行必须绑在审批时的那条连接上**。
+            //
+            // 审批单上写的是哪台库，执行时就该打哪台库；原来用的是"当前选中连接" ——
+            // 批准之后切一下连接，同一条语句就落到生产上了。这是最不该有的错配。
+            let current = agentActionContext
+            let connectionMismatch = approval.record.connectionName != nil
+                && approval.record.connectionName != current.connectionName
+            let databaseMismatch = approval.record.database != nil
+                && current.database != nil
+                && approval.record.database != current.database
+            if connectionMismatch || databaseMismatch {
+                let message = L(
+                    .agentApprovalConnectionMismatch,
+                    approval.record.connectionName ?? "—",
+                    current.connectionName ?? "—"
+                )
+                try? approval.markFailed(detail: message)
+                agentAuditError = message
+                if let pending = pendingDataTaskRuns.removeValue(forKey: id) {
+                    await failDataTaskRun(pending, message: message)
+                }
+                await appendAgentAudit(approval.record)
+                return
+            }
+
             do {
                 let rowsWritten = try await executeApprovedAgentAction(approval.record.sql)
                 try approval.markExecuted()

@@ -219,9 +219,14 @@ final class AgentGuardrailTests: XCTestCase {
             allowedKinds: [.schemaChange]
         )
 
-        // 结构变更已白名单：DROP 直接放行。
+        // 结构变更已白名单，且这条语句**没有命中风险点** → 放行。
+        // （改用 CREATE 而不是 DROP：见下面 R-25 的回归测试，白名单不再连风险点一起免。）
         XCTAssertEqual(
-            AgentGuardrail.evaluate(sql: "DROP TABLE t", databaseType: .postgresql, policy: policy).verdict,
+            AgentGuardrail.evaluate(
+                sql: "CREATE TABLE t (id int)",
+                databaseType: .postgresql,
+                policy: policy
+            ).verdict,
             .allow
         )
         // 数据变更未白名单：仍然要批准。
@@ -229,6 +234,102 @@ final class AgentGuardrailTests: XCTestCase {
             AgentGuardrail.evaluate(sql: "DELETE FROM t", databaseType: .postgresql, policy: policy).verdict,
             .requireApproval([.deleteWithoutWhere])
         )
+    }
+
+    // MARK: - 智能体安全回归（R-24 / R-25，2026-09-23 评审）
+
+    /// **R-25**：把结构变更加进白名单 ≠ 把 `DROP` 也免了审批。
+    ///
+    /// 原实现是 `if allowlisted.contains(kind) { continue }` —— 整类跳过，连命中的风险点一起免，
+    /// 而界面上的文案只是「允许结构变更」。授权半径被悄悄放大，这是最危险的一类偏差。
+    func testWhitelistedKindStillRequiresApprovalForDestructiveFindings() {
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            allowedKinds: [.schemaChange, .dataChange]
+        )
+
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "DROP TABLE t", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.dropStatement])
+        )
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "TRUNCATE t", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.truncateStatement])
+        )
+        // 无 WHERE 的 DELETE 即使类别被白名单，也必须审批。
+        XCTAssertEqual(
+            AgentGuardrail.evaluate(sql: "DELETE FROM t", databaseType: .postgresql, policy: policy).verdict,
+            .requireApproval([.deleteWithoutWhere])
+        )
+    }
+
+    /// **R-24①**：括号里的修改动词不能丢 —— 数据修改型 CTE 在写库，不是只读查询。
+    func testDataModifyingCTEIsNotReadOnly() {
+        let sql = "WITH x AS (UPDATE t SET a = 1 WHERE id = 1 RETURNING *) SELECT * FROM x"
+        let assessment = evaluate(sql)
+
+        XCTAssertEqual(assessment.statements.first?.kind, .dataChange)
+        XCTAssertNotEqual(assessment.verdict, .allow)
+
+        // 只读模式下也必须拒绝（原实现把它当只读查询，直接就放过去了）。
+        let readOnly = AgentGuardrail.evaluate(sql: sql, databaseType: .postgresql, policy: .readOnlyDefault)
+        XCTAssertEqual(readOnly.verdict, .deny(.readOnlyMode(kind: .dataChange)))
+    }
+
+    /// **R-24②**：`SELECT ... INTO 新表` 会建表，不能算只读查询。
+    func testSelectIntoIsNotAReadQuery() {
+        let assessment = evaluate("SELECT * INTO backup_orders FROM orders")
+
+        XCTAssertEqual(assessment.statements.first?.kind, .schemaChange)
+        // 明确用「写操作闸门开着」的策略（`approvalRequired` 只开了高危闸门）：
+        // 建表属于写操作/DDL，FR-AI-09 要求一律逐次批准。
+        let writesPolicy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            requireApprovalForWrites: true
+        )
+        XCTAssertEqual(
+            evaluate("SELECT * INTO backup_orders FROM orders", policy: writesPolicy).verdict,
+            .requireApproval([.writeStatement])
+        )
+    }
+
+    /// **R-24③**：`SET ROLE` 改变当前权限身份，不按普通会话控制对待。
+    func testSetRoleIsPrivilegeChange() {
+        let assessment = evaluate("SET ROLE admin")
+
+        XCTAssertEqual(assessment.statements.first?.kind, .privilegeChange)
+        let writesPolicy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            requireApprovalForWrites: true
+        )
+        XCTAssertEqual(
+            evaluate("SET ROLE admin", policy: writesPolicy).verdict,
+            .requireApproval([.writeStatement])
+        )
+    }
+
+    /// **R-24④**：`DO` 匿名块 / `PREPARE`+`EXECUTE` **不能进白名单**。
+    ///
+    /// 它们原属「会话控制」，而会话控制是可白名单的一类 —— 于是一个白名单就能让任意 PL/pgSQL
+    /// 免审批执行。现在归到 `.unknown`：永远不可白名单、一律需要审批。
+    func testAnonymousBlockAndPreparedStatementsAreNotAllowlistable() {
+        let policy = AgentGuardPolicy(
+            readOnly: false,
+            requireApprovalForHighRisk: true,
+            allowedKinds: [.sessionControl, .schemaChange, .dataChange]
+        )
+
+        for sql in [
+            "DO $$ BEGIN DELETE FROM t; END $$",
+            "PREPARE p AS INSERT INTO t VALUES (1)",
+            "EXECUTE p"
+        ] {
+            let verdict = AgentGuardrail.evaluate(sql: sql, databaseType: .postgresql, policy: policy).verdict
+            XCTAssertNotEqual(verdict, .allow, "\(sql) 不得因白名单而免审批")
+        }
     }
 
     func testApprovalCanBeDisabledEntirely() {
