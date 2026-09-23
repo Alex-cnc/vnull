@@ -1,7 +1,7 @@
 import XCTest
 @testable import DoyahCore
 
-/// 查询自动归档（FR-EDIT-32）：格式、按天合并、往返可解析、落盘。
+/// 查询自动归档（FR-EDIT-31）：格式、按天合并、往返可解析、落盘。
 final class SQLArchiveTests: XCTestCase {
 
     private let zone = TimeZone(identifier: "Asia/Shanghai")!

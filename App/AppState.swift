@@ -240,7 +240,7 @@ final class AppState: ObservableObject {
     /// 目录选择器：Core 只定义 `DirectoryPicker` 协议，真实实现用 `NSOpenPanel`（FR-AI-08）。
     private let dataTaskDirectoryPicker: any DirectoryPicker = OpenPanelDirectoryPicker()
 
-    // MARK: - 查询自动归档（FR-EDIT-32）
+    // MARK: - 查询自动归档（FR-EDIT-31）
 
     /// 是否把执行过的 SQL 自动归档成当天的 `.sql` 文件（默认关闭，需先选目录）。
     @Published var isSQLArchiveEnabled: Bool =

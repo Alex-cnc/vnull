@@ -1,6 +1,6 @@
 import Foundation
 
-/// 查询归档的落盘（FR-EDIT-32）。
+/// 查询归档的落盘（FR-EDIT-31）。
 ///
 /// 目录由调用方决定（App 层用「授权目录」，沙箱下才写得进去）；本类型只管
 /// 「读当天文件 → 合并 → 原子写回」。写入用 Foundation 的 `atomically: true`

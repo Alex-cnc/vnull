@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import DoyahCore
 
-/// 「查询归档」面板（FR-EDIT-32）。
+/// 「查询归档」面板（FR-EDIT-31）。
 ///
 /// 只有两个动作：开关、选目录。选目录走的是与数据任务同一套**授权书签**机制
 /// （`OpenPanelDirectoryPicker` + `SecureDirectoryAccess`），所以：

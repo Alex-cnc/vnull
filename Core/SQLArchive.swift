@@ -1,6 +1,6 @@
 import Foundation
 
-/// 一条被自动归档的查询（FR-EDIT-32）。
+/// 一条被自动归档的查询（FR-EDIT-31）。
 ///
 /// 与内存里的查询历史（`AppState.queryHistory`，退出即清空）是**互补**关系：
 /// 那份用于当前会话回看，这份落成 `.sql` 文件长期留存。
@@ -46,7 +46,7 @@ public struct SQLArchiveEntry: Equatable, Sendable {
     }
 }
 
-/// 按天聚合的查询归档（FR-EDIT-32）。
+/// 按天聚合的查询归档（FR-EDIT-31）。
 ///
 /// 设计取舍：
 /// - **按天一个文件**（`2026-09-23.sql`）：可读、可放进版本库、文件数量不爆炸；

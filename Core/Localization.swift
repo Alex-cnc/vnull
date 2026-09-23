@@ -77,7 +77,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case tableIssueColumnNameDuplicate
     case tableIssueColumnTypeEmpty
 
-    // 查询自动归档（FR-EDIT-32）
+    // 查询自动归档（FR-EDIT-31）
     case archiveTitle
     case archiveEnable
     case archiveEnableHint

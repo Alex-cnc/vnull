@@ -52,7 +52,7 @@ enum AppShortcut: CaseIterable {
     /// 底部终端面板（显示 / 隐藏）。
     case terminal
 
-    /// 查询归档（FR-EDIT-32）。
+    /// 查询归档（FR-EDIT-31）。
     case archive
 
     var key: KeyEquivalent {
