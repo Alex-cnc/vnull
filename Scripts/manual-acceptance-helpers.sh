@@ -18,7 +18,9 @@ set -euo pipefail
 #   ./Scripts/manual-acceptance-helpers.sh cleanup       # 收尾：取消服务端会话 + 杀掉本地进程 + 清理测试表
 #
 # 连接参数走标准 PG* 环境变量（与其它脚本一致）；密码优先取 PGPASSWORD，
-# 没给就按连接档的 UUID 去登录钥匙串取（可能弹一次系统授权框）。
+# 没给就按连接档的 UUID 去**项目内口令文件**取（`.secrets/credentials.json`）——
+# 不再碰系统钥匙串，因此**不会弹系统授权框**（远程 / IM 遥控开发的前提）。
+# 口令文件的格式由 Core 定义并单测，脚本只经 `DoyahCLI secret get` 读，避免在 bash 里再抄一份。
 #
 #   PGHOST=<host> PGPORT=5432 PGUSER=<user> PGDATABASE=<db> PGSSLMODE=disable \
 #     ./Scripts/manual-acceptance-helpers.sh lock
@@ -56,23 +58,18 @@ fi
 # 统一的 CLI 调用：永远带服务端取消兜底，绝不无限等。
 cli() { "${CLI}" --cancel-after "${CANCEL_AFTER:-20}" "$@"; }
 
-# 密码：环境变量优先；否则按连接档的 UUID 去钥匙串取。
+# 密码：环境变量优先；否则按连接档的 UUID 去**项目内口令文件**取（不弹系统授权框）。
 resolve_password() {
   if [ -n "${PGPASSWORD:-}" ]; then return; fi
-  # 先找改名后的新容器，找不到再退回旧容器（迁移前后都能跑）。
   local support="Library/Application Support"
   local plist=""
-  local bundle=""
   local candidate
+  # 连接档在容器里（沙箱构建）；工程内构建也可能写在标准 Application Support 下。
   for candidate in \
     "$HOME/Library/Containers/studio.doyah.DoyahStudio/Data/${support}/DoyahStudio/connections.json" \
-    "$HOME/Library/Containers/com.vnull.PostgresClient/Data/${support}/PostgresClient/connections.json"
+    "$HOME/${support}/DoyahStudio/connections.json"
   do
-    if [ -f "${candidate}" ]; then
-      plist="${candidate}"
-      bundle="$(basename "$(dirname "$(dirname "$(dirname "$(dirname "${candidate}")")")")")"
-      break
-    fi
+    if [ -f "${candidate}" ]; then plist="${candidate}"; break; fi
   done
   local account=""
   if [ -n "${plist}" ]; then
@@ -87,8 +84,12 @@ resolve_password() {
     echo "请显式提供：PGPASSWORD='…' $0 $*"
     return 1
   fi
-  echo "→ 从登录钥匙串取密码（service=${bundle}，account=${account}），可能弹一次系统授权框…"
-  PGPASSWORD="$(security find-generic-password -s "${bundle}" -a "${account}" -w)"
+  echo "→ 从项目内口令文件取密码（account=${account}；文件：$( "${CLI}" secret path )）"
+  PGPASSWORD="$("${CLI}" secret get --id "${account}")" || {
+    echo "口令文件里没有该连接的口令。"
+    echo "请在 App 里保存一次该连接（或：echo -n '口令' | ${CLI} secret set --id ${account}）"
+    return 1
+  }
   export PGPASSWORD
 }
 

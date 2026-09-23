@@ -15,9 +15,77 @@ struct DoyahCLI {
         return value
     }
 
+    /// `secret` 子命令：把「项目内口令文件」的读写暴露给命令行与脚本。
+    ///
+    /// **为什么要有它**：口令格式（MD5 派生密钥 + XOR 混淆）只该有**一份实现**，
+    /// 而且必须在 Core 里被测住。验收脚本要取密码时调用它，而不是在 bash / python 里再抄一遍
+    /// —— 抄一份就会漂移，漂移的后果是"密码读不出来"这种最难查的故障。
+    ///
+    /// 用法：
+    ///   DoyahCLI secret set --id <连接 UUID> [--stdin]      # 从 stdin 读口令（避免出现在命令行历史里）
+    ///   DoyahCLI secret get --id <连接 UUID>                # 打印口令（给脚本用）
+    ///   DoyahCLI secret delete --id <连接 UUID>
+    ///   DoyahCLI secret path                                 # 打印口令文件路径
+    static func runSecretCommand(arguments: [String]) async -> Int32 {
+        let store = FileSecretStore()
+        func value(of flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let action = arguments.first else {
+            FileHandle.standardError.write(Data("用法：secret <set|get|delete|path> --id <UUID>\n".utf8))
+            return 2
+        }
+
+        if action == "path" {
+            print(store.location().path)
+            return 0
+        }
+
+        guard let idText = value(of: "--id"), let id = UUID(uuidString: idText) else {
+            FileHandle.standardError.write(Data("缺少或非法的 --id <UUID>\n".utf8))
+            return 2
+        }
+
+        do {
+            switch action {
+            case "set":
+                let data = FileHandle.standardInput.readDataToEndOfFile()
+                guard let raw = String(data: data, encoding: .utf8) else {
+                    FileHandle.standardError.write(Data("stdin 不是 UTF-8\n".utf8))
+                    return 2
+                }
+                // 去掉末尾换行：`echo` 会带上它，而口令不该被一个换行毁掉。
+                let password = raw.hasSuffix("\n") ? String(raw.dropLast()) : raw
+                try store.setPassword(password, for: id)
+                print("已写入：\(store.location().path)")
+                return 0
+            case "get":
+                guard let password = try store.password(for: id) else { return 1 }
+                print(password)
+                return 0
+            case "delete":
+                try store.deletePassword(for: id)
+                return 0
+            default:
+                FileHandle.standardError.write(Data("未知动作：\(action)\n".utf8))
+                return 2
+            }
+        } catch {
+            FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+            return 1
+        }
+    }
+
     static func main() async {
         let environment = ProcessInfo.processInfo.environment
         let arguments = Array(CommandLine.arguments.dropFirst())
+
+        if arguments.first == "secret" {
+            let code = await runSecretCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
 
         let host = environment["PGHOST"] ?? "127.0.0.1"
         let port = Int(environment["PGPORT"] ?? "5432") ?? 5432

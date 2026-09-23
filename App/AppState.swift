@@ -513,10 +513,15 @@ final class AppState: ObservableObject {
     @Published var statusMessage: String = L(.stateNotConnected)
 
     private let store = ConnectionStore.shared
-    private let secretStore: SecretStore = KeychainSecretStore()
+    // 口令存**项目内的混淆文件**（`.secrets/credentials.json`），不用系统钥匙串：
+    // 钥匙串每次访问都要人工授权系统密码，远程 / IM 遥控开发时等于把自动化堵死。
+    // 安全边界见 `Core/LocalSecretStore.swift`：MD5 派生密钥做 XOR 混淆 —— **是混淆不是加密**，
+    // 只用于开发 / 验收形态；发布形态切回系统凭据存储只需把这里换成 `KeychainSecretStore()`
+    // （实现仍在 `Platform/macOS/KeychainSecretStore.swift`）。
+    private let secretStore: SecretStore = FileSecretStore()
     private let savedQueryStore = SavedQueryStore.shared
     private let agentConfigurationStore = AgentConfigurationStore.shared
-    private let agentKeyStore: AgentKeyStore = KeychainAgentKeyStore()
+    private let agentKeyStore: AgentKeyStore = FileAgentKeyStore()
     /// 审计日志（追加式 JSONL）；导出前脱敏在 Core 里完成（NFR-AI-03）。
     private let agentAuditLog = AgentAuditLog.shared
     private let egressLog = EgressLog.shared
