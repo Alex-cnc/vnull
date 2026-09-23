@@ -255,6 +255,18 @@ struct DoyahCLI {
             }
         }
 
+        // export：**流式**导出（FR-RES-13 的「取」那一半）。
+        // 走服务端游标逐页取、逐页写盘：内存占用与总行数无关，也不用 OFFSET 翻页（大表上那是 O(n²)）。
+        if arguments.contains("--export") || arguments.first == "export" {
+            let code = await runExportCommand(
+                arguments: arguments.filter { $0 != "export" },
+                service: service,
+                dialect: PostgresDialect()
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         let sql = resolveSQL(arguments: arguments) ?? "SELECT version(), current_database(), current_user;"
 
         print("SQL：")
@@ -320,6 +332,114 @@ struct DoyahCLI {
             print(String(reflecting: error))
             await service.disconnect()
             exit(2)
+        }
+    }
+
+    /// `export --query "SELECT …" --out 文件 [--format csv|json|tsv|markdown|insert] [--fetch-size N] [--table 名]`
+    ///
+    /// 为什么 CLI 也要有这条路径：图形界面里导出大表是"用户点一下"的事，而**验证它真的流式**
+    /// 需要一个能脚本化、能测内存的入口 —— 这条命令就是这个入口。
+    private static func runExportCommand(
+        arguments: [String],
+        service: any DatabaseService,
+        dialect: PostgresDialect
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let query = value(for: "--query") ?? value(for: "-c") else {
+            print("用法：export --query \"SELECT …\" --out <文件> [--format csv|json|tsv|markdown|insert] [--fetch-size N] [--table 名]")
+            return 64
+        }
+        guard let outputPath = value(for: "--out") else {
+            print("缺少 --out <文件>")
+            return 64
+        }
+
+        let format: ResultExportFormat
+        switch (value(for: "--format") ?? "csv").lowercased() {
+        case "csv": format = .csv
+        case "json": format = .json
+        case "tsv": format = .tsv
+        case "markdown", "md": format = .markdown
+        case "insert", "sql": format = .sqlInsert
+        default:
+            print("不支持的格式（csv / json / tsv / markdown / insert）")
+            return 64
+        }
+
+        let fetchSize = Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize
+        guard fetchSize > 0 else {
+            print("--fetch-size 必须大于 0")
+            return 64
+        }
+
+        let plan: CursorPagingPlan
+        switch CursorPaging.plan(query: query, pageSize: fetchSize) {
+        case .success(let value):
+            plan = value
+        case .failure(let error):
+            print("无法导出：\(error.localizedDescription)")
+            return 65
+        }
+
+        /// 单条语句执行到底，取最后的结果集（`BEGIN` / `DECLARE` 这类没有结果集，返回空壳）。
+        func run(_ sql: String) async throws -> QueryResult {
+            var last: QueryResult?
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let result) = event { last = result }
+            }
+            return last ?? QueryResult(
+                columns: [],
+                rows: [],
+                affectedRows: nil,
+                executionTime: 0,
+                isTruncated: false,
+                truncationLimit: nil
+            )
+        }
+
+        let url = URL(fileURLWithPath: outputPath)
+        let fetcher = CursorFetcher(plan: plan, execute: { try await run($0) })
+        var writer: ResultStreamWriter?
+
+        do {
+            try await fetcher.open()
+
+            // 列信息要**第一页**才有（游标不会提前告诉我们列是什么），所以 writer 在这里才建。
+            guard let first = try await fetcher.nextPage() else {
+                print("没有取到任何结果集")
+                await fetcher.close()
+                return 66
+            }
+
+            let streamWriter = ResultStreamWriter(
+                targetURL: url,
+                format: format,
+                columns: first.columns,
+                tableName: value(for: "--table") ?? "table_name",
+                dialect: dialect
+            )
+            writer = streamWriter
+            try streamWriter.begin()
+            try streamWriter.write(first.rows)
+
+            while let page = try await fetcher.nextPage() {
+                try streamWriter.write(page.rows)
+            }
+
+            let report = try streamWriter.finish()
+            print("导出完成：\(report.rowCount) 行 / \(report.byteCount) 字节 / \(await fetcher.pageCount) 页")
+            print("文件：\(url.path)")
+            print("取数方式：服务端游标逐页（每页 \(fetchSize) 行），内存占用与总行数无关")
+            return 0
+        } catch {
+            writer?.abort()
+            await fetcher.close()
+            print("导出失败：\(error.localizedDescription)")
+            return 67
         }
     }
 
