@@ -87,14 +87,30 @@ def load() -> tuple[dict[str, dict], dict[str, dict], list[tuple[str, list[str]]
     return index, definitions, open_tasks
 
 
+MARKERS = ("✅", "🟡", "⬜", "➖")
+
+
+def normalize_status(cell: str) -> str:
+    """把「✅ 89/89（2026-09-21）」「🟡（待验证）」这类**带后缀**的状态格归一成标记本身。
+
+    为什么需要：状态格里常常跟着证据（"✅ 28/28"）或限定（"🟡（待验证）"），
+    而按整格相等去比对就会把绝大多数条目判成"识别不出" —— 那等于盘点结果不可信。
+    """
+    text = (cell or "").strip()
+    for marker in MARKERS:
+        if text.startswith(marker):
+            return marker
+    return text[:8] if text else "?"
+
+
 def status_of(identifier: str, index: dict, definitions: dict) -> str:
     if identifier in index:
-        return index[identifier]["status"]
+        return normalize_status(index[identifier]["status"])
     for symbol in (DONE, PARTIAL, PENDING):
         if identifier in definitions and definitions[identifier]["status"].startswith(symbol):
             return symbol
     entry = definitions.get(identifier, {})
-    return entry.get("status", "?")[:2] if entry.get("status") else "?"
+    return normalize_status(entry.get("status", ""))
 
 
 def blocker_note(identifier: str, definitions: dict) -> str:
