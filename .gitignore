@@ -16,12 +16,19 @@ _transfer_*.md
 xcuserdata/
 *.xcuserstate
 
-# Docs：只公开面向产品的文档；内部工程文档（需求书 / 调研 / 设计 / 测试 / 发布 / 过程记录）
-# 保留在本地，不随公开仓库发布。新增产品向文档时在这里加白名单。
+# Docs：对外发布的文档 + 三书（需求规范书 / 产品能力规划说明书 / 概要设计）。
+#
+# 三书必须入库：macOS 与 Linux 两个平台以它们为**唯一共享事实源**（SRS §0.8），
+# 靠 GitHub 同步版本。其余内部工程文档（调研 / 测试 / 发布 / 评审 / 过程记录）
+# 仍留在本地，不随仓库发布。新增对外文档时在这里加白名单。
 /Docs/*
 !/Docs/README.md
 !/Docs/功能清单（一页纸）.md
 !/Docs/功能清单（管理视图）.md
+!/Docs/需求规范书.md
+!/Docs/产品能力规划说明书.md
+!/Docs/概要设计.md
+!/Docs/平台实现状态.json
 
 # 图标中间产物（可由 Scripts/make-app-icon.swift 从 AppIcon-source.png 重新生成）
 App/Resources/AppIcon-1024.png

@@ -1,0 +1,5 @@
+{
+  "_comment": "Linux 侧实现状态。只写与 default 不同的项；改完运行 python3 Scripts/gen-platform-parity.py 重写需求规范书 §10.10 的表格。状态含义见需求规范书 §0.4（✅ 已实现 / 🟡 部分或待验收 / ⬜ 未开始）。",
+  "default": "⬜",
+  "linux": {}
+}
