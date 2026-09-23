@@ -133,8 +133,9 @@ struct Theme {
 /// 侧栏当前显示哪个视图 —— 由最左侧活动栏切换（VS Code 的信息架构：
 /// 「看哪个视图」与「视图里看什么」分开）。
 enum SidebarMode {
-    case database    // 连接 + 对象树（已有）
-    case workspace   // 工作区 Explorer（新需求：用户自选目录，供 AI 开发）
+    case database         // 连接 + 对象树（已有）
+    case workspace        // 工作区 Explorer（已实现：用户自选目录，供 AI 开发）
+    case workspaceEmpty   // 工作区尚未选择时的空状态（也是实现的一部分）
 }
 
 struct Accent {
@@ -269,9 +270,7 @@ func drawActivityBar(_ c: Canvas, theme: Theme, accent: Accent, top: CGFloat, he
 
     let items: [(String, SidebarMode?, String)] = [
         ("cylinder.split.1x2", .database, "数据库"),
-        ("folder", .workspace, "工作区"),
-        ("clock.arrow.circlepath", nil, "查询历史"),
-        ("magnifyingglass", nil, "搜索")
+        ("folder", .workspace, "工作区")
     ]
     var y = top + 8
     for (symbolName, itemMode, _) in items {
@@ -320,9 +319,9 @@ func drawWorkspaceExplorer(_ c: Canvas, theme: Theme, accent: Accent, x: CGFloat
         (0, "folder", ".dsh", false),
         (0, "folder", "App", false),
         (0, "folder", "Core", false),
-        (1, "doc.text", "AgentSQLGenerator.swift", false),
-        (1, "doc.text", "DesignTokens.swift", false),
-        (1, "doc.text", "TerminalScreen.swift", true),
+        (1, "swift", "AgentSQLGenerator.swift", false),
+        (1, "swift", "DesignTokens.swift", false),
+        (1, "swift", "TerminalScreen.swift", true),
         (0, "folder", "Docs", false),
         (0, "folder", "Scripts", false),
         (0, "folder", "Tests", false),
@@ -347,7 +346,41 @@ func drawWorkspaceExplorer(_ c: Canvas, theme: Theme, accent: Accent, x: CGFloat
     let footerY = top + height - 30
     c.hairline(x: x, y: footerY, length: width, vertical: false, color: theme.hairline)
     c.fill(NSRect(x: x + 16, y: footerY + 12, width: 6, height: 6), theme.success)
-    c.text("已授权读写 · 沙箱书签有效", at: CGPoint(x: x + 28, y: footerY + 8), font: Typography.caption, color: theme.textTertiary)
+    c.text(
+        "已授权读写：/Users/alex/.dsh/projects/DoyahStudio",
+        at: CGPoint(x: x + 28, y: footerY + 8),
+        font: Typography.caption,
+        color: theme.textTertiary
+    )
+}
+
+/// 空状态：还没有选工作区时右侧面板长什么样（实现里就是这个）。
+func drawWorkspaceEmptyState(_ c: Canvas, theme: Theme, accent: Accent, x: CGFloat, top: CGFloat, height: CGFloat) {
+    let width = Metrics.sidebarWidth
+    c.fill(NSRect(x: x, y: top, width: width, height: height), theme.sidebar)
+    c.hairline(x: x + width - Metrics.hairline, y: top, length: height, vertical: true, color: theme.hairline)
+
+    var y = top + 14
+    c.text("工作区", at: CGPoint(x: x + 16, y: y), font: Typography.caption, color: theme.textTertiary)
+    y += 24
+
+    c.text("还没有选择工作区", at: CGPoint(x: x + 16, y: y), font: Typography.bodyStrong, color: theme.textPrimary)
+    y += 20
+    for line in ["选一个本地目录作为工作区：", "终端会在那里启动，查询归档与", "智能体的文件读写也都以它为准。"] {
+        c.text(line, at: CGPoint(x: x + 16, y: y), font: Typography.caption, color: theme.textSecondary)
+        y += 16
+    }
+    y += 10
+    // 主按钮用实心强调色（整个界面里唯一一处）
+    let button = NSRect(x: x + 16, y: y, width: 108, height: 26)
+    c.rounded(button, Metrics.radiusControl, accent.color)
+    c.textCenter("选择文件夹…", centerX: button.midX, y: button.minY + 6, font: Typography.body, color: .white)
+
+    // 底部同样常显授权状态
+    let footerY = top + height - 30
+    c.hairline(x: x, y: footerY, length: width, vertical: false, color: theme.hairline)
+    c.fill(NSRect(x: x + 16, y: footerY + 12, width: 6, height: 6), theme.textTertiary)
+    c.text("尚未授权目录", at: CGPoint(x: x + 28, y: footerY + 8), font: Typography.caption, color: theme.textTertiary)
 }
 
 // MARK: - 窗口样张
@@ -494,6 +527,8 @@ func renderWindow(theme: Theme, accent: Accent, mode: SidebarMode = .database) -
 
     if mode == .workspace {
         drawWorkspaceExplorer(c, theme: theme, accent: accent, x: sidebarX, top: bodyTop, height: bodyHeight)
+    } else if mode == .workspaceEmpty {
+        drawWorkspaceEmptyState(c, theme: theme, accent: accent, x: sidebarX, top: bodyTop, height: bodyHeight)
     }
 
     // ---- 主区 ----
@@ -981,10 +1016,18 @@ if darkButtons.count == 3 {
     }
 }
 
+let lightWorkspaceData = renderWindow(theme: nativeLight, accent: Accent.candidates[0], mode: .workspace)
+_ = verifyWindow(lightWorkspaceData, theme: nativeLight, accent: Accent.candidates[0], label: "浅色-工作区视图",
+                 barPoint: CGPoint(x: 55, y: 271))
+write(lightWorkspaceData, "样张-已实现-浅色-工作区.png")
+
+let emptyData = renderWindow(theme: proDark, accent: Accent.candidates[0], mode: .workspaceEmpty)
+write(emptyData, "样张-已实现-深色-空工作区.png")
+
 let workspaceData = renderWindow(theme: proDark, accent: Accent.candidates[0], mode: .workspace)
 allChecks += verifyWindow(workspaceData, theme: proDark, accent: Accent.candidates[0], label: "深色-A-工作区视图",
                           barPoint: CGPoint(x: 55, y: 271)).checks   // 工作区视图里选中的是第 6 行文件
-write(workspaceData, "样张-深色-A-工作区视图.png")
+write(workspaceData, "样张-已实现-深色-工作区.png")
 
 let lightData = renderWindow(theme: nativeLight, accent: Accent.candidates[0])
 allChecks += verifyWindow(lightData, theme: nativeLight, accent: Accent.candidates[0], label: "浅色-\(Accent.candidates[0].name)").checks
