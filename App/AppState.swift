@@ -2660,6 +2660,78 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - 命令面板（FR-EDIT-25）
+
+    @Published var isCommandPalettePresented = false
+
+    /// 执行命令面板选中的命令。
+    ///
+    /// 分派键是**稳定 id**（不是标题 —— 改文案就会把动作改没）。
+    /// 每个分支都调**既有入口**，不复制一份逻辑：面板只是"另一个按钮"。
+    func performPaletteCommand(_ id: String) {
+        switch id {
+        case "newQuery": newQueryTab()
+        case "execute":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await executeQuery(for: tabID) }
+        case "stop":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await cancelQuery(for: tabID) }
+        case "check":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await checkSyntax(for: tabID) }
+        case "format": formatActiveQuery()
+        case "executionPlan":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await runExecutionPlan(for: tabID) }
+        case "find": EditorCommandCenter.shared.send(.showFind, to: activeTabIDForEditor)
+        case "replace": EditorCommandCenter.shared.send(.showReplace, to: activeTabIDForEditor)
+        case "goToLine":
+            // 面板里没有行号输入框：这里的正确行为是**把 ⌘L 的入口指给用户**，
+            // 而不是随便跳到一个行号（那只会让人莫名其妙）。
+            statusMessage = L(.commandGoToLineHint, AppShortcut.goToLine.display)
+        case "exportCSV":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await exportResult(for: tabID, format: .csv) }
+        case "exportJSON":
+            guard let tabID = activeQueryTab?.id else { return }
+            Task { await exportResult(for: tabID, format: .json) }
+        case "browseRows": isBrowseRowsCommandPresented = true
+        case "tableDDL": isTableDDLCommandPresented = true
+        case "sessions": isSessionCommandPresented = true
+        case "locks": isLockCommandPresented = true
+        case "switchConnection": isConnectionPickerPresented = true
+        case "agentSQL": isAgentSQLCommandPresented = true
+        case "syntheticData": isSyntheticCommandPresented = true
+        case "egressLog": isEgressLogPresented = true
+        case "help": isShortcutHelpCommandPresented = true
+        default:
+            // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
+            statusMessage = L(.commandPaletteNoMatch)
+        }
+    }
+
+    /// 面板里"浏览/DDL/会话"等条目需要宿主视图提供对象；这里用标志位把请求交回界面，
+    /// 由它在**选中的对象**上打开对应面板 —— 面板是通用入口，不该硬编码某个对象。
+    @Published var isBrowseRowsCommandPresented = false
+    @Published var isTableDDLCommandPresented = false
+    @Published var isSessionCommandPresented = false
+    @Published var isLockCommandPresented = false
+    @Published var isConnectionPickerPresented = false
+    @Published var isAgentSQLCommandPresented = false
+    @Published var isSyntheticCommandPresented = false
+    // 注意：`isEgressLogPresented` 已经存在（外发日志面板用的就是它），
+    // 这里**不要**再声明一遍 —— 本轮我就多写了一次，编译报 "ambiguous use"。
+    @Published var isShortcutHelpCommandPresented = false
+
+    private var activeTabIDForEditor: UUID { activeQueryTab?.id ?? UUID() }
+
+    /// 格式化当前页签（与「编辑 → 格式化」同一入口）。
+    private func formatActiveQuery() {
+        guard let tabID = activeQueryTab?.id else { return }
+        EditorCommandCenter.shared.send(.format, to: tabID)
+    }
+
     // MARK: - 查询参数（FR-EXEC-17）
 
     /// 待填参数的执行请求（弹面板用）。

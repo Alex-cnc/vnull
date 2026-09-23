@@ -81,6 +81,23 @@ struct MainWindow: View {
                 }
             }
         }
+        // 命令面板（FR-EDIT-25）：⌘K 唤起。用隐藏按钮承载快捷键 ——
+        // SwiftUI 里这是"不占用菜单项也能挂全局快捷键"的常规做法；
+        // 面板自身的 ↑↓ / ↩ / esc 语义由 `CommandPaletteView` 处理。
+        //
+        // 说明：本轮的快捷键**没有**登记进 `AppShortcut`（帮助面板因此还看不到它），
+        // 这条缺口写在需求行的"仍未做"里，不假装已完成。
+        .background(
+            Button("") { appState.isCommandPalettePresented = true }
+                .keyboardShortcut("k", modifiers: .command)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        )
+        .sheet(isPresented: $appState.isCommandPalettePresented) {
+            CommandPaletteView()
+                .environmentObject(appState)
+        }
         // 查询参数面板（FR-EXEC-17）：执行时若有占位符就弹出来填值。
         .sheet(isPresented: $appState.isQueryParameterSheetPresented) {
             QueryParameterSheet()

@@ -317,6 +317,36 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionNewerVersionKept
 
     // 事务模式（FR-EXEC-15）
+    case commandNewQuery
+    case commandExecute
+    case commandStop
+    case commandCheck
+    case commandFormat
+    case commandExecutionPlan
+    case commandFind
+    case commandReplace
+    case commandGoToLine
+    case commandExportCSV
+    case commandExportJSON
+    case commandBrowseRows
+    case commandTableDDL
+    case commandSessions
+    case commandLocks
+    case commandSwitchConnection
+    case commandAgentSQL
+    case commandSyntheticData
+    case commandEgressLog
+    case commandHelp
+    case paletteCategoryQuery
+    case paletteCategoryResult
+    case paletteCategoryObject
+    case paletteCategoryServer
+    case paletteCategoryAgent
+    case paletteCategoryHelp
+    case commandGoToLineHint
+    case commandPalettePlaceholder
+    case commandPaletteNoMatch
+    case commandPaletteHint
     case queryParameterTitle
     case queryParameterHint
     case queryParameterName
@@ -1213,6 +1243,36 @@ public enum LocalizedStrings {
         .connectionMigrated: [.simplifiedChinese: "已把 %d 条连接配置升级到当前格式", .english: "Upgraded %d connection profiles to the current format"],
         .connectionNewerVersionKept: [.simplifiedChinese: "有连接配置来自更新的版本（schemaVersion %@）：已原样保留，未改写。请升级应用后再编辑，否则新字段可能在保存时丢失", .english: "Some connection profiles come from a newer version (schemaVersion %@). They were kept as-is and not rewritten; upgrade the app before editing, or newer fields may be lost on save"],
 
+        .commandNewQuery: [.simplifiedChinese: "新建查询", .english: "New Query"],
+        .commandExecute: [.simplifiedChinese: "执行", .english: "Execute"],
+        .commandStop: [.simplifiedChinese: "停止", .english: "Stop"],
+        .commandCheck: [.simplifiedChinese: "语法检查", .english: "Check Syntax"],
+        .commandFormat: [.simplifiedChinese: "格式化 SQL", .english: "Format SQL"],
+        .commandExecutionPlan: [.simplifiedChinese: "执行计划", .english: "Execution Plan"],
+        .commandFind: [.simplifiedChinese: "查找", .english: "Find"],
+        .commandReplace: [.simplifiedChinese: "替换", .english: "Replace"],
+        .commandGoToLine: [.simplifiedChinese: "跳到行", .english: "Go to Line"],
+        .commandExportCSV: [.simplifiedChinese: "导出 CSV", .english: "Export CSV"],
+        .commandExportJSON: [.simplifiedChinese: "导出 JSON", .english: "Export JSON"],
+        .commandBrowseRows: [.simplifiedChinese: "浏览前若干行", .english: "Browse Rows"],
+        .commandTableDDL: [.simplifiedChinese: "查看 DDL", .english: "View DDL"],
+        .commandSessions: [.simplifiedChinese: "服务器会话", .english: "Server Sessions"],
+        .commandLocks: [.simplifiedChinese: "锁与阻塞", .english: "Locks"],
+        .commandSwitchConnection: [.simplifiedChinese: "切换连接", .english: "Switch Connection"],
+        .commandAgentSQL: [.simplifiedChinese: "用自然语言生成 SQL", .english: "Generate SQL from Natural Language"],
+        .commandSyntheticData: [.simplifiedChinese: "生成测试数据", .english: "Generate Test Data"],
+        .commandEgressLog: [.simplifiedChinese: "外发日志", .english: "Egress Log"],
+        .commandHelp: [.simplifiedChinese: "帮助与快捷键", .english: "Help & Shortcuts"],
+        .paletteCategoryQuery: [.simplifiedChinese: "查询", .english: "Query"],
+        .paletteCategoryResult: [.simplifiedChinese: "结果", .english: "Result"],
+        .paletteCategoryObject: [.simplifiedChinese: "对象", .english: "Object"],
+        .paletteCategoryServer: [.simplifiedChinese: "服务器", .english: "Server"],
+        .paletteCategoryAgent: [.simplifiedChinese: "智能体", .english: "Agent"],
+        .paletteCategoryHelp: [.simplifiedChinese: "帮助", .english: "Help"],
+        .commandGoToLineHint: [.simplifiedChinese: "跳转到行请用 %@（面板里没有行号输入框）", .english: "Use %@ to jump to a line (the palette has no line-number field)"],
+        .commandPalettePlaceholder: [.simplifiedChinese: "输入命令名…（支持首字母缩写与中文）", .english: "Type a command…(acronyms and Chinese work)"],
+        .commandPaletteNoMatch: [.simplifiedChinese: "没有匹配的命令", .english: "No matching command"],
+        .commandPaletteHint: [.simplifiedChinese: "↑↓ 选择 · ↩ 执行 · esc 关闭", .english: "↑↓ select · ↩ run · esc close"],
         .queryParameterTitle: [.simplifiedChinese: "填参数后执行", .english: "Fill parameters, then run"],
         .queryParameterHint: [.simplifiedChinese: "值会做**类型化转义**（文本自动加引号并转义单引号，数字不加引号，避免索引失效）；**编辑器里的占位符不会被改写**", .english: "Values are escaped by type (text is quoted and single quotes doubled; numbers stay unquoted so indexes still apply); the placeholders in the editor are left untouched"],
         .queryParameterName: [.simplifiedChinese: "参数", .english: "Parameter"],
