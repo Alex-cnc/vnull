@@ -213,13 +213,18 @@ final class FakeDatabaseService: DatabaseService, @unchecked Sendable {
 
     func disconnect() async {}
 
-    func cancel() async {}
+    /// 假驱动不模拟服务端取消：如实回答"没有在执行"，而不是假装取消成功。
+    func cancel(_ handle: ExecutionHandle) async -> CancelOutcome { .notActive }
 
     func beginTransaction() async throws {}
     func commit() async throws {}
     func rollback() async throws {}
 
-    func execute(_ sql: String, options: QueryOptions) -> AsyncThrowingStream<QueryEvent, Error> {
+    func execute(
+        _ sql: String,
+        options: QueryOptions,
+        handle: ExecutionHandle
+    ) -> AsyncThrowingStream<QueryEvent, Error> {
         AsyncThrowingStream { continuation in
             if let result = resolver(sql) {
                 continuation.yield(.resultSet(result))

@@ -512,6 +512,9 @@ final class AppState: ObservableObject {
     private var serverInfos: [UUID: ServerInfo] = [:]
     private var connectTasks: [ServiceKey: Task<(any DatabaseService, ServerInfo), Error>] = [:]
     private var executionTasks: [UUID: Task<Void, Never>] = [:]
+    /// 每个页签当前这次执行的句柄：停止按钮据此**定向取消**，
+    /// 而不是把同库另一个页签正在跑的语句一起干掉（R-30）。
+    private var executionHandles: [UUID: ExecutionHandle] = [:]
 
     /// 新建查询页签的编号：应用生命周期内只增不减（关闭 / 重命名不影响）。
     private var tabNumbers = TabNumberGenerator()
@@ -2643,9 +2646,14 @@ final class AppState: ObservableObject {
     func startQuery(for tabID: UUID) {
         guard executionTasks[tabID] == nil else { return }
 
+        // 句柄先于任务建立：**用户可能在连接/排队阶段就按停止**，
+        // 那时也必须能记住"这次执行已被取消，别跑了"。
+        executionHandles[tabID] = ExecutionHandle()
+
         let task = Task { @MainActor in
             await executeQuery(for: tabID)
             executionTasks[tabID] = nil
+            executionHandles[tabID] = nil
         }
         executionTasks[tabID] = task
     }
@@ -2731,7 +2739,10 @@ final class AppState: ObservableObject {
             var currentStatementIndex = 0
             var resultCount = 0
 
-            for try await event in service.execute(sql, options: .default) {
+            let handle = executionHandles[tabID] ?? ExecutionHandle()
+            executionHandles[tabID] = handle
+
+            for try await event in service.execute(sql, options: .default, handle: handle) {
                 // 页签可能在执行过程中被关闭；此时停止更新，避免下标越界。
                 guard tabs.contains(where: { $0.id == tabID }) else { break }
 
@@ -2836,6 +2847,7 @@ final class AppState: ObservableObject {
     }
 
     func cancelQuery(for tabID: UUID) async {
+        // ① 先停本地的消费与生产（R-29：生产端会随消费者终止，剩余语句不再下发）。
         executionTasks[tabID]?.cancel()
 
         guard let tab = tabs.first(where: { $0.id == tabID }),
@@ -2846,8 +2858,21 @@ final class AppState: ObservableObject {
 
         let database = tab.database ?? currentDatabaseName(for: configuration)
         let key = ServiceKey(connectionID: connectionID, database: database)
-        if let service = services[key] {
-            await service.cancel()
+        guard let service = services[key] else { return }
+
+        // ② 再定向地把取消下发到服务端，并**如实显示结果** ——
+        // 拿不到后端 PID 时以前是静默返回，用户看到"已取消"而查询还在跑（R-30）。
+        let handle = executionHandles[tabID] ?? ExecutionHandle()
+        switch await service.cancel(handle) {
+        case .cancelled, .cancelledBeforeStart:
+            updateTab(tabID) { $0.statusMessage = L(.stateCancelled) }
+        case .notActive:
+            updateTab(tabID) { $0.statusMessage = L(.stateCancelAlreadyDone) }
+        case .failed(let reason):
+            updateTab(tabID) {
+                $0.statusMessage = L(.stateCancelNotDelivered, reason)
+                $0.errorMessage = L(.stateCancelNotDelivered, reason)
+            }
         }
     }
 

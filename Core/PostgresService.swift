@@ -18,6 +18,9 @@ public actor PostgresService: DatabaseService {
     /// `pg_cancel_backend(pid)` 同样需要它。连接成功后立即查询并缓存。
     private var backendPID: Int?
 
+    /// 执行注册表：「谁在跑、谁被取消过」的唯一事实源（R-29 / R-30）。
+    private let registry = ExecutionRegistryBox()
+
     public init(config: ConnectionConfig, password: String?) {
         self.config = config
         self.password = password
@@ -47,11 +50,17 @@ public actor PostgresService: DatabaseService {
             sql: "SELECT current_user"
         ) ?? config.username
 
-        // 取消能力依赖后端 PID；查询失败不影响正常使用，只是退化为「仅取消本地等待」。
-        self.backendPID = try? await firstInt(
-            on: newConnection,
-            sql: "SELECT pg_backend_pid()"
-        )
+        // 取消能力依赖后端 PID。取不到不阻塞使用，但**必须留痕**：
+        // 原来这里是 `try?`，失败后取消按钮会静默无效（用户看到"已取消"而服务端还在跑，R-30）。
+        do {
+            self.backendPID = try await firstInt(on: newConnection, sql: "SELECT pg_backend_pid()")
+            if self.backendPID == nil {
+                logger.warning("未取得后端 PID（pg_backend_pid 返回空），本次连接的「停止」将无法下发到服务端")
+            }
+        } catch {
+            self.backendPID = nil
+            logger.warning("未取得后端 PID：\(String(describing: error))；本次连接的「停止」将无法下发到服务端")
+        }
 
         return ServerInfo(version: version, database: database, user: user)
     }
@@ -68,16 +77,43 @@ public actor PostgresService: DatabaseService {
         _ sql: String,
         options: QueryOptions
     ) -> AsyncThrowingStream<QueryEvent, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
+        execute(sql, options: options, handle: ExecutionHandle())
+    }
+
+    public nonisolated func execute(
+        _ sql: String,
+        options: QueryOptions,
+        handle: ExecutionHandle
+    ) -> AsyncThrowingStream<QueryEvent, Error> {
+        // 句柄**在流创建时就登记**：排队期间（actor 正忙）按「停止」也要能记住，
+        // 否则轮到时它会照旧执行 —— 这正是 R-30 里"停不住"的一种。
+        registry.withLock { $0.enqueue(handle) }
+
+        return AsyncThrowingStream { continuation in
+            let producer = Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
                 do {
                     try await self.performExecute(
                         sql: sql,
                         options: options,
+                        handle: handle,
                         continuation: continuation
                     )
                 } catch {
                     continuation.finish(throwing: error)
+                }
+            }
+
+            // R-29：消费者一走开（「停止」、页签关闭、上层 `break`、任务取消），
+            // 生产端必须停 —— 原来这里是**非结构化** Task 且没有 onTermination，
+            // 多语句脚本取消后剩余语句照旧打到数据库上（实测）。
+            continuation.onTermination = { _ in
+                producer.cancel()
+                Task { [weak self] in
+                    await self?.cancelInFlight(for: handle)
                 }
             }
         }
@@ -93,18 +129,48 @@ public actor PostgresService: DatabaseService {
     /// - 只终止目标语句，不断开连接，用户仍可继续执行下一条；
     /// - PostgreSQL 允许用户取消自己的后端，无需超级用户权限；
     /// - 无需手写 CancelRequest 报文，跨版本行为一致（9.6+）。
-    public func cancel() async {
-        guard let pid = backendPID else { return }
+    public func cancel(_ handle: ExecutionHandle) async -> CancelOutcome {
+        switch registry.withLock({ $0.requestCancel(handle) }) {
+        case .cancelActive:
+            return await cancelServerSide(handle)
+        case .markOnly:
+            // 排队中的执行：标记后它一条语句都不会跑，**不去碰别人的语句**。
+            logger.debug("取消：该执行尚未开始，已标记为取消")
+            return .cancelledBeforeStart
+        case .alreadyFinished:
+            return .notActive
+        }
+    }
+
+    /// 消费者走开时的服务端收尾（`onTermination` 调用）。
+    private func cancelInFlight(for handle: ExecutionHandle) async {
+        if case .cancelActive = registry.withLock({ $0.requestCancel(handle) }) {
+            _ = await cancelServerSide(handle)
+        }
+    }
+
+    /// 向服务端发出取消。**每一种失败都要有名字地返回**（R-30）。
+    ///
+    /// 必须在**另一条连接**上发：本连接的查询流正忙，取消语句只会排在它后面。
+    /// 用 `pg_cancel_backend(pid)` 而不是断连：只终止目标语句，连接与后续操作都还在。
+    private func cancelServerSide(_ handle: ExecutionHandle) async -> CancelOutcome {
+        guard let pid = backendPID else {
+            let reason = "未取得后端 PID，无法向服务端发送取消（该查询可能仍在运行）"
+            logger.warning("\(reason)")
+            return .failed(reason: reason)
+        }
 
         let configuration: PostgresConnection.Configuration
         do {
             configuration = try makePostgresConfiguration()
         } catch {
-            logger.warning("取消查询失败：无法构造连接配置，\(String(describing: error))")
-            return
+            let reason = "取消失败：无法构造连接配置（\(error.localizedDescription)）"
+            logger.warning("\(reason)")
+            return .failed(reason: reason)
         }
 
         var cancelConnection: PostgresConnection?
+        defer { cancelConnection.map { connection in Task { try? await connection.close() } } }
         do {
             cancelConnection = try await PostgresConnection.connect(
                 configuration: configuration,
@@ -115,12 +181,11 @@ public actor PostgresService: DatabaseService {
                 "SELECT pg_cancel_backend(\(pid))",
                 []
             ).get()
+            return .cancelled
         } catch {
-            logger.warning("取消查询失败：\(String(describing: error))")
-        }
-
-        if let cancelConnection {
-            try? await cancelConnection.close()
+            let reason = "取消请求下发失败：\(error.localizedDescription)"
+            logger.warning("\(reason)")
+            return .failed(reason: reason)
         }
     }
 
@@ -173,11 +238,21 @@ public actor PostgresService: DatabaseService {
     private func performExecute(
         sql: String,
         options: QueryOptions,
+        handle: ExecutionHandle,
         continuation: AsyncThrowingStream<QueryEvent, Error>.Continuation
     ) async throws {
         guard let connection else {
+            registry.withLock { $0.finish(handle) }
             throw AppError.notConnected
         }
+
+        // 排队期间被取消（用户按了停止）→ **一条语句都不执行**。
+        guard registry.withLock({ $0.begin(handle) }) else {
+            logger.debug("执行在开始前已被取消，未向服务端发送任何语句")
+            continuation.finish()
+            return
+        }
+        defer { registry.withLock { $0.finish(handle) } }
 
         let statements = StatementSplitter(databaseType: .postgresql).split(sql)
         if statements.isEmpty {
@@ -190,6 +265,14 @@ public actor PostgresService: DatabaseService {
         var executedCount = 0
 
         for (index, statement) in statements.enumerated() {
+            // R-29 的另一半：**每条语句之前**都要看一次取消状态。
+            // 光靠 `onTermination` 停生产 Task 不够 —— 已经排队/正在跑的语句要在这里断开，
+            // 否则多语句脚本取消后剩下的语句还会继续打到数据库上。
+            if Task.isCancelled || registry.withLock({ $0.isCancelled(handle) }) {
+                logger.debug("执行已取消，跳过第 \(index + 1) 条及其后的语句")
+                break
+            }
+
             continuation.yield(.started(statementIndex: index))
 
             let statementStart = Date()
@@ -241,6 +324,13 @@ public actor PostgresService: DatabaseService {
             )
             continuation.yield(.resultSet(result))
             executedCount += 1
+        }
+
+        if Task.isCancelled || registry.withLock({ $0.isCancelled(handle) }) {
+            // 取消是"半途而止"，不是正常收尾：不发 `.finished`，让上层走取消路径
+            // （App 侧据此记 `succeeded: false`，见 R-31）。
+            continuation.finish(throwing: CancellationError())
+            return
         }
 
         continuation.yield(

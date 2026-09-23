@@ -190,13 +190,16 @@ struct DoyahCLI {
         let cancelDelay = Self.cancelDelay(arguments: arguments)
 
         do {
-            let stream = service.execute(sql, options: .default)
+            // CLI 也走**句柄化**取消：`--cancel-after` 验证的正是"停止能不能下发到服务端"，
+            // 拿不到句柄就没法定向，也就验证不了这条契约。
+            let handle = ExecutionHandle()
+            let stream = service.execute(sql, options: .default, handle: handle)
 
             let canceller: Task<Void, Never>? = cancelDelay.map { delay in
                 Task {
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    print("cancel: 触发服务端取消")
-                    await service.cancel()
+                    let outcome = await service.cancel(handle)
+                    print("cancel: 触发取消 → \(outcome)")
                 }
             }
             defer { canceller?.cancel() }

@@ -623,6 +623,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case stateFinishedMulti
     case stateFinished
     case stateCancelled
+    case stateCancelNotDelivered
+    case stateCancelAlreadyDone
     case stateExecutionFailed
     case stateFinishedEmpty
     case stateQueryNoResultSet
@@ -1164,6 +1166,8 @@ public enum LocalizedStrings {
         .stateFinishedMulti: [.simplifiedChinese: "执行完成：%d 条语句 / %d 个结果集，耗时 %@ 秒", .english: "Finished: %d statement(s), %d result(s) in %@ s"],
         .stateFinished: [.simplifiedChinese: "执行完成：%d 条语句，耗时 %@ 秒", .english: "Finished: %d statement(s) in %@ s"],
         .stateCancelled: [.simplifiedChinese: "已取消", .english: "Cancelled"],
+        .stateCancelNotDelivered: [.simplifiedChinese: "停止未能下发到服务端：%@（该查询可能仍在运行）", .english: "Stop was not delivered to the server: %@ (the query may still be running)"],
+        .stateCancelAlreadyDone: [.simplifiedChinese: "该语句已结束，无需停止", .english: "That statement already finished — nothing to stop"],
         .stateExecutionFailed: [.simplifiedChinese: "执行失败", .english: "Execution failed"],
         .stateFinishedEmpty: [.simplifiedChinese: "执行完成，无结果集", .english: "Finished with no result set"],
         .stateQueryNoResultSet: [.simplifiedChinese: "查询没有返回结果集", .english: "The query returned no result set"],
