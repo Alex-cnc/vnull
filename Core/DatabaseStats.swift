@@ -163,6 +163,50 @@ public enum DatabaseStats {
         return CacheHit(hits: hits, reads: reads)
     }
 
+    // MARK: 报告组装（App 面板与 CLI 共用，避免两处各写一套）
+
+    /// 一次采集的四类指标。缺的那一类是 `nil`（方言不支持，或该条查询没跑成）。
+    public struct Report: Equatable, Sendable {
+        public var tableSizes: [TableSize]
+        public var tableScans: [TableScans]
+        public var connections: ConnectionSummary
+        public var cacheHit: CacheHit?
+        /// 四类里至少拿到一类，才算"这个方言支持统计"。
+        public var isSupported: Bool
+
+        public init(
+            tableSizes: [TableSize] = [],
+            tableScans: [TableScans] = [],
+            connections: ConnectionSummary = ConnectionSummary(byState: [:]),
+            cacheHit: CacheHit? = nil,
+            isSupported: Bool = false
+        ) {
+            self.tableSizes = tableSizes
+            self.tableScans = tableScans
+            self.connections = connections
+            self.cacheHit = cacheHit
+            self.isSupported = isSupported
+        }
+    }
+
+    /// 把四条查询的结果组装成报告。**纯函数**：`nil` 参与不了就跳过，
+    /// 不会因为某一类拿不到而把整份报告判为失败（诊断面板要的是"有什么看什么"）。
+    public static func report(
+        tableSizes sizesResult: QueryResult?,
+        tableScans scansResult: QueryResult?,
+        connections connectionsResult: QueryResult?,
+        cacheHit cacheResult: QueryResult?,
+        limit: Int = 20
+    ) -> Report {
+        Report(
+            tableSizes: sizesResult.map { tableSizes(from: $0, limit: limit) } ?? [],
+            tableScans: scansResult.map { tableScans(from: $0, limit: limit) } ?? [],
+            connections: connectionsResult.map { connections(from: $0) } ?? ConnectionSummary(byState: [:]),
+            cacheHit: cacheResult.flatMap { cacheHit(from: $0) },
+            isSupported: sizesResult != nil || scansResult != nil || connectionsResult != nil || cacheResult != nil
+        )
+    }
+
     // MARK: 展示
 
     /// 人类可读的字节数（`1.5 MB` 这类）。

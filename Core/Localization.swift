@@ -898,6 +898,20 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionSettingsKeepAliveStatus
     case connectionSettingsKeepAliveUnhealthy
     case menuConnectionSettings
+    // 数据库统计面板（FR-DIAG-04）
+    case databaseStatsTitle
+    case databaseStatsRefresh
+    case databaseStatsTableSizes
+    case databaseStatsIndexHit
+    case databaseStatsConnections
+    case databaseStatsCacheHit
+    case databaseStatsCacheDetail
+    case databaseStatsUnsupported
+    case databaseStatsEmpty
+    case databaseStatsEmptySection
+    case databaseStatsNoScans
+    case databaseStatsLoading
+    case databaseStatsFailure
     case safetyConfirmRun
     case safetyConfirmCancel
 
@@ -1713,6 +1727,19 @@ public enum LocalizedStrings {
         .connectionSettingsKeepAliveStatus: [.simplifiedChinese: "本次运行：成功 %d 次 / 失败 %d 次", .english: "This run: %d succeeded / %d failed"],
         .connectionSettingsKeepAliveUnhealthy: [.simplifiedChinese: "最近一次心跳失败：%@", .english: "Last heartbeat failed: %@"],
         .menuConnectionSettings: [.simplifiedChinese: "连接设置…", .english: "Connection Settings…"],
+        .databaseStatsTitle: [.simplifiedChinese: "数据库统计", .english: "Database statistics"],
+        .databaseStatsRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .databaseStatsTableSizes: [.simplifiedChinese: "表大小（降序，前 20）", .english: "Table sizes (largest 20)"],
+        .databaseStatsIndexHit: [.simplifiedChinese: "索引命中（按扫描，前 20）", .english: "Index usage (by scans, top 20)"],
+        .databaseStatsConnections: [.simplifiedChinese: "连接状态", .english: "Connections by state"],
+        .databaseStatsCacheHit: [.simplifiedChinese: "缓存命中", .english: "Cache hit rate"],
+        .databaseStatsCacheDetail: [.simplifiedChinese: "命中 %lld / 读取 %lld", .english: "%lld hits / %lld reads"],
+        .databaseStatsUnsupported: [.simplifiedChinese: "%@ 方言暂不支持数据库统计", .english: "Database statistics are not supported for the %@ dialect"],
+        .databaseStatsEmpty: [.simplifiedChinese: "还没有采集到任何指标", .english: "No metrics collected yet"],
+        .databaseStatsEmptySection: [.simplifiedChinese: "暂无数据（可能是权限不足，或该库/该指标没有内容）", .english: "No data (insufficient privileges, or nothing to report for this database/metric)"],
+        .databaseStatsNoScans: [.simplifiedChinese: "无扫描数据", .english: "No scan data"],
+        .databaseStatsLoading: [.simplifiedChinese: "正在采集…", .english: "Collecting…"],
+        .databaseStatsFailure: [.simplifiedChinese: "统计失败：%@", .english: "Could not collect statistics: %@"],
         .backupRestoreTitle: [.simplifiedChinese: "备份 / 恢复", .english: "Backup / restore"],
         .backupRestoreHint: [.simplifiedChinese: "封装 `pg_dump` / `pg_restore` / `pg_dumpall`：**执行前先比工具与服务端主版本**，不兼容就提前拦下并说明原因与办法", .english: "Wraps pg_dump / pg_restore / pg_dumpall. Tool and server major versions are compared before running; incompatible pairs are stopped early with a reason and a remedy"],
         .backupRestoreKindDump: [.simplifiedChinese: "单库备份", .english: "Dump one database"],

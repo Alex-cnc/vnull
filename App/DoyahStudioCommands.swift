@@ -105,6 +105,10 @@ struct DoyahStudioCommands: Commands {
                 appState.isConnectionSettingsPresented = true
             }
 
+            Button(L(.databaseStatsTitle)) {
+                appState.isDatabaseStatsPresented = true
+            }
+
             Divider()
 
             Button(L(.lowerPaneToggle)) {

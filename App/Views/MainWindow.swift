@@ -117,6 +117,11 @@ struct MainWindow: View {
             ConnectionSettingsSheet()
                 .environmentObject(appState)
         }
+        // 数据库统计（FR-DIAG-04）：四类指标只读采集。
+        .sheet(isPresented: $appState.isDatabaseStatsPresented) {
+            DatabaseStatsPanel()
+                .environmentObject(appState)
+        }
         .alert(
             L(.accountUndecidedTitle),
             isPresented: $appState.isAccountNoticePresented

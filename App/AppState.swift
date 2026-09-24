@@ -201,6 +201,9 @@ final class AppState: ObservableObject {
     /// 保活是**应用级**策略，所以开关不放连接表单 —— 放那儿会让人以为它是逐连接的属性。
     @Published var isConnectionSettingsPresented = false
 
+    /// 「数据库统计」面板（FR-DIAG-04）。
+    @Published var isDatabaseStatsPresented = false
+
     /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
     @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
         id: UserDefaults.standard.string(forKey: ActivityBarItem.storageKey)
@@ -3027,6 +3030,7 @@ final class AppState: ObservableObject {
         case "routineCandidates": isRoutineCandidatesPresented = true
         case "backupRestore": isBackupRestorePresented = true
         case "connectionSettings": isConnectionSettingsPresented = true
+        case "databaseStats": isDatabaseStatsPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
@@ -3380,6 +3384,36 @@ final class AppState: ObservableObject {
         let service = try await ensureService(for: configuration, database: database)
         let result = try await runSingleQuery(query, on: service)
         return ObjectSearch.outcome(keyword: keyword, in: ObjectSearch.hits(from: result))
+    }
+
+    /// 数据库统计（FR-DIAG-04）：四条只读查询，走方言能力开关。
+    ///
+    /// 方言不支持（GBase）时给一句人话，而不是把 PG 口径的 SQL 丢过去换回一句莫名其妙的报错。
+    /// 某一条拿不到不影响其余三条 —— 诊断面板要的是"有什么看什么"。
+    func databaseStats(limit: Int = 20) async throws -> DatabaseStats.Report {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard DatabaseStats.Metric.allCases.contains(where: { dialect.databaseStatsQuery($0, limit: limit) != nil }) else {
+            throw AppError.notImplemented(L(.databaseStatsUnsupported, configuration.dbType.displayName))
+        }
+
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+
+        func run(_ metric: DatabaseStats.Metric) async -> QueryResult? {
+            guard let sql = dialect.databaseStatsQuery(metric, limit: limit) else { return nil }
+            return try? await runSingleQuery(sql, on: service)
+        }
+
+        return DatabaseStats.report(
+            tableSizes: await run(.tableSizes),
+            tableScans: await run(.indexHitRate),
+            connections: await run(.connections),
+            cacheHit: await run(.cacheHitRate),
+            limit: limit
+        )
     }
 
     private func makeMetadataService(

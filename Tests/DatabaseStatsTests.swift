@@ -133,4 +133,44 @@ final class DatabaseStatsTests: XCTestCase {
         XCTAssertEqual(DatabaseStats.formatBytes(1536), "1.5 KB")
         XCTAssertEqual(DatabaseStats.formatBytes(1_073_741_824), "1.0 GB")
     }
+
+    // MARK: 报告组装（FR-DIAG-04 的界面面板走它）
+
+    func testReportAssemblesAllFourMetrics() {
+        let report = DatabaseStats.report(
+            tableSizes: result(["name", "bytes"], [["public.orders", "2048"]]),
+            tableScans: result(["name", "seq_scan", "idx_scan"], [["public.orders", "10", "90"]]),
+            connections: result(["state", "count"], [["active", "3"]]),
+            cacheHit: result(["hits", "reads"], [["990", "10"]]),
+            limit: 5
+        )
+        XCTAssertTrue(report.isSupported)
+        XCTAssertEqual(report.tableSizes.map(\.name), ["public.orders"])
+        XCTAssertEqual(report.tableScans.count, 1)
+        XCTAssertEqual(report.connections.byState["active"], 3)
+        XCTAssertEqual(report.cacheHit?.hits, 990)
+    }
+
+    /// 只拿到一部分也要出报告 —— 少一类不该把整块面板判成"不支持"。
+    func testReportToleratesPartialMetrics() {
+        let report = DatabaseStats.report(
+            tableSizes: nil,
+            tableScans: nil,
+            connections: result(["state", "count"], [["idle", "2"]]),
+            cacheHit: nil
+        )
+        XCTAssertTrue(report.isSupported)
+        XCTAssertTrue(report.tableSizes.isEmpty)
+        XCTAssertNil(report.cacheHit)
+        XCTAssertEqual(report.connections.byState["idle"], 2)
+    }
+
+    /// 四类全空 = 这个方言不支持统计（界面据此说人话，而不是显示四个空表格）。
+    func testReportIsUnsupportedWhenNothingCameBack() {
+        let report = DatabaseStats.report(tableSizes: nil, tableScans: nil, connections: nil, cacheHit: nil)
+        XCTAssertFalse(report.isSupported)
+        XCTAssertTrue(report.tableSizes.isEmpty)
+        XCTAssertTrue(report.tableScans.isEmpty)
+        XCTAssertNil(report.cacheHit)
+    }
 }
