@@ -48,6 +48,13 @@ struct ServerObjectsPanel: View {
     @State private var preview: ServerObjectWritePlan?
     /// 待确认执行的命令（非 nil 时弹确认框）。
     @State private var pendingCommand: ServerObjectCommand?
+
+    /// 统一安全闸门要求二次确认时挂在这里 —— 弹的是**与编辑器同一张**弹窗。
+    ///
+    /// 与 `pendingCommand`（面板自己那次"确认创建 / 确认删除"）分开：两者语义不同，
+    /// 前者是"用户确实要执行这个操作"，后者是"策略要求更高一级确认"（生产标签 /
+    /// 全写确认 / 只读拒绝）。同一次点击**最多问一次**：策略要问就走这张。
+    @State private var pendingUnifiedConfirm: PendingUnifiedConfirm?
     @State private var notice: String?
 
     private let limit = ServerObjects.defaultLimit
@@ -89,6 +96,14 @@ struct ServerObjectsPanel: View {
             }
         } message: { command in
             Text(command.statement)
+        }
+        .sheet(item: $pendingUnifiedConfirm) { pending in
+            SafeModeConfirmSheet(
+                reasons: pending.reasons,
+                statements: pending.statements,
+                onConfirm: { Task { await confirmAndExecute(pending.command) } },
+                onCancel: { pendingUnifiedConfirm = nil }
+            )
         }
     }
 
@@ -345,7 +360,7 @@ struct ServerObjectsPanel: View {
                 }
 
                 HStack(spacing: Spacing.s) {
-                    Button(L(.serverObjectsConfirm)) { pendingCommand = command }
+                    Button(L(.serverObjectsConfirm)) { requestExecution(command) }
                     Text(L(.serverObjectsDryRunHint))
                         .font(Theme.font(.caption))
                         .foregroundStyle(Theme.text(.tertiary))
@@ -461,14 +476,81 @@ struct ServerObjectsPanel: View {
         }
     }
 
+    /// 点「确认」之后先过**统一安全闸门**，再决定是执行、再确认一次、还是拒绝。
+    ///
+    /// 为什么要在这里先问一次：策略可能要求更高一级确认（生产标签 / 全写确认），
+    /// 那就弹与编辑器同一张弹窗；而**只读连接的拒绝不走确认流程** —— 它不是
+    /// 「要不要冒险」，而是「这条连接不写」，点一次「仍然执行」不该等于关掉只读标记。
+    private func requestExecution(_ command: ServerObjectCommand) {
+        let decision = appState.serverObjectSafetyDecision(command)
+        switch decision {
+        case .refused(let reasons, let statements):
+            let detail = (reasons + statements.map { "· " + $0 }).joined(separator: "\n")
+            notice = L(.serverObjectsFailure, detail)
+        case .needsConfirmation:
+            pendingUnifiedConfirm = PendingUnifiedConfirm(command: command, decision: decision)
+        case .allow:
+            // 策略没要求更高一级确认时，破坏性操作仍保留面板自己那一次确认。
+            if command.isDestructive {
+                pendingCommand = command
+            } else {
+                Task { await execute(command) }
+            }
+        }
+    }
+
     private func execute(_ command: ServerObjectCommand) async {
         do {
-            try await appState.executeServerObjectWrite(command)
-            preview = nil
-            notice = nil
-            await load()
+            let start = try await appState.executeServerObjectWrite(command)
+            switch start {
+            case .started:
+                preview = nil
+                notice = nil
+                await load()
+            case .needsConfirmation(let decision):
+                pendingUnifiedConfirm = PendingUnifiedConfirm(command: command, decision: decision)
+            case .refused(let detail):
+                notice = L(.serverObjectsFailure, detail)
+            }
         } catch {
             notice = L(.serverObjectsFailure, ErrorPresenter.message(for: error))
         }
+    }
+
+    /// 用户在统一确认弹窗里点了「仍然执行」。
+    private func confirmAndExecute(_ command: ServerObjectCommand) async {
+        pendingUnifiedConfirm = nil
+        do {
+            let start = try await appState.executeServerObjectWrite(command, bypassingSafetyCheck: true)
+            switch start {
+            case .started:
+                preview = nil
+                notice = nil
+                await load()
+            case .needsConfirmation(let decision):
+                pendingUnifiedConfirm = PendingUnifiedConfirm(command: command, decision: decision)
+            case .refused(let detail):
+                notice = L(.serverObjectsFailure, detail)
+            }
+        } catch {
+            notice = L(.serverObjectsFailure, ErrorPresenter.message(for: error))
+        }
+    }
+}
+
+/// 统一安全闸门要求二次确认的写操作（弹与编辑器同一张弹窗）。
+private struct PendingUnifiedConfirm: Identifiable {
+    let id = UUID()
+    let command: ServerObjectCommand
+    let decision: ExecutionSafety.Decision
+
+    var reasons: [String] {
+        if case .needsConfirmation(let reasons, _, _) = decision { return reasons }
+        return []
+    }
+
+    var statements: [String] {
+        if case .needsConfirmation(_, _, let statements) = decision { return statements }
+        return []
     }
 }

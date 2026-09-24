@@ -163,7 +163,12 @@ struct MainWindow: View {
             }
         }
         .sheet(item: $appState.pendingExecution) { pending in
-            SafeModeConfirmSheet(pending: pending)
+            SafeModeConfirmSheet(
+                reasons: pending.reasons,
+                statements: pending.statements,
+                onConfirm: { Task { await appState.confirmPendingExecution() } },
+                onCancel: { appState.cancelPendingExecution() }
+            )
         }
         .sheet(isPresented: $appState.isSQLArchivePresented) {
             SQLArchiveSheet()

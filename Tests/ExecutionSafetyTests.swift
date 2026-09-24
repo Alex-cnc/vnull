@@ -173,3 +173,98 @@ final class ExecutionSafetyTests: XCTestCase {
         )
     }
 }
+
+// MARK: - 服务器级对象管理（FR-SESS-03）走的是同一条闸门
+//
+// 为什么单独立一组：这一项的界面面板曾经自己写了一层"预览 + 确认"，**绕过了 Safe Mode
+// 与只读连接**。2026-09-24 需求提出者拍板「统一到一条线」，于是面板改成把
+// `ServerObjects.plan(...)` 生成的语句交给 `ExecutionSafety.check` 判定。
+// 这组测试钉住的是**这条闸门对 DDL / DCL 真的会拦**——否则"统一"只是接了个空壳。
+final class ServerObjectSafetyGateTests: XCTestCase {
+
+    private let on = ExecutionSafetyPolicy(isEnabled: true)
+
+    private func decision(_ statement: String, policy: ExecutionSafetyPolicy) -> ExecutionSafety.Decision {
+        ExecutionSafety.check(sql: statement, databaseType: .postgresql, policy: policy)
+    }
+
+    /// **与编辑器同规则**：破坏性的服务器级语句（DROP / GRANT）和 `DROP TABLE` 一样，
+    /// 在 Safe Mode 开着时需要确认 —— 不是"另立一套只拦某些语句的规则"。
+    func testDestructiveServerObjectStatementsBehaveLikeTheEditor() {
+        let pairs = [
+            ("DROP ROLE \"alice\";", "DROP TABLE \"orders\";"),
+            ("DROP EXTENSION \"uuid-ossp\";", "DROP TABLE \"orders\";")
+        ]
+        for (serverObject, editor) in pairs {
+            let a = decision(serverObject, policy: on)
+            let b = decision(editor, policy: on)
+            XCTAssertFalse(a.isAllowed, "应当需要确认：\(serverObject)")
+            XCTAssertEqual(a.isAllowed, b.isAllowed, "应当与编辑器里的同类语句同判：\(serverObject)")
+        }
+    }
+
+    /// 普通 `CREATE`（建角色 / 建扩展 / 建表空间）在**默认 Safe Mode** 下与编辑器里
+    /// 的 `CREATE TABLE` **同判**：都不额外弹窗。
+    ///
+    /// 这一条是刻意的：统一到一条线 ≠ 什么都要确认一遍 —— 后者会让人养成闭眼点「继续」
+    /// 的习惯。要让所有写操作都确认，用户开的是「所有写操作都确认」这个开关（下一条测试）。
+    func testBenignCreateMatchesEditorSemanticsUnderDefaultSafeMode() {
+        let serverObjectStatements = [
+            "CREATE ROLE \"alice\" LOGIN PASSWORD 'x';",
+            "ALTER ROLE \"alice\" NOLOGIN;",
+            "CREATE EXTENSION \"uuid-ossp\";",
+            "CREATE TABLESPACE \"ts\" LOCATION '/data/ts';"
+        ]
+        let editorBaseline = decision("CREATE TABLE \"t\" (\"id\" integer);", policy: on).isAllowed
+        for statement in serverObjectStatements {
+            XCTAssertEqual(
+                decision(statement, policy: on).isAllowed,
+                editorBaseline,
+                "应当与编辑器里的 CREATE TABLE 同判：\(statement)"
+            )
+        }
+    }
+
+    /// 用户把「所有写操作都确认」打开后，**每一条**服务器级写操作都要确认 ——
+    /// 面板走的就是这个开关，不再有"面板绕开设置"的口子。
+    func testConfirmAllWritesSettingAlsoGatesBenignServerObjectDdl() {
+        let strict = ExecutionSafetyPolicy(isEnabled: true, confirmAllWrites: true)
+        for statement in [
+            "CREATE ROLE \"alice\" LOGIN;",
+            "ALTER ROLE \"alice\" NOLOGIN;",
+            "CREATE EXTENSION \"uuid-ossp\";",
+            "CREATE TABLESPACE \"ts\" LOCATION '/data/ts';",
+            "GRANT SELECT ON \"orders\" TO \"alice\";"
+        ] {
+            XCTAssertFalse(
+                decision(statement, policy: strict).isAllowed,
+                "打开「所有写操作都确认」后应当需要确认：\(statement)"
+            )
+        }
+    }
+
+    /// **只读连接**：直接拒绝，而且**不进确认流程** —— 点「仍然执行」不该等于关掉只读标记。
+    func testReadOnlyConnectionRefusesServerObjectWrites() {
+        let policy = ExecutionSafetyPolicy(isEnabled: true, isReadOnly: true)
+        let result = decision("CREATE ROLE \"alice\" LOGIN;", policy: policy)
+        guard case .refused(let reasons, _) = result else {
+            return XCTFail("只读连接上应当直接拒绝，实际：\(result)")
+        }
+        XCTAssertFalse(reasons.isEmpty)
+    }
+
+    /// 只读连接上的**只读**语句（读系统表看角色列表）不受影响。
+    func testReadOnlyConnectionStillAllowsBrowsingStatements() {
+        let policy = ExecutionSafetyPolicy(isEnabled: true, isReadOnly: true)
+        XCTAssertTrue(
+            decision("SELECT rolname FROM pg_roles ORDER BY rolname;", policy: policy).isAllowed
+        )
+    }
+
+    /// 反过来也要钉住：Safe Mode 关掉、连接也不是只读时**不该无谓打扰**。
+    /// （否则"统一闸门"会退化成"什么都要确认一遍"，用户会养成闭眼点的习惯。）
+    func testGateDoesNotPromptWhenPolicyIsOffAndConnectionIsWritable() {
+        let off = ExecutionSafetyPolicy(isEnabled: false, isReadOnly: false)
+        XCTAssertTrue(decision("CREATE ROLE \"alice\" LOGIN;", policy: off).isAllowed)
+    }
+}

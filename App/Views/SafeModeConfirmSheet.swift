@@ -7,9 +7,15 @@ import DoyahCore
 /// 用户会养成闭眼点「继续」的习惯；能一眼看到「是这条 DELETE 没有条件」才有意义。
 struct SafeModeConfirmSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var appState: AppState
-
-    let pending: PendingExecution
+    /// 确认弹窗的**唯一内容来源**：风险原因 + 涉事语句。
+    ///
+    /// 参数化（而不是直接吃 `PendingExecution`）是为了让**同一条闸门**服务所有入口：
+    /// 编辑器里的执行走 `AppState.pendingExecution`，服务器级对象写操作走面板自己的
+    /// 待确认项 —— 两边弹的是同一张弹窗、说的是同一批理由，不各写一套 UI。
+    let reasons: [String]
+    let statements: [String]
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -22,14 +28,14 @@ struct SafeModeConfirmSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                ForEach(pending.reasons, id: \.self) { reason in
+                ForEach(reasons, id: \.self) { reason in
                     Text("· \(reason)")
                         .font(.caption)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            if case .needsConfirmation(_, _, let statements) = pending.decision, !statements.isEmpty {
+            if !statements.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(statements, id: \.self) { statement in
@@ -50,12 +56,12 @@ struct SafeModeConfirmSheet: View {
                 Spacer()
 
                 Button(L(.safetyConfirmCancel)) {
-                    appState.cancelPendingExecution()
+                    onCancel()
                     dismiss()
                 }
 
                 Button(L(.safetyConfirmRun), role: .destructive) {
-                    Task { await appState.confirmPendingExecution() }
+                    onConfirm()
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

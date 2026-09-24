@@ -134,6 +134,16 @@ struct PendingExecution: Identifiable {
         if case .needsConfirmation(let reasons, _, _) = decision { return reasons }
         return []
     }
+
+    /// 涉事语句（确认弹窗里并排摊开的东西）。
+    var statements: [String] {
+        switch decision {
+        case .allow:
+            return []
+        case .needsConfirmation(_, _, let statements), .refused(_, let statements):
+            return statements
+        }
+    }
 }
 
 /// 一次「已提交审批、等待人工决定」的数据任务执行（FR-AI-06）。
@@ -4225,20 +4235,67 @@ final class AppState: ObservableObject {
         return ServerObjects.plan(request, dialect: ServerObjectDialectFactory.make(for: configuration.dbType))
     }
 
-    /// 执行一条**已经预览、并由用户显式确认过**的写操作。
+    /// 服务器级对象写操作的**统一安全闸门**（FR-EXEC-16 的同一条线）。
+    ///
+    /// 与「在编辑器里敲一条 `CREATE ROLE`」用的是**同一份策略**：Safe Mode 总开关、
+    /// 「所有写操作都确认」、生产标签强制确认、以及只读连接的直接拒绝 —— 判据只有一处
+    /// （`Core/ExecutionSafety`），界面层不再各写一套。语句分类走既有的词法判定：
+    /// `CREATE` / `ALTER` / `DROP` 属结构变更，`GRANT` / `REVOKE` 属权限变更，都是写操作。
+    func serverObjectSafetyDecision(_ command: ServerObjectCommand) -> ExecutionSafety.Decision {
+        ExecutionSafety.check(
+            sql: command.statement,
+            databaseType: selectedConnection?.dbType ?? .postgresql,
+            policy: executionSafetyPolicy
+        )
+    }
+
+    /// 一条服务器级写操作的启动结果。
+    ///
+    /// 用显式结果而不是 `Bool`：调用方必须分别面对「真的执行了 / 需要更高一级确认 /
+    /// 被安全闸门拒绝」三种情况 —— 尤其**被拒时绝不能执行**，这一点不能靠返回值猜。
+    enum ServerObjectWriteStart: Equatable {
+        case started
+        case needsConfirmation(ExecutionSafety.Decision)
+        case refused(String)
+    }
+
+    /// 执行一条**已经预览**的写操作（**先过统一安全闸门**）。
     ///
     /// 只接受 `ServerObjectCommand`（而不是任意 SQL）：命令带着风险等级与目标名，
     /// 上层没法「绕过预览直接执行一条谁也没看过的语句」。
-    func executeServerObjectWrite(_ command: ServerObjectCommand) async throws {
+    /// `bypassingSafetyCheck` 只在用户**已经看过统一确认弹窗并点了继续**后使用，
+    /// 与编辑器路径同一个约定（避免重复弹窗）。
+    @discardableResult
+    func executeServerObjectWrite(
+        _ command: ServerObjectCommand,
+        bypassingSafetyCheck: Bool = false
+    ) async throws -> ServerObjectWriteStart {
         guard let configuration = selectedConnection else {
             throw AppError.notConnected
         }
+        if !bypassingSafetyCheck {
+            let decision = serverObjectSafetyDecision(command)
+            switch decision {
+            case .allow:
+                break
+            case .needsConfirmation:
+                // 不执行：由界面弹出**与编辑器同一张**确认弹窗，确认后再带 bypass 回来。
+                return .needsConfirmation(decision)
+            case .refused(let reasons, let statements):
+                // 只读连接的拒绝不是「要不要冒险」，而是「这条连接不写」——绝不执行。
+                let detail = (reasons + statements.map { "· " + $0 }).joined(separator: "\n")
+                statusMessage = reasons.first ?? L(.safetyReadOnlyRefused)
+                return .refused(detail)
+            }
+        }
+
         let database = currentDatabaseName(for: configuration)
         let service = try await ensureService(for: configuration, database: database)
         // DDL / DCL 可能**没有结果集**（`CREATE ROLE` 就是），所以不能用 `runSingleQuery`
         // —— 那个入口把「没有结果集」当成错误，会把一次成功的建角色报成失败。
         for try await _ in service.execute(command.statement, options: .default) {}
         statusMessage = L(.serverObjectsExecuted, command.statement)
+        return .started
     }
 
 
