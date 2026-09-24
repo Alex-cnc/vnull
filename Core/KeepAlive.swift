@@ -33,7 +33,7 @@ public struct KeepAlivePolicy: Equatable, Sendable {
     /// 心跳语句：越轻越好，**不做任何有副作用的事**。
     public static func statement(for dialect: DatabaseType) -> String {
         switch dialect {
-        case .gbase8a: return "SELECT 1"
+        case .mysql, .gbase8a: return "SELECT 1"
         case .postgresql: return "SELECT 1"
         }
     }

@@ -179,6 +179,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case mysqlHostResolveFailed
+    case mysqlInitFailed
+    case mysqlNoConnectionID
+    case mysqlStatementTimeout
+    case mysqlCancelNoConnectionID
+    case mysqlCancelStatementMissing
+    case mysqlCancelDispatchFailed
+    case mysqlLastInsertID
+    case mysqlCopyUnsupported
+    case importCopyUnsupportedMySQL
     case sshTunnelLaunchFailed
     case sshTunnelProcessExited
     case sshTunnelProcessExitedSilently
@@ -1680,6 +1690,16 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .mysqlHostResolveFailed: [.simplifiedChinese: "无法解析主机 %@：%@", .english: "Could not resolve host %@: %@"],
+        .mysqlInitFailed: [.simplifiedChinese: "连接建立后初始化失败：%@", .english: "Initialization after connecting failed: %@"],
+        .mysqlNoConnectionID: [.simplifiedChinese: "未取得连接号，无法向服务端发送取消（该查询可能仍在运行）", .english: "No connection id was obtained, so the cancel could not be sent (the query may still be running)"],
+        .mysqlStatementTimeout: [.simplifiedChinese: "语句执行超过 %@ 秒，已向服务端发送取消", .english: "The statement ran longer than %@ seconds; a cancel was sent to the server"],
+        .mysqlCancelNoConnectionID: [.simplifiedChinese: "未取得连接号，无法向服务端发送取消（该查询可能仍在运行）", .english: "No connection id was obtained, so the cancel could not be sent (the query may still be running)"],
+        .mysqlCancelStatementMissing: [.simplifiedChinese: "该方言未提供取消语句", .english: "This dialect does not provide a cancel statement"],
+        .mysqlCancelDispatchFailed: [.simplifiedChinese: "取消请求下发失败：%@", .english: "Could not deliver the cancel request: %@"],
+        .mysqlLastInsertID: [.simplifiedChinese: "最后一个自增 ID = %@", .english: "Last insert id = %@"],
+        .mysqlCopyUnsupported: [.simplifiedChinese: "MySQL 的 COPY 通道（改用批量 INSERT）", .english: "the MySQL COPY channel (use batched INSERT instead)"],
+        .importCopyUnsupportedMySQL: [.simplifiedChinese: "当前连接是 MySQL：驱动未实现 COPY FROM STDIN，本次导入将走批量 INSERT", .english: "This connection is MySQL: the driver does not implement COPY FROM STDIN, so this import will use batched INSERT"],
         .sshTunnelLaunchFailed: [.simplifiedChinese: "起 ssh 失败：%@", .english: "Could not start ssh: %@"],
         .sshTunnelProcessExited: [.simplifiedChinese: "ssh 已退出：%@", .english: "ssh exited: %@"],
         .sshTunnelProcessExitedSilently: [.simplifiedChinese: "ssh 已退出（没有任何输出）", .english: "ssh exited without any output"],

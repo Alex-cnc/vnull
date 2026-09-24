@@ -676,7 +676,12 @@ public enum ServerObjectDialectFactory {
     public static func make(for databaseType: DatabaseType) -> any ServerObjectDialect {
         switch databaseType {
         case .postgresql: return PostgresServerObjectDialect()
-        case .gbase8a: return GBaseServerObjectDialect()
+        case .mysql, .gbase8a:
+            // MySQL 协议族的服务器级对象（用户 / 权限 / 表空间 / 插件）走同一套 SQL：
+            // GBase 8a 与它同族，差异在**实例能力**而不在语句形状（与 `MySQLDialect`
+            // 转发 `GBaseDialect` 同一个理由）。真实 MySQL 实例上的逐条验证登记在
+            // `Docs/design/待人工验收清单.md`（本机当前没有 MySQL 实例）。
+            return GBaseServerObjectDialect()
         }
     }
 }

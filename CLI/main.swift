@@ -153,6 +153,16 @@ struct DoyahCLI {
             exit(runTunnelCommand(arguments: Array(arguments.dropFirst())))
         }
 
+        // mysql：FR-DRV-09 的可脚本化出口。
+        //
+        // 为什么单开一个子命令而不是往 PG 那条默认路径里塞分支：默认路径从环境变量到
+        // `--tree` 全是 PostgreSQL 专用的（`PostgresService` 写死在里面），
+        // 硬塞会让"哪条路径走哪个驱动"变成靠读代码才知道的事。这里给 MySQL 一条**自己的**路。
+        if arguments.first == "mysql" {
+            let code = await runMySQLCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -877,6 +887,131 @@ struct DoyahCLI {
     ///
     /// 行为：起隧道 → 打印本地端点 → 保持（默认到被信号打断；给了 `--hold` 就等这么多秒）→ 收干净。
     /// 退出码：0 成功；2 参数不对；1 隧道起不来（stderr 带 ssh 的输出，已脱敏）。
+    /// JSON 字符串字面量（含引号）。**不自己写转义表**：引号 / 反斜杠 / 控制字符的规则
+    /// 写错一处就会产出别人解析不了的 JSON，交给 Foundation 最稳。
+    private static func jsonQuoted(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value], options: [.withoutEscapingSlashes]),
+              let text = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        // JSONSerialization 给的是 `["…"]`，去掉外层的方括号就是单个字符串字面量。
+        return String(text.dropFirst().dropLast())
+    }
+
+    /// `doyah mysql`：连一个 MySQL 库、可选跑一条查询，按人读或 JSON 输出。
+    ///
+    /// 存在的理由与 `tunnel` 一样：界面里"能不能连上"只能靠眼睛，**命令行能给出一条可断言的路径** ——
+    /// 本机没有 MySQL 实例时，脚本用**假 MySQL 服务器**（真跑 MySQL 线协议）把整条链路验一遍。
+    private static func runMySQLCommand(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let host = value(for: "--host"), let username = value(for: "--user") else {
+            FileHandle.standardError.write(Data(("用法：mysql --host <h> [--port 3306] --user <u> "
+                + "[--password <口令>] [--database <库>] [--ssl-mode disable|prefer|require] "
+                + "[--sql <语句>] [--timeout 秒] [--json]\n").utf8))
+            return 2
+        }
+
+        let port = Int(value(for: "--port") ?? "3306") ?? 3306
+        let database = value(for: "--database") ?? ""
+        let sslMode = SSLMode(rawValue: value(for: "--ssl-mode") ?? "prefer") ?? .prefer
+        let isJSON = arguments.contains("--json")
+        let config = ConnectionConfig(
+            name: "MySQL CLI",
+            dbType: .mysql,
+            host: host,
+            port: port,
+            database: database,
+            username: username,
+            sslMode: sslMode,
+            timeout: Int(value(for: "--timeout") ?? "10") ?? 10
+        )
+
+        let service = MySQLService(config: config, password: value(for: "--password"))
+
+        let info: ServerInfo
+        do {
+            info = try await service.connect()
+        } catch {
+            if isJSON {
+                print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
+            } else {
+                print("连接失败：\(error.localizedDescription)")
+            }
+            return 1
+        }
+
+        var resultRows: [[String]] = []
+        var resultColumns: [String] = []
+        var affected: Int?
+        if let sql = value(for: "--sql") {
+            do {
+                var statements = 0
+                for try await event in service.execute(sql, options: .default) {
+                    switch event {
+                    case .started:
+                        statements += 1
+                    case .resultSet(let result):
+                        resultColumns = result.columns.map(\.name)
+                        resultRows = result.rows.map { $0.map { $0 ?? "NULL" } }
+                        affected = result.affectedRows
+                    case .finished, .notice:
+                        break
+                    }
+                }
+                _ = statements
+            } catch {
+                if isJSON {
+                    print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
+                } else {
+                    print("执行失败：\(error.localizedDescription)")
+                }
+                await service.disconnect()
+                return 1
+            }
+        }
+
+        if isJSON {
+            let columns = resultColumns.map(jsonQuoted).joined(separator: ",")
+            let rows = resultRows.map { row in
+                "[" + row.map(jsonQuoted).joined(separator: ",") + "]"
+            }.joined(separator: ",")
+            let affectedText = affected.map(String.init) ?? "null"
+            var json = "{"
+            json += "\"ok\":true"
+            json += ",\"version\":\(jsonQuoted(info.version))"
+            json += ",\"database\":\(jsonQuoted(info.database))"
+            json += ",\"user\":\(jsonQuoted(info.user))"
+            json += ",\"columns\":["
+            json += columns
+            json += "],\"rows\":["
+            json += rows
+            json += "],\"affectedRows\":\(affectedText)"
+            json += "}"
+            print(json)
+        } else {
+            print("连接成功")
+            print("server_version: \(info.version)")
+            print("database:       \(info.database)")
+            print("user:           \(info.user)")
+            if !resultColumns.isEmpty {
+                print(resultColumns.joined(separator: "\t"))
+                for row in resultRows {
+                    print(row.joined(separator: "\t"))
+                }
+            }
+            if let affected {
+                print("影响行数：\(affected)")
+            }
+        }
+
+        await service.disconnect()
+        return 0
+    }
+
     private static func runTunnelCommand(arguments: [String]) -> Int32 {
         func value(for flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }

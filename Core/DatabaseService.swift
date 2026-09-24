@@ -65,6 +65,8 @@ public enum DatabaseServiceFactory {
         switch config.dbType {
         case .postgresql:
             return PostgresService(config: config, password: password)
+        case .mysql:
+            return MySQLService(config: config, password: password)
         case .gbase8a:
             return NotImplementedDatabaseService(config: config, driverName: "MySQLNIO")
         }

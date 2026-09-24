@@ -2,6 +2,8 @@ import Foundation
 
 public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Identifiable {
     case postgresql
+    /// MySQL（FR-DRV-09）。GBase 8a 与它同属 MySQL 协议族，驱动共用一份、方言各自成对。
+    case mysql
     case gbase8a
 
     public var id: String { rawValue }
@@ -10,6 +12,8 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
         switch self {
         case .postgresql:
             return "PostgreSQL"
+        case .mysql:
+            return "MySQL"
         case .gbase8a:
             return "GBase 8a"
         }
@@ -19,6 +23,8 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
         switch self {
         case .postgresql:
             return 5432
+        case .mysql:
+            return 3306
         case .gbase8a:
             return 5258
         }
@@ -27,6 +33,8 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
     public var defaultSSLMode: SSLMode {
         switch self {
         case .postgresql:
+            return .prefer
+        case .mysql:
             return .prefer
         case .gbase8a:
             return .disable
@@ -37,6 +45,9 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
         switch self {
         case .postgresql:
             return "public"
+        case .mysql:
+            // MySQL 里 database 与 schema 是同一个东西：树形结构没有 schema 层。
+            return nil
         case .gbase8a:
             return nil
         }
@@ -91,6 +102,7 @@ extension DatabaseType {
     public var identityTone: CategoricalTone {
         switch self {
         case .postgresql: return .blue
+        case .mysql: return .teal
         case .gbase8a: return .amber
         }
     }

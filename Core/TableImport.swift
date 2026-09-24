@@ -392,6 +392,11 @@ public extension TableImport {
         switch databaseType {
         case .postgresql:
             return .available
+        case .mysql:
+            return CopySupport(
+                isAvailable: false,
+                reason: LocalizedStrings.text(.importCopyUnsupportedMySQL, language: .simplifiedChinese)
+            )
         case .gbase8a:
             return CopySupport(
                 isAvailable: false,

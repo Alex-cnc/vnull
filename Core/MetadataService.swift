@@ -56,7 +56,8 @@ public struct MetadataService: Sendable {
             switch dialect.databaseType {
             case .postgresql:
                 return try await loadSchemas(database: object.name)
-            case .gbase8a:
+            case .mysql, .gbase8a:
+                // MySQL 协议族：database 与 schema 是同一个东西，没有 schema 层。
                 return try await loadTables(database: object.name, schema: nil)
             }
 

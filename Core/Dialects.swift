@@ -32,6 +32,8 @@ public enum SQLDialectFactory {
         switch databaseType {
         case .postgresql:
             return PostgresDialect()
+        case .mysql:
+            return MySQLDialect()
         case .gbase8a:
             return GBaseDialect()
         }
