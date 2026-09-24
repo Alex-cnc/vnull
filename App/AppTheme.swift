@@ -74,11 +74,19 @@ enum Theme {
         case .bodyStrong:
             return .systemFont(ofSize: TypeScale.bodySize, weight: .semibold)
         case .data:
+            // 数值列仍用系统等宽数字字体：它要的是"小数点对齐"，与用户在 FR-EDIT-26 里
+            // 选的代码字体是两件事（换成比例感强的代码字体会让数字列参差）。
             return .monospacedDigitSystemFont(ofSize: TypeScale.dataSize, weight: .regular)
         case .mono:
-            return .monospacedSystemFont(ofSize: TypeScale.monoSize, weight: .regular)
+            // 代码 / 终端：字体族与字号来自用户偏好（FR-EDIT-26），由 `FontManager` 统一交付。
+            return FontManager.shared.monospaceNSFont()
         case .monoSmall:
-            return .monospacedSystemFont(ofSize: TypeScale.monoSmallSize, weight: .regular)
+            // 行号这类小字：跟随同一偏好，但矮一档 —— 换算后仍要落在合法区间内。
+            let size = max(
+                CGFloat(MonospaceFontSize.minimum),
+                FontManager.shared.monospaceNSFont().pointSize - 1
+            )
+            return FontManager.shared.monospaceNSFont(size: size)
         case .caption:
             return .systemFont(ofSize: TypeScale.captionSize, weight: .medium)
         case .icon:

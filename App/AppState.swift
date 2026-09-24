@@ -253,6 +253,21 @@ final class AppState: ObservableObject {
     /// 保活是**应用级**策略，所以开关不放连接表单 —— 放那儿会让人以为它是逐连接的属性。
     @Published var isConnectionSettingsPresented = false
 
+    // MARK: - 应用主题（FR-EDIT-26）
+
+    /// 主题：跟随系统 / 总是浅色 / 总是深色。
+    ///
+    /// 与终端配色**共用同一个 Core 类型**（`AppearancePreference`），但**偏好分开存**：
+    /// 终端允许单独覆盖（浅色界面里配深色终端是常见偏好），所以键名不同。
+    @Published var appearanceMode: AppearancePreference =
+        AppearancePreference.resolve(rawValue: UserDefaults.standard.string(forKey: AppearancePreference.Storage.appKey)) {
+        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: AppearancePreference.Storage.appKey) }
+    }
+
+    // 说明：这里**不**直接给 `ColorScheme?` —— AppState 不依赖 SwiftUI（只用 AppKit + Combine），
+    // 由根视图把 `appearanceMode.forcedDark` 翻成 `.preferredColorScheme(...)`。
+    // Core 的 `forcedDark` 已经把「哪一档等于跟随系统」定死了，视图不必再写一次 switch。
+
     // MARK: - 终端偏好（FR-EDIT-29）
 
     /// 终端外观：跟随系统 / 总是深色 / 总是浅色。

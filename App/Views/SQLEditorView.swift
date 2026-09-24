@@ -19,9 +19,17 @@ struct SQLEditorView: NSViewRepresentable {
 
     @ObservedObject private var commandCenter = EditorCommandCenter.shared
 
-    /// 编辑器字体取自令牌（等宽档）：原先写死 13pt，而字号刻度里没有 13 这个等宽档。
-    static let baseFont = NSFont.monospacedSystemFont(ofSize: TypeScale.monoSize, weight: .regular)
-    static let keywordFont = NSFont.monospacedSystemFont(ofSize: TypeScale.monoSize, weight: .semibold)
+    /// 编辑器字体（FR-EDIT-26）：字体族与字号来自用户偏好，由 `FontManager` 统一交付。
+    ///
+    /// 改成计算属性（原来是一次性 `static let`）：偏好一改，这里必须跟着变 ——
+    /// 否则会出现"设置里换了字体、编辑器还是旧字形"。
+    static var baseFont: NSFont { Theme.nsFont(.mono) }
+    static var keywordFont: NSFont {
+        FontManager.shared.monospaceBoldNSFont(size: Theme.nsFont(.mono).pointSize)
+    }
+
+    /// 订阅字体偏好：偏好一变，SwiftUI 会重跑 `updateNSView`，编辑器据此换字体（无需父视图转发）。
+    @ObservedObject private var fonts = FontManager.shared
 
     private static let tokenizers: [DatabaseType: SQLTokenizer] = [
         .postgresql: SQLTokenizer.standard(.postgresql),
@@ -92,6 +100,13 @@ struct SQLEditorView: NSViewRepresentable {
             context.coordinator.applyExternalText(text, to: textView)
         }
 
+        // 字体偏好变了 → 换字体（含输入法用的 typingAttributes），再重着色一次。
+        // 与高亮一样，重设文本属性要避开输入法回调栈，所以也走延后执行。
+        if textView.font?.fontName != Self.baseFont.fontName
+            || textView.font?.pointSize != Self.baseFont.pointSize {
+            context.coordinator.applyFontChange(to: textView)
+        }
+
         // 着色统一延后到下一个 runloop：在 SwiftUI 更新 / 输入法回调栈里重设
         // 文本属性会破坏输入上下文（BUG-005）。
         context.coordinator.scheduleHighlighting()
@@ -117,6 +132,23 @@ struct SQLEditorView: NSViewRepresentable {
 
         init(_ parent: SQLEditorView) {
             self.parent = parent
+        }
+
+        /// 字体偏好变化时换字体（FR-EDIT-26）。
+        ///
+        /// 与高亮一样**延后到下一个 runloop**：在 SwiftUI 更新 / 输入法回调栈里重设
+        /// 文本属性会破坏输入上下文（BUG-005 的同一类问题）。
+        func applyFontChange(to textView: NSTextView) {
+            let base = SQLEditorView.baseFont
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                textView.font = base
+                textView.typingAttributes = [
+                    .font: base,
+                    .foregroundColor: Theme.nsColor(TextTone.primary)
+                ]
+                self.scheduleHighlighting()
+            }
         }
 
         /// 光标 / 选区变化时上报给命令通道（FR-EXEC-14「只跑光标所在语句」要用）。

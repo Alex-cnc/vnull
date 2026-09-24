@@ -965,6 +965,14 @@ public enum LKey: String, CaseIterable, Sendable {
     case databaseStatsFailure
     // 终端偏好（FR-EDIT-29 的后续）
     case appearanceTerminalSection
+    case appearanceThemeSection
+    case appearanceThemeHint
+    case appearanceFontSection
+    case appearanceMonoFamily
+    case appearanceMonoSystem
+    case appearanceMonoSize
+    case appearanceMonoFallback
+    case appearanceMonoHint
     case terminalAppearanceFollowSystem
     case terminalAppearanceAlwaysDark
     case terminalAppearanceAlwaysLight
@@ -1987,6 +1995,14 @@ public enum LocalizedStrings {
         .databaseStatsLoading: [.simplifiedChinese: "正在采集…", .english: "Collecting…"],
         .databaseStatsFailure: [.simplifiedChinese: "统计失败：%@", .english: "Could not collect statistics: %@"],
         .appearanceTerminalSection: [.simplifiedChinese: "终端", .english: "Terminal"],
+        .appearanceThemeSection: [.simplifiedChinese: "主题", .english: "Theme"],
+        .appearanceThemeHint: [.simplifiedChinese: "跟随系统时，界面随系统外观切换；锁定后整个应用固定深浅。终端配色可以单独覆盖（见下面「终端」一段）。", .english: "Follow system switches the whole app with the system appearance; locking fixes it to light or dark. The terminal palette can override this separately (see the Terminal section below)."],
+        .appearanceFontSection: [.simplifiedChinese: "字体（等宽）", .english: "Font (monospace)"],
+        .appearanceMonoFamily: [.simplifiedChinese: "等宽字体", .english: "Monospace family"],
+        .appearanceMonoSystem: [.simplifiedChinese: "系统等宽", .english: "System monospace"],
+        .appearanceMonoSize: [.simplifiedChinese: "等宽字号：%d pt", .english: "Monospace size: %d pt"],
+        .appearanceMonoFallback: [.simplifiedChinese: "「%@」在当前系统不可用，已回落到系统等宽（偏好里仍保留你的选择，换台机器装了它就会生效）", .english: "%@ is not available on this system, so the system monospace font is used. Your choice is kept, and takes effect on a machine that has it."],
+        .appearanceMonoHint: [.simplifiedChinese: "用于编辑器与终端（结果表格的数值列仍用系统的等宽数字字体，以保证小数点对齐）；终端字号在下面单独设置。", .english: "Used by the editor and the terminal (numeric result columns keep the system monospaced-digit font so decimals line up). The terminal size is set separately below."],
         .terminalAppearanceFollowSystem: [.simplifiedChinese: "跟随系统", .english: "Follow system"],
         .terminalAppearanceAlwaysDark: [.simplifiedChinese: "总是深色", .english: "Always dark"],
         .terminalAppearanceAlwaysLight: [.simplifiedChinese: "总是浅色", .english: "Always light"],

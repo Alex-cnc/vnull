@@ -200,8 +200,12 @@ final class TerminalHostView: NSView {
     private var cellSize: CGSize
 
     /// 造字体：唯一一处"字号 → NSFont"的翻译。
+    ///
+    /// **字体族**来自全局等宽字体偏好（FR-EDIT-26），**字号**用终端自己的设置 ——
+    /// 与 VS Code 的 `terminal.integrated.fontFamily` / `fontSize` 同一个分工：
+    /// 族要统一（否则编辑器与终端字形不一致），字号要能分开（终端常配小一点）。
     private static func makeFont(size: Int) -> NSFont {
-        .monospacedSystemFont(ofSize: CGFloat(size), weight: .regular)
+        FontManager.shared.monospaceNSFont(size: CGFloat(size))
     }
 
     /// 量格子：等宽字体的 advance 与行高都按当前字号实测，不查表。
@@ -240,8 +244,12 @@ final class TerminalHostView: NSView {
             needsDisplay = true
         }
 
+        // 字体族来自全局偏好（FR-EDIT-26）：偏好变了、或字号变了，都要重建字体与格子尺寸。
         let clamped = TerminalFontSize.clamped(fontSize)
-        guard self.fontSize != clamped else { return }
+        let current = FontManager.shared.monospaceNSFont(size: CGFloat(clamped))
+        if self.fontSize == clamped, self.font.fontName == current.fontName, self.font.pointSize == current.pointSize {
+            return
+        }
         self.fontSize = clamped
         let font = Self.makeFont(size: clamped)
         self.font = font
@@ -431,7 +439,7 @@ final class TerminalHostView: NSView {
     private func attributes(for cell: TerminalCell) -> [NSAttributedString.Key: Any] {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: cell.bold
-                ? NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .bold)
+                ? FontManager.shared.monospaceBoldNSFont(size: font.pointSize)
                 : font,
             .foregroundColor: foreground(for: cell)
         ]
@@ -738,6 +746,8 @@ extension TerminalHostView: NSTextInputClient {
 
 struct TerminalView: NSViewRepresentable {
     @ObservedObject var model: TerminalModel
+    /// 订阅等宽字体偏好：族一变就重跑 `updateNSView` → 宿主换成新字体（FR-EDIT-26）。
+    @ObservedObject private var fonts = FontManager.shared
     /// 外观偏好（跟随系统 / 总是深色 / 总是浅色），来自用户在「外观」面板里的选择。
     var appearance: TerminalAppearance = .followSystem
     /// 终端字号（pt）。

@@ -71,6 +71,8 @@ struct DoyahStudioApp: App {
                     await workspace.load()
                 }
                 .tint(accent.accentColor)
+                // 主题三态（FR-EDIT-26）：`nil` = 跟随系统；否则锁定浅 / 深。
+                .preferredColorScheme(appState.appearanceMode.forcedDark.map { $0 ? .dark : .light })
                 .frame(minWidth: 1_100, minHeight: 700)
                 // 语言切换时整棵视图树重建，保证所有文案立即刷新。
                 .id(localization.language)

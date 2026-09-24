@@ -15,6 +15,8 @@ struct AppearanceSheet: View {
 
     @EnvironmentObject private var accent: AccentManager
     @EnvironmentObject private var appState: AppState
+    /// 订阅字体偏好（FR-EDIT-26）：改完立即反映到预览与界面。
+    @ObservedObject private var fonts = FontManager.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
 
@@ -22,9 +24,20 @@ struct AppearanceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            accentSection
-            Divider()
-            terminalSection
+            // 四段内容加起来会比屏幕矮不少，给个上限并允许滚动 ——
+            // 否则小屏上「关闭」按钮会被顶出可视区（这条是面板变长之后必须补的）。
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    themeSection
+                    Divider()
+                    accentSection
+                    Divider()
+                    fontSection
+                    Divider()
+                    terminalSection
+                }
+            }
+            .frame(maxHeight: 560)
             Divider()
             footer
         }
@@ -43,6 +56,105 @@ struct AppearanceSheet: View {
         }
         .padding(.horizontal, Spacing.l)
         .padding(.vertical, Spacing.m)
+    }
+
+    // MARK: 主题（FR-EDIT-26）
+
+    /// 主题三态。与终端配色是**两个偏好**：这里管整个界面，终端那一段允许单独覆盖。
+    private var themeSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            Text(L(.appearanceThemeSection))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+
+            Picker("", selection: $appState.appearanceMode) {
+                ForEach(AppearancePreference.allCases, id: \.self) { mode in
+                    // 复用终端那三个档位的文案：三态是同一个概念，不该有两套说法。
+                    Text(L(Self.label(for: mode))).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Text(L(.appearanceThemeHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
+    }
+
+    // MARK: 字体（FR-EDIT-26）
+
+    /// 等宽字体族与字号。**族在编辑器与终端之间共用**（字形要一致），
+    /// 字号则各有各的：编辑器用这里的，终端在本面板下一段单独设。
+    private var fontSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            Text(L(.appearanceFontSection))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+
+            Picker(L(.appearanceMonoFamily), selection: familyBinding) {
+                Text(L(.appearanceMonoSystem)).tag(String?.none)
+                ForEach(FontManager.availableMonospacedFamilies, id: \.self) { family in
+                    Text(family).tag(String?.some(family))
+                }
+            }
+
+            Stepper(
+                L(.appearanceMonoSize, fonts.preference.size),
+                value: sizeBinding,
+                in: MonospaceFontSize.minimum...MonospaceFontSize.maximum
+            )
+
+            if fonts.isFallingBack, let requested = fonts.preference.family {
+                Text(L(.appearanceMonoFallback, requested))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.status(.warning))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(L(.appearanceMonoHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
+
+            // 预览：用**当前字体**画一行 SQL —— 选完立刻看到字形与字号。
+            Text("select id, name from orders where total > 100;")
+                .font(Theme.font(.mono))
+                .foregroundStyle(Theme.terminalColor(
+                    AppState.systemIsDarkAppearance
+                        ? TerminalPalette.deepSeaDark.foreground
+                        : TerminalPalette.deepSeaLight.foreground
+                ))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Spacing.s)
+                .background(Theme.surface(.content))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                        .strokeBorder(Theme.hairline(scheme), lineWidth: Metrics.hairline)
+                )
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
+    }
+
+    /// 字体族绑定：`FontManager` 是 `private(set)`，改写走它的方法（也顺手落盘）。
+    private var familyBinding: Binding<String?> {
+        Binding(
+            get: { fonts.preference.family },
+            set: { fonts.select(family: $0) }
+        )
+    }
+
+    private var sizeBinding: Binding<Int> {
+        Binding(
+            get: { fonts.preference.size },
+            set: { fonts.setSize($0) }
+        )
     }
 
     // MARK: 强调色
