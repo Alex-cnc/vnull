@@ -198,12 +198,17 @@ struct QueryEditorView: View {
                     }
                 }
 
-                // 折叠态：把**标题栏**留在底部（向上箭头就在它右边）——
-                // 收起不该把"恢复"的入口也一起收走（2026-09-24 需求提出者实测反馈）。
-                if !appState.isLowerPaneVisible {
-                    Divider()
-                    LowerPaneView(tab: tab, isCollapsed: true)
-                }
+            }
+            // 折叠态：把**标题栏**留在**底部**（向上箭头就在它右边）。
+            //
+            // 位置踩过一次坑（2026-09-24 需求提出者：「折成一行标题栏应该放底部，放上面恰好遮住了
+            // SQL 编辑窗口的第一行」）：一开始它写在上面的 `GeometryReader` **里面** ——
+            // `GeometryReader` 的内容不负责纵向排布，`ViewBuilder` 里的第二个视图会跟第一个**重叠**在
+            // 同一个原点，于是标题栏跑到顶部、盖住编辑器第一行。
+            // 放到这里（外层 VStack 里 GeometryReader **之后**）才真的在底部。
+            if !appState.isLowerPaneVisible {
+                Divider()
+                LowerPaneView(tab: tab, isCollapsed: true)
             }
         }
         .sheet(isPresented: $isSaveQueryPresented) {
