@@ -178,6 +178,35 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
     case treeMenuEmpty
+    // 工作区原生体验（FR-EDIT-35 / 36）：页签、Home 页、打开与保存文件
+    case workspaceHomeWelcome
+    case workspaceHomeSubtitle
+    case workspaceHomeBuildLine
+    case workspaceHomeCopyright
+    case workspaceRecentFiles
+    case workspaceRecentWorkspaces
+    case workspaceConnections
+    case workspaceRecentFilesEmpty
+    case workspaceRecentWorkspacesEmpty
+    case workspaceConnectionEmpty
+    case workspaceOpenFileButton
+    case workspaceChooseFolderButton
+    case workspaceSaveButton
+    case workspaceCloseTab
+    case workspaceDirtyTag
+    case workspaceEditorHint
+    case workspaceNoWorkspaceHint
+    case workspaceLanguageLabel
+    case workspaceHistoryLoadFailed
+    case workspaceHistorySaveFailed
+    case workspaceCloseBlockedDirty
+    case workspaceOpenFailedDirectory
+    case workspaceFileTooLarge
+    case workspaceFileBinary
+    case workspaceOpenFailed
+    case workspaceOpenedWithEncoding
+    case workspaceFileSaved
+    case workspaceSaveFailed
     // 代码编辑器（FR-EDIT-36）：补全候选的说明文字与常用片段说明
     case codeDetailKeyword
     case codeDetailBuiltin
@@ -1608,6 +1637,34 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .workspaceHomeWelcome: [.simplifiedChinese: "欢迎回来", .english: "Welcome back"],
+        .workspaceHomeSubtitle: [.simplifiedChinese: "左边选工作区，点文件就能在编辑器里打开；配色与补全按文件类型自动匹配。", .english: "Pick a workspace on the left, then click a file to open it here. Highlighting and completion follow the file type."],
+        .workspaceHomeBuildLine: [.simplifiedChinese: "版本 %@（构建 %@）", .english: "Version %@ (build %@)"],
+        .workspaceHomeCopyright: [.simplifiedChinese: "© 2026 DoyahStudio · 本机优先：数据与文件不出这台机器", .english: "© 2026 DoyahStudio · Local first: your data and files stay on this machine"],
+        .workspaceRecentFiles: [.simplifiedChinese: "最近打开的文件", .english: "Recent files"],
+        .workspaceRecentWorkspaces: [.simplifiedChinese: "最近打开的工作区", .english: "Recent workspaces"],
+        .workspaceConnections: [.simplifiedChinese: "连接", .english: "Connections"],
+        .workspaceRecentFilesEmpty: [.simplifiedChinese: "还没有打开过文件", .english: "No files opened yet"],
+        .workspaceRecentWorkspacesEmpty: [.simplifiedChinese: "还没有选择过工作区", .english: "No workspace chosen yet"],
+        .workspaceConnectionEmpty: [.simplifiedChinese: "还没有保存过连接", .english: "No saved connections yet"],
+        .workspaceOpenFileButton: [.simplifiedChinese: "打开文件…", .english: "Open file…"],
+        .workspaceChooseFolderButton: [.simplifiedChinese: "选择工作区…", .english: "Choose workspace…"],
+        .workspaceSaveButton: [.simplifiedChinese: "保存（⌘S）", .english: "Save (⌘S)"],
+        .workspaceCloseTab: [.simplifiedChinese: "关闭页签", .english: "Close tab"],
+        .workspaceDirtyTag: [.simplifiedChinese: "有未保存的改动", .english: "Unsaved changes"],
+        .workspaceEditorHint: [.simplifiedChinese: "⌘S 保存 · ⌃Space / F5 触发补全 · 左侧点文件即可打开", .english: "⌘S saves · ⌃Space / F5 for completion · click a file on the left to open it"],
+        .workspaceNoWorkspaceHint: [.simplifiedChinese: "还没有选择工作区 —— 在左侧点「选择工作区…」", .english: "No workspace chosen — click “Choose workspace…” on the left"],
+        .workspaceLanguageLabel: [.simplifiedChinese: "语言：%@", .english: "Language: %@"],
+        .workspaceHistoryLoadFailed: [.simplifiedChinese: "读取「最近打开」记录失败：%@（已按空历史继续）", .english: "Could not read the recent-items file: %@ (continuing with an empty list)"],
+        .workspaceHistorySaveFailed: [.simplifiedChinese: "保存「最近打开」记录失败：%@", .english: "Could not save the recent-items file: %@"],
+        .workspaceCloseBlockedDirty: [.simplifiedChinese: "%@ 有未保存的改动，先保存（⌘S）再关闭", .english: "%@ has unsaved changes — save (⌘S) before closing"],
+        .workspaceOpenFailedDirectory: [.simplifiedChinese: "%@ 是目录，不能当文件打开", .english: "%@ is a folder, not a file"],
+        .workspaceFileTooLarge: [.simplifiedChinese: "%@ 有 %@，超过上限 %@ —— 暂不在编辑器里打开", .english: "%@ is %@, above the %@ limit — not opening it in the editor"],
+        .workspaceFileBinary: [.simplifiedChinese: "%@ 看起来是二进制文件，不在编辑器里打开", .english: "%@ looks like a binary file — not opening it in the editor"],
+        .workspaceOpenFailed: [.simplifiedChinese: "打开 %@ 失败：%@", .english: "Could not open %@: %@"],
+        .workspaceOpenedWithEncoding: [.simplifiedChinese: "%@ 不是 UTF-8，已按 %@ 打开", .english: "%@ is not UTF-8; opened as %@"],
+        .workspaceFileSaved: [.simplifiedChinese: "已保存 %@", .english: "Saved %@"],
+        .workspaceSaveFailed: [.simplifiedChinese: "保存 %@ 失败：%@", .english: "Could not save %@: %@"],
         .codeDetailKeyword: [.simplifiedChinese: "关键字", .english: "Keyword"],
         .codeDetailBuiltin: [.simplifiedChinese: "内置", .english: "Built-in"],
         .codeDetailSnippet: [.simplifiedChinese: "片段", .english: "Snippet"],

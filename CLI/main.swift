@@ -139,6 +139,13 @@ struct DoyahCLI {
             exit(runTerminalModesCommand(arguments: Array(arguments.dropFirst())))
         }
 
+        // code-tokens：工作区代码编辑器的"语言层"证据出口（FR-EDIT-36）。
+        // 着色与补全在界面里只能靠眼睛看，而"哪个词算关键字"是可以逐条核对的 ——
+        // 给个能脚本化、能对着语言定义核的出口。
+        if arguments.first == "code-tokens" {
+            exit(runCodeTokensCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -858,6 +865,61 @@ struct DoyahCLI {
     /// **鼠标路由**（本机 / 转发，含 ⌥ 与右键的反向规则）；DECCKM 两种键序；四类查询应答）。
     /// 带 `--feed`：把这段字节喂进真实的屏幕模型，打印**模式位与回给 PTY 的字节** ——
     /// 也就是说，验的是解析器而不是纯函数（两者都要对）。
+    /// `code-tokens [--detect <路径>] [--language <raw>] [--text <代码> | --file <路径>] [--complete <前缀>]`
+    ///
+    /// 三个用途：① 判语言（`--detect`）；② 打印着色记号表（哪一段被认成什么）；
+    /// ③ 打印补全候选（`--complete`）。全是纯函数，所以脚本里能直接断言。
+    private static func runCodeTokensCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        if let path = value(for: "--detect") {
+            let language = TextLanguage.detect(path: path)
+            print("\(path) → \(language.rawValue)（\(language.displayName)）")
+            return language == .plainText ? 1 : 0
+        }
+
+        guard let raw = value(for: "--language"), let language = TextLanguage(rawValue: raw) else {
+            print("用法：code-tokens --detect <路径> | --language <id> [--text <代码> | --file <路径>] [--complete <前缀>]")
+            print("语言 id：" + TextLanguage.allCases.map(\.rawValue).joined(separator: " / "))
+            return 2
+        }
+
+        var text = value(for: "--text") ?? ""
+        if let file = value(for: "--file") {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+                print("读不到文件：\(file)")
+                return 2
+            }
+            guard let decoded = try? TextFileDecoder.decode(data) else {
+                print("解不出文本（可能不是文本文件）：\(file)")
+                return 2
+            }
+            text = decoded.text
+            print("文件：\(file)（编码 \(decoded.encoding.shortName)\(decoded.isFallback ? "，非 UTF-8" : "")）")
+        }
+
+        print("语言：\(language.rawValue)（\(language.displayName)）")
+        let tokens = CodeLexer.tokens(in: text, language: language)
+        let highlighted = tokens.filter { $0.kind.isHighlighted }
+        print("记号 \(tokens.count) 个，其中着色 \(highlighted.count) 个：")
+        for token in highlighted {
+            print("  \(token.kind.rawValue)\t\(String(text[token.range]))")
+        }
+
+        if let prefix = value(for: "--complete") {
+            let items = CodeCompletion.suggestions(
+                prefix: prefix,
+                language: language,
+                documentWords: CodeCompletion.words(in: text, language: language)
+            )
+            print("补全（前缀 \(prefix)，\(items.count) 条）：" + items.map(\.label).joined(separator: " "))
+        }
+        return 0
+    }
+
     private static func runTerminalModesCommand(arguments: [String]) -> Int32 {
         func value(for flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }

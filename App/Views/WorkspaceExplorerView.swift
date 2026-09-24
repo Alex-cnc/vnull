@@ -10,6 +10,8 @@ struct WorkspaceExplorerView: View {
 
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var workspace: WorkspaceStore
+    /// 工作区页签（FR-EDIT-36）：点文件开在**工作区**的编辑器里，而不是落进数据库的 SQL 页签。
+    @EnvironmentObject private var workspaceTabs: WorkspaceTabsModel
     @EnvironmentObject private var accent: AccentManager
     @Environment(\.colorScheme) private var scheme
 
@@ -185,7 +187,9 @@ struct WorkspaceExplorerView: View {
         .padding(.vertical, Spacing.xs)
         .contentShape(Rectangle())
         .onTapGesture {
-            if let url = workspace.url(for: entry) { appState.openFile(at: url) }
+            // 点文件 → 开进**工作区页签**（FR-EDIT-36）。数据库工具栏的「打开文件」仍走
+            // `appState.openFile`（SQL 页签那条路），两者互不干扰。
+            if !entry.isExpandable, let url = workspace.url(for: entry) { workspaceTabs.openFile(at: url) }
         }
         .contextMenu {
             Button(L(.workspaceReveal)) { workspace.reveal(entry) }
@@ -254,11 +258,11 @@ struct WorkspaceExplorerView: View {
             hoveredPath = hovering ? entry.relativePath : (hoveredPath == entry.relativePath ? nil : hoveredPath)
         }
         .onTapGesture(count: 2) {
-            // 双击：目录展开 / 收起；文件在新页签里打开（走既有的 openFile 单一入口）
+            // 双击：目录展开 / 收起；文件开进工作区页签（FR-EDIT-36）
             if entry.isExpandable {
                 workspace.toggle(entry)
             } else if let url = workspace.url(for: entry) {
-                appState.openFile(at: url)
+                workspaceTabs.openFile(at: url)
             }
         }
         .onTapGesture {

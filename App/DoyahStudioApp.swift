@@ -12,6 +12,8 @@ struct DoyahStudioApp: App {
     @StateObject private var accent = AccentManager.shared
     /// 工作区（FR-EDIT-32）：终端启动目录等既有占位都以它为准。
     @StateObject private var workspace = WorkspaceStore.shared
+    /// 工作区页签（FR-EDIT-35 / 36）：与数据库页签**并列**的另一套页签。
+    @StateObject private var workspaceTabs = WorkspaceTabsModel()
 
     init() {
         // **单实例保护**：同一个 bundle 通常只允许一个进程在跑。
@@ -60,10 +62,13 @@ struct DoyahStudioApp: App {
                 .environmentObject(terminal)
                 .environmentObject(accent)
                 .environmentObject(workspace)
+                .environmentObject(workspaceTabs)
                 .task {
                     // 工作区 → 终端启动目录：把工作区路径交给终端（它只在启动那一刻读）。
-                    workspace.onWorkspaceChanged = { [terminal] path in
+                    workspace.onWorkspaceChanged = { [terminal, workspaceTabs] path in
                         terminal.workspacePath = path
+                        // Home 的"最近工作区"跟着记一条（FR-EDIT-35）。
+                        workspaceTabs.record(workspace: path)
                         // 归档目录跟随工作区（未单独指定时）—— 变了就重新判定一次状态
                         Task { await appState.refreshSQLArchiveStatus() }
                     }

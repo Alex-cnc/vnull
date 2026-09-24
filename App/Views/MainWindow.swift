@@ -63,7 +63,15 @@ struct MainWindow: View {
             } detail: {
             // 下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）已经并进工作区本身，
             // 所以这里不再另开一块区域。
+            //
+            // **右边也要跟着活动栏切**（FR-EDIT-35）：以前不管选哪个活动项都显示 SQL 查询界面 ——
+            // 需求提出者的原话是「点击工作区时，不应该还在数据库 SQL 查询界面，应该是新的 Tab 界面」。
+            switch appState.selectedActivityItem {
+            case .database:
                 QueryWorkspaceView()
+            case .workspace:
+                WorkspaceAreaView()
+            }
             }
         }
         .sheet(item: $formMode) { mode in
