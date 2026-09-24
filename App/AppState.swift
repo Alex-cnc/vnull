@@ -3962,7 +3962,8 @@ final class AppState: ObservableObject {
     func tableImportPlan(
         table: String,
         schema: String?,
-        sourceHeader: [String]
+        sourceHeader: [String],
+        hasHeader: Bool = true
     ) async throws -> TableImport.Plan {
         guard let configuration = selectedConnection else { throw AppError.notConnected }
         let object = DatabaseObject(
@@ -3977,7 +3978,9 @@ final class AppState: ObservableObject {
             table: table,
             schema: schema,
             sourceHeader: sourceHeader,
-            targetColumns: structure.map { TableImport.TargetColumn($0) }
+            targetColumns: structure.map { TableImport.TargetColumn($0) },
+            // 文件没有表头 → 只能按位置对（用户显式关掉表头开关才走这条）。
+            sourceLayout: hasHeader ? .byName : .byPosition
         )
     }
 

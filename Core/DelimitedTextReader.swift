@@ -62,6 +62,14 @@ public enum DelimitedTextReader {
             rows.append(row)
         }
 
+        // 没有表头时按**位置**给一组占位列名（`column1…N`）。
+        //
+        // 为什么不是留空：空表头会让"按名字匹配"的列映射一列都对不上（`--no-header` 等于不可用），
+        // 而占位列名能让导入器走**按位置**这条明确的路，映射预览里也看得见"文件第几列 → 目标第几列"。
+        if !options.hasHeader, header.isEmpty, let first = rows.first {
+            header = (0..<first.count).map { "column\($0 + 1)" }
+        }
+
         return Result(header: header, rows: rows, warnings: warnings)
     }
 

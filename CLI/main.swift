@@ -2656,7 +2656,8 @@ struct DoyahCLI {
             schema: schema,
             sourceHeader: parsed.header,
             targetColumns: targetColumns,
-            batchSize: batchSize
+            batchSize: batchSize,
+            sourceLayout: hasHeader ? .byName : .byPosition
         )
 
         print("文件：\(path)（\(format)，\(parsed.rows.count) 行数据）")

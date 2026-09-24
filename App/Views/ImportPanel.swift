@@ -595,7 +595,8 @@ struct ImportPanel: View {
                 let computed = try await appState.tableImportPlan(
                     table: target.table,
                     schema: target.schema,
-                    sourceHeader: result.header
+                    sourceHeader: result.header,
+                    hasHeader: self.hasHeader
                 )
                 parsed = result
                 plan = computed

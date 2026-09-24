@@ -74,7 +74,9 @@ final class TableImportTests: XCTestCase {
             "1,alice\n",
             options: DelimitedTextReader.Options(hasHeader: false)
         )
-        XCTAssertTrue(noHeader.header.isEmpty)
+        // 无表头时给出**位置列名**（`column1…N`）：留空会让"按名字匹配"一列都对不上，
+        // 于是 `--no-header` 等于不可用（本轮实测到的缺口）；有名字才能走按位置映射。
+        XCTAssertEqual(noHeader.header, ["column1", "column2"])
         XCTAssertEqual(noHeader.rows, [["1", "alice"]])
     }
 
@@ -242,5 +244,88 @@ final class TableImportTests: XCTestCase {
         let rows = TableImport.copyRows(rows: [["alice", "1"]], plan: plan)
         // 目标列顺序是 id → name，所以源列顺序被重排；且值**原样**（没有引号）。
         XCTAssertEqual(rows, [["1", "alice"]])
+    }
+}
+
+// MARK: - 按位置映射（无表头文件）
+
+/// `--no-header` 曾经等于不可用：读出来的表头是空的，而列映射按名字匹配 → 一列都对不上。
+/// 现在无表头文件走**按位置**这一条明确的路，这里的用例把三件事钉住：
+/// 一一对应、文件比表宽（多出来的列要点名）、文件比表窄（非空列要提前拦住）。
+final class PositionalImportPlanTests: XCTestCase {
+
+    private func target(_ name: String, _ type: String, nullable: Bool = true) -> TableImport.TargetColumn {
+        TableImport.TargetColumn(name: name, typeName: type, isNullable: nullable)
+    }
+
+    private var columns: [TableImport.TargetColumn] {
+        [target("id", "integer", nullable: false), target("name", "text"), target("amount", "numeric")]
+    }
+
+    func testPositionalMappingPairsByOrder() {
+        let plan = TableImport.plan(
+            table: "t",
+            sourceHeader: ["column1", "column2", "column3"],
+            targetColumns: columns,
+            sourceLayout: .byPosition
+        )
+        XCTAssertEqual(plan.mappings.map(\.sourceIndex), [0, 1, 2])
+        XCTAssertEqual(plan.mappings.map(\.targetName), ["id", "name", "amount"])
+        XCTAssertTrue(plan.unknownSourceColumns.isEmpty)
+        XCTAssertTrue(plan.missingRequiredColumns.isEmpty)
+        XCTAssertEqual(plan.valueTypes["id"], .number, "类型仍按目标列的类型名推断")
+    }
+
+    func testWiderFileNamesTheExtraColumns() {
+        let plan = TableImport.plan(
+            table: "t",
+            sourceHeader: ["column1", "column2", "column3", "column4", "column5"],
+            targetColumns: columns,
+            sourceLayout: .byPosition
+        )
+        XCTAssertEqual(plan.mappings.map(\.sourceIndex), [0, 1, 2], "只映射前 3 列")
+        XCTAssertEqual(plan.unknownSourceColumns, ["column4", "column5"], "多出来的列要点名，不能悄悄丢")
+    }
+
+    func testNarrowerFileLeavesNullableColumnsEmptyAndFlagsRequiredOnes() {
+        let plan = TableImport.plan(
+            table: "t",
+            sourceHeader: ["column1"],
+            targetColumns: columns,
+            sourceLayout: .byPosition
+        )
+        XCTAssertEqual(plan.mappings.map(\.sourceIndex), [0, nil, nil])
+        XCTAssertTrue(plan.missingRequiredColumns.isEmpty, "目标表这几列都可空，不该报必填缺失")
+
+        let strict = TableImport.plan(
+            table: "t",
+            sourceHeader: ["column1"],
+            targetColumns: [target("id", "integer", nullable: false), target("name", "text", nullable: false)],
+            sourceLayout: .byPosition
+        )
+        XCTAssertEqual(strict.missingRequiredColumns, ["name"], "非空列没有对应来源 → 提前拦住")
+    }
+
+    /// 默认仍是按名字：这条守卫很重要，按位置是"用户显式说没有表头"才启用的高风险模式。
+    func testDefaultStaysByName() {
+        let byName = TableImport.plan(
+            table: "t",
+            sourceHeader: ["amount", "id", "name"],
+            targetColumns: columns
+        )
+        XCTAssertEqual(byName.mappings.map(\.sourceIndex), [1, 2, 0], "按名字匹配，列序变了也认")
+        XCTAssertTrue(byName.unknownSourceColumns.isEmpty)
+    }
+
+    /// 按位置时**列名完全不参与**判断：名字长得再像也不影响（否则就成了两套规则的混合体）。
+    func testPositionIgnoresNames() {
+        let plan = TableImport.plan(
+            table: "t",
+            sourceHeader: ["amount", "id", "name"],
+            targetColumns: columns,
+            sourceLayout: .byPosition
+        )
+        XCTAssertEqual(plan.mappings.map(\.sourceIndex), [0, 1, 2], "按位置就是按位置")
+        XCTAssertEqual(plan.mappings.first?.sourceName, "amount", "但要把来源名带上，预览里能核")
     }
 }

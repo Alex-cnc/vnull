@@ -122,8 +122,41 @@ echo "$TYPED_OUT" | grep -q "无法按目标列类型转换" && check "坏值被
     || { check "坏值应被列出" 1; echo "$TYPED_OUT" | tail -3; }
 
 echo ""
+echo "== 5.5) 无表头文件：按位置映射（FR-IO-06 / FR-IO-03）=="
+# 以前 `--no-header` 读出来的表头是空的，而列映射按名字匹配 → 一列都对不上，功能等于不可用。
+"$CLI" -c "CREATE TABLE positional (a integer, b text, c text);" >/dev/null 2>&1
+PLAIN="$(mktemp -t doyah-import).csv"
+printf '1,hello,世界\n2,again,\n' > "$PLAIN"
+POS_OUT="$("$CLI" import --table positional --file "$PLAIN" --no-header --write 2>&1)"
+POS_CODE=$?
+[ "$POS_CODE" -eq 0 ] && check "无表头文件能导入（退出码 0）" 0 || { check "无表头文件能导入" 1; echo "$POS_OUT" | tail -4; }
+echo "$POS_OUT" | grep -q "column1" && check "预览里给的是位置列名（column1…）" 0 || check "应有位置列名" 1
+
+"$CLI" export --query "SELECT count(*) AS n, count(*) FILTER (WHERE a = 1 AND b = 'hello' AND c = '世界') AS first_row, count(*) FILTER (WHERE a = 2 AND c IS NULL) AS second_row FROM positional" --out /tmp/doyah-positional.csv > /dev/null 2>&1
+POSLINE="$(tail -1 /tmp/doyah-positional.csv | tr -d '\r')"
+[ "$POSLINE" = "2,1,1" ] && check "两行按位置落到了正确的列（第 1 列→a、第 2 列→b、第 3 列→c）" 0 \
+    || { check "按位置落列不对（实际 $POSLINE）" 1; }
+
+# 文件比表宽：多出来的列要点名（而不是悄悄丢）
+WIDE="$(mktemp -t doyah-import).csv"
+printf '1,hello,世界,多出来的一列\n' > "$WIDE"
+WIDE_OUT="$("$CLI" import --table positional --file "$WIDE" --no-header 2>&1)"
+echo "$WIDE_OUT" | grep -q "column4" && check "文件比表宽时，多出来的列被点名" 0 \
+    || { check "应点名多出来的列" 1; echo "$WIDE_OUT" | tail -4; }
+
+# 文件比表窄且目标列非空：提前拦住，别写坏一半
+"$CLI" -c "CREATE TABLE positional_strict (a integer NOT NULL, b text NOT NULL);" >/dev/null 2>&1
+NARROW="$(mktemp -t doyah-import).csv"
+printf '7\n' > "$NARROW"
+NARROW_OUT="$("$CLI" import --table positional_strict --file "$NARROW" --no-header --write 2>&1)"
+NARROW_CODE=$?
+[ "$NARROW_CODE" -ne 0 ] && check "文件比表窄且非空列缺来源时**拒绝导入**（退出码 ${NARROW_CODE}）" 0 \
+    || check "应拒绝导入" 1
+echo "$NARROW_OUT" | grep -q "必填列" && check "说明了缺哪一列（b）" 0 || { check "应说明缺哪列" 1; echo "$NARROW_OUT" | tail -3; }
+
+echo ""
 echo "== 6) 清理现场 =="
-rm -f "$CSV" "$JSON" "$BAD" "$TYPED"
+rm -f "$CSV" "$JSON" "$BAD" "$TYPED" "$PLAIN" "$WIDE" "$NARROW"
 PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
 echo "  ✅ 已删除临时库 ${DB}"
 

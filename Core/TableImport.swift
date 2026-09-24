@@ -60,13 +60,54 @@ public enum TableImport {
 
     // MARK: - 映射与推断
 
-    /// 按**名字**匹配（大小写不敏感）生成映射；匹配不上的目标列不导入。
+    /// 文件的列是**怎么对上目标列**的。
+    ///
+    /// 为什么要两种：有表头的文件按名字对（列序变了也不怕）；**没有表头**的文件只能按位置对 ——
+    /// 之前 `--no-header` 会生成一个空表头，于是"一列都映射不上"，功能等于不可用。
+    /// 按位置是有风险的（列序错了数据就会串列），所以它只在用户**显式**说"这个文件没有表头"时才启用，
+    /// 并且映射预览会把「文件第 N 列 → 目标第 M 列」逐条列出来给他核。
+    public enum SourceLayout: String, Equatable, Sendable {
+        /// 按列名匹配（默认）。
+        case byName
+        /// 按列序一一对应：文件第 1 列 → 目标第 1 列，以此类推。
+        case byPosition
+    }
+
+    /// 生成列映射：**按名字**（大小写不敏感）或**按位置**（无表头文件）。
     public static func plan(
         table: String,
         schema: String? = nil,
         sourceHeader: [String],
         targetColumns: [TargetColumn],
-        batchSize: Int = TableImport.defaultBatchSize
+        batchSize: Int = TableImport.defaultBatchSize,
+        sourceLayout: SourceLayout = .byName
+    ) -> Plan {
+        switch sourceLayout {
+        case .byName:
+            return planByName(
+                table: table,
+                schema: schema,
+                sourceHeader: sourceHeader,
+                targetColumns: targetColumns,
+                batchSize: batchSize
+            )
+        case .byPosition:
+            return planByPosition(
+                table: table,
+                schema: schema,
+                sourceHeader: sourceHeader,
+                targetColumns: targetColumns,
+                batchSize: batchSize
+            )
+        }
+    }
+
+    private static func planByName(
+        table: String,
+        schema: String?,
+        sourceHeader: [String],
+        targetColumns: [TargetColumn],
+        batchSize: Int
     ) -> Plan {
         let normalizedHeader = sourceHeader.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
 
@@ -86,6 +127,63 @@ public enum TableImport {
 
         let unknown = sourceHeader.enumerated()
             .filter { !usedSourceIndexes.contains($0.offset) }
+            .map(\.element)
+
+        let missingRequired = mappings
+            .filter { $0.sourceIndex == nil }
+            .compactMap { mapping -> String? in
+                guard let target = targetColumns.first(where: { $0.name == mapping.targetName }) else { return nil }
+                return target.isNullable ? nil : target.name
+            }
+
+        var types: [String: SQLParameters.ValueType] = [:]
+        for mapping in mappings where mapping.sourceIndex != nil {
+            let target = targetColumns.first { $0.name == mapping.targetName }
+            types[mapping.targetName] = valueType(forTypeName: target?.typeName ?? "text")
+        }
+
+        return Plan(
+            table: table,
+            schema: schema,
+            mappings: mappings,
+            valueTypes: types,
+            unknownSourceColumns: unknown,
+            missingRequiredColumns: missingRequired,
+            batchSize: max(1, batchSize)
+        )
+    }
+
+    /// 按**列序**对：文件第 1 列 → 目标表第 1 列。
+    ///
+    /// 三处必须说清楚（否则用户会以为"按位置"和"按名字"一样安全）：
+    /// - 文件比目标表**宽**：多出来的列进 `unknownSourceColumns`（会被忽略，但要点出来）；
+    /// - 文件比目标表**窄**：目标表多出来的列不导入（走默认值 / NULL）；非空列会被列进
+    ///   `missingRequiredColumns` —— 那种情况继续导入几乎一定失败，提前拦住比写坏一半好；
+    /// - 逐个映射都带 `sourceName`（就是文件里的位置名，如 `column2`），映射预览里能逐条核。
+    private static func planByPosition(
+        table: String,
+        schema: String?,
+        sourceHeader: [String],
+        targetColumns: [TargetColumn],
+        batchSize: Int
+    ) -> Plan {
+        var mappings: [ColumnMapping] = []
+        for (index, target) in targetColumns.enumerated() {
+            if index < sourceHeader.count {
+                mappings.append(
+                    ColumnMapping(
+                        targetName: target.name,
+                        sourceIndex: index,
+                        sourceName: sourceHeader[index]
+                    )
+                )
+            } else {
+                mappings.append(ColumnMapping(targetName: target.name, sourceIndex: nil))
+            }
+        }
+
+        let unknown = sourceHeader.enumerated()
+            .filter { $0.offset >= targetColumns.count }
             .map(\.element)
 
         let missingRequired = mappings
