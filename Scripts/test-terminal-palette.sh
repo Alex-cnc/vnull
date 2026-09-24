@@ -45,15 +45,27 @@ python3 - <<'PY' > /tmp/terminal-palette-check.txt 2>&1
 import json
 data = json.load(open('/tmp/terminal-palette.json'))
 problems = []
-for palette in [entry for entry in data if 'foregroundContrast' in entry]:
+
+def ratio(value, where):
+    # JSON 里的对比度是**两位小数字符串**（为了稳定 diff）。解析不出来就算失败，
+    # 而不是崩在这里 —— 上一版直接拿字符串比 float，脚本静默退化成了"必失败"。
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        problems.append(f"{where}: 对比度不是数字（{value!r}）")
+        return None
+
+for palette in [entry for entry in data if entry.get('kind') == 'palette']:
     name = palette['name']
-    if palette['foregroundContrast'] < 7.0:
-        problems.append(f"{name}: 前景对底色只有 {palette['foregroundContrast']}")
+    foreground = ratio(palette['foregroundContrast'], f"{name} 前景")
+    if foreground is not None and foreground < 7.0:
+        problems.append(f"{name}: 前景对底色只有 {foreground}")
     for slot in palette['ansi']:
         if slot['backgroundSlot']:
             continue
-        if slot['contrast'] < 4.5:
-            problems.append(f"{name}: 槽位 {slot['index']}（{slot['name']}）对底色只有 {slot['contrast']}")
+        value = ratio(slot['contrast'], f"{name} 槽位 {slot['index']}")
+        if value is not None and value < 4.5:
+            problems.append(f"{name}: 槽位 {slot['index']}（{slot['name']}）对底色只有 {value}")
 print("OK" if not problems else "FAIL")
 for problem in problems:
     print("  " + problem)

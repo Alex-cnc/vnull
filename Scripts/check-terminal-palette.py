@@ -30,6 +30,42 @@ JSON_PATH = ROOT / "Docs" / "design" / "terminal-palette.json"
 DOC_PATH = ROOT / "Docs" / "design" / "终端配色方案.md"
 CLI = ROOT / ".build" / "debug" / "DoyahCLI"
 
+# 门槛：正文槽位对底色 ≥ 4.5（WCAG AA）、前景对底色 ≥ 7（AAA）。
+# 与 `Tests/TerminalPaletteTests.swift` 是**两份独立实现**（这里是 Python）。
+MIN_TEXT_SLOT = 4.5
+MIN_FOREGROUND = 7.0
+
+
+def _number(value) -> float | None:
+    """JSON 里的对比度是两位小数字符串；解析不出来返回 None（由调用方报问题，不崩）。"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _channel(value: int) -> float:
+    c = value / 255
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def contrast_ratio(hex_a: str, hex_b: str) -> float:
+    """WCAG 对比度 —— 这里是**独立于 Swift 的第二份实现**。
+
+    为什么要再写一遍：单测用 Swift 算、这里用 Python 算，两边都给出"达标"才算门槛成立。
+    只读 JSON 里现成的对比度等于自己给自己判卷。
+    """
+
+    def luminance(hex_value: str) -> float:
+        text = hex_value.lstrip("#")
+        r, g, b = int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
+        return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
+
+    la, lb = luminance(hex_a), luminance(hex_b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 # 期望的两套色板（缺了就是"少交付一套配色"，不是小事）
 EXPECTED_PALETTES = ["深海·夜", "深海·昼"]
 EXPECTED_SLOTS = 16
@@ -125,6 +161,39 @@ def main() -> int:
                 hex_value = slot["hex"].upper()
                 if hex_value not in document:
                     problems.append(f"文档里找不到 {name} 槽位 {slot['index']}（{slot['name']}）的色值 {hex_value}")
+
+    # ④ 对比度**独立复算**：不读 JSON 里现成的数字当结论，而是用 Python 从 hex 重算，
+    #    再做两件事 —— ① 与 JSON 里写的数字对齐（防"色值改了、对比度说明没改"的僵尸字段）；
+    #    ② 判门槛。与 Swift 单测构成两份独立实现。
+    # 用 **committed JSON** 的数字（第 ② 步已经证明它的 hex 与代码一致，所以这份就是现状）
+    for item in committed_palettes:
+        name = item.get("name")
+        background = item.get("background", "#000000")
+        computed = contrast_ratio(item.get("foreground", "#000000"), background)
+        declared = _number(item.get("foregroundContrast"))
+        if declared is None:
+            problems.append(f"{name}：前景对比度不是数字（{item.get('foregroundContrast')!r}）")
+        elif abs(computed - declared) > 0.01:
+            problems.append(f"{name}：JSON 写前景对比度 {declared:.2f}，独立复算是 {computed:.2f}")
+        if computed < MIN_FOREGROUND:
+            problems.append(f"{name}：前景对底色只有 {computed:.2f}（要求 ≥ {MIN_FOREGROUND}）")
+
+        for slot in item.get("ansi", []):
+            computed_slot = contrast_ratio(slot.get("hex", "#000000"), background)
+            declared_slot = _number(slot.get("contrast"))
+            if declared_slot is None:
+                problems.append(f"{name} 槽位 {slot.get('index')}：对比度不是数字（{slot.get('contrast')!r}）")
+            elif abs(computed_slot - declared_slot) > 0.01:
+                problems.append(
+                    f"{name} 槽位 {slot.get('index')}：JSON 写对比度 {declared_slot:.2f}，独立复算是 {computed_slot:.2f}"
+                )
+            if slot.get("backgroundSlot"):
+                continue
+            if computed_slot < MIN_TEXT_SLOT:
+                problems.append(
+                    f"{name} 槽位 {slot.get('index')}（{slot.get('name')}）：对底色只有 {computed_slot:.2f}"
+                    f"（要求 ≥ {MIN_TEXT_SLOT}）"
+                )
 
     if problems:
         print(f"❌ 终端配色三方一致性校验失败（{len(problems)} 处）：")
