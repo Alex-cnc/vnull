@@ -66,7 +66,7 @@ public actor MySQLService: DatabaseService {
                 database: config.database,
                 password: password,
                 tlsConfiguration: try makeTLSConfiguration(),
-                serverHostname: config.host,
+                serverHostname: Self.serverNameIndication(for: config.host),
                 logger: logger,
                 on: group.next()
             ).get()
@@ -346,7 +346,7 @@ public actor MySQLService: DatabaseService {
                 database: config.database,
                 password: password,
                 tlsConfiguration: try makeTLSConfiguration(),
-                serverHostname: config.host,
+                serverHostname: Self.serverNameIndication(for: config.host),
                 logger: logger,
                 on: group.next()
             ).get()
@@ -361,6 +361,14 @@ public actor MySQLService: DatabaseService {
     }
 
     // MARK: - 事务
+
+    /// 纯十六进制 / 冒号形式的 IPv6（zone id 由调用方先剥掉）。
+    static func isIPv6Hex(_ host: String) -> Bool {
+        let allowed = CharacterSet(charactersIn: "0123456789abcdefABCDEF:.")
+        guard host.contains(":"), host.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return false }
+        // 至少得有两段十六进制，且不能全是冒号。
+        return host.split(separator: ":", omittingEmptySubsequences: false).contains { !$0.isEmpty }
+    }
 
     public func beginTransaction() async throws { try await run("START TRANSACTION") }
     public func commit() async throws { try await run("COMMIT") }
@@ -378,6 +386,43 @@ public actor MySQLService: DatabaseService {
     }
 
     // MARK: - 辅助
+
+    /// TLS 的 **SNI（server name indication）**：只对**域名**有意义。
+    ///
+    /// **为什么单列一个函数**：把 IP 字面量塞进 SNI，NIOSSL 会直接抛
+    /// `cannotUseIPAddressInSN: IP address can not validly be used for server name indication`
+    /// —— 用户实测在 217（`192.168.5.217`）上配了 TLS 就撞到了这一条，
+    /// 而错误信息里没有任何"是 SNI 的问题"的线索，看着像连不上服务器。
+    /// 按规范，IP 字面量本来就不该出现在 SNI 里（证书是发给域名的），所以这里**如实传 nil**。
+    static func serverNameIndication(for host: String) -> String? {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if isIPLiteral(trimmed) { return nil }
+        return trimmed
+    }
+
+    /// 这个主机串是不是 **IP 字面量**（IPv4 / IPv6）。
+    ///
+    /// 自己解析而不引依赖：这条判据只有十几行，而且是**纯字符串**规则
+    /// （Core 要保持平台中立，不引平台网络 API）；写清楚比引一个类型更难出错。
+    /// IPv4：四段 0–255 的十进制；IPv6：含冒号，且只由十六进制、冒号、`%zone`、`.`（v4 映射）组成。
+    static func isIPLiteral(_ host: String) -> Bool {
+        if let percent = host.firstIndex(of: "%") {
+            // 带 zone id 的 IPv6（`fe80::1%en0`）：zone 是接口名（字母数字），地址部分才是十六进制。
+            let address = String(host[host.startIndex..<percent])
+            let zone = String(host[host.index(after: percent)...])
+            guard !zone.isEmpty, zone.allSatisfy({ $0.isLetter || $0.isNumber }) else { return false }
+            return isIPv6Hex(address)
+        }
+        if host.contains(":") { return isIPv6Hex(host) }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        return parts.allSatisfy { part in
+            guard let value = Int(part), part.count <= 3, !part.isEmpty, (0...255).contains(value) else { return false }
+            // 不接受 `01` / `+1` 这类写法：它们不是合法的 IPv4 字面量（域名里也不该有）。
+            return part.allSatisfy { $0.isNumber } && (part.count == 1 || part.first != "0")
+        }
+    }
 
     private func makeTLSConfiguration() throws -> TLSConfiguration? {
         switch config.sslMode {

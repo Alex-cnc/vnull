@@ -131,4 +131,36 @@ final class MySQLDialectTests: XCTestCase {
         XCTAssertEqual(MySQLService.typeName(for: .newdecimal), "decimal")
         XCTAssertEqual(MySQLService.typeName(for: .datetime), "datetime")
     }
+
+    // MARK: - TLS 的 SNI（用户实测踩到的那个坑）
+
+    /// **IP 字面量不能进 SNI**：NIOSSL 会抛
+    /// `cannotUseIPAddressInSN: IP address can not validly be used for server name indication`，
+    /// 而错误信息里完全没有"这是 SNI 的问题"的线索（看着像连不上服务器）。
+    func testServerNameIndicationIsNilForIPAddresses() {
+        XCTAssertNil(MySQLService.serverNameIndication(for: "192.168.5.217"))
+        XCTAssertNil(MySQLService.serverNameIndication(for: "127.0.0.1"))
+        XCTAssertNil(MySQLService.serverNameIndication(for: "::1"))
+        XCTAssertNil(MySQLService.serverNameIndication(for: "fe80::1%en0"))
+        XCTAssertNil(MySQLService.serverNameIndication(for: ""))
+        XCTAssertNil(MySQLService.serverNameIndication(for: "   "))
+        // 域名照常传（TLS 的证书校验与虚拟主机都靠它）。
+        XCTAssertEqual(MySQLService.serverNameIndication(for: "db.example.com"), "db.example.com")
+        XCTAssertEqual(MySQLService.serverNameIndication(for: " localhost "), "localhost")
+    }
+
+    func testIPLiteralDetection() {
+        XCTAssertTrue(MySQLService.isIPLiteral("192.168.5.217"))
+        XCTAssertTrue(MySQLService.isIPLiteral("0.0.0.0"))
+        XCTAssertTrue(MySQLService.isIPLiteral("255.255.255.255"))
+        XCTAssertTrue(MySQLService.isIPLiteral("::1"))
+        XCTAssertTrue(MySQLService.isIPLiteral("2001:db8::1"))
+        // 不是 IP 的一律当域名处理：段数不对、超范围、带前导零、空段。
+        XCTAssertFalse(MySQLService.isIPLiteral("192.168.5"))
+        XCTAssertFalse(MySQLService.isIPLiteral("192.168.5.256"))
+        XCTAssertFalse(MySQLService.isIPLiteral("192.168.05.1"))
+        XCTAssertFalse(MySQLService.isIPLiteral("db.example.com"))
+        XCTAssertFalse(MySQLService.isIPLiteral("localhost"))
+        XCTAssertFalse(MySQLService.isIPLiteral(""))
+    }
 }
