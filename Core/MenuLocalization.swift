@@ -28,6 +28,8 @@ public enum MenuLocalization {
         .menuAgentGenerateSQL,
         // 诊断这条查询（FR-AI-03）：菜单叶子项同样要能运行时切语言。
         .menuDiagnoseQuery,
+        // 维护任务编排（FR-AI-04）：同上。
+        .menuMaintenanceTasks,
         .menuDataTask,
         .menuAgentAudit,
         .menuEgressLog,

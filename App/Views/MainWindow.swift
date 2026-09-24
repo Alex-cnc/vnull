@@ -141,6 +141,11 @@ struct MainWindow: View {
             DiagnosisPanel()
                 .environmentObject(appState)
         }
+        // 维护任务编排（FR-AI-04）：审阅 → 逐条批准 / 拒绝 → 执行已批准的。
+        .sheet(isPresented: $appState.isMaintenancePresented) {
+            MaintenancePanel()
+                .environmentObject(appState)
+        }
         // Schema 对比与同步（FR-DDL-04）：两侧结构差异 + 同步脚本。
         .sheet(isPresented: $appState.isSchemaDiffPresented) {
             SchemaDiffPanel()

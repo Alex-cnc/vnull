@@ -45,6 +45,8 @@ enum AppCommandCatalog {
             item("agentSQL", .commandAgentSQL, "agent nl2sql 智能体 自然语言 生成 sql", "agent nl2sql", .paletteCategoryAgent),
             // 诊断这条查询（FR-AI-03）：取**当前页签**的 SQL，面板里先取证再看建议。
             item("diagnoseQuery", .diagnosisTitle, "diagnose explain plan slow lock 诊断 执行计划 慢查询 锁 阻塞", "diagnose explain plan lock", .paletteCategoryAgent),
+            // 维护任务编排（FR-AI-04）：审阅 → 逐条批准 / 拒绝 → 执行已批准的。
+            item("maintenanceTasks", .maintenanceTitle, "maintenance vacuum analyze reindex backup grant 维护 任务 编排 整理 索引 授权", "maintenance tasks vacuum analyze", .paletteCategoryAgent),
             item("syntheticData", .commandSyntheticData, "synthetic data 合成 测试数据", "synthetic data", .paletteCategoryAgent),
             item("egressLog", .commandEgressLog, "egress log 外发 日志", "egress log", .paletteCategoryAgent),
             item("help", .commandHelp, "help 帮助 快捷键", "help shortcuts", .paletteCategoryHelp),

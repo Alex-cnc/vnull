@@ -179,6 +179,26 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case maintenanceTitle
+    case menuMaintenanceTasks
+    case maintenancePlanLabel
+    case maintenancePlanHint
+    case maintenanceReviewAction
+    case maintenanceExecuteAction
+    case maintenanceApproveAction
+    case maintenanceRejectAction
+    case maintenanceAllowMultiple
+    case maintenanceNoPlan
+    case maintenanceNothingApproved
+    case maintenanceStatePending
+    case maintenanceStateApproved
+    case maintenanceStateRejected
+    case maintenanceStateExecuted
+    case maintenanceStateFailed
+    case maintenanceSandboxedConnection
+    case maintenanceReadOnlyBadge
+    case maintenanceExecutedOne
+    case maintenanceFailedOne
     case diagnosisTitle
     case menuDiagnoseQuery
     case diagnosisQuestionField
@@ -1744,6 +1764,26 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .maintenanceTitle: [.simplifiedChinese: "维护任务编排", .english: "Maintenance tasks"],
+        .menuMaintenanceTasks: [.simplifiedChinese: "维护任务…", .english: "Maintenance tasks…"],
+        .maintenancePlanLabel: [.simplifiedChinese: "计划（每行一条：task: 类别 ｜ 人话描述 ｜ sql: 语句）", .english: "Plan (one per line: task: kind | description | sql: statement)"],
+        .maintenancePlanHint: [.simplifiedChinese: "写操作与 DDL 一律要逐条批准；高开销（REINDEX / 备份 / 恢复）默认一次只放一条。", .english: "Writes and DDL always need step-by-step approval; high-cost ones (REINDEX / backup / restore) are limited to one per run by default."],
+        .maintenanceReviewAction: [.simplifiedChinese: "审阅计划", .english: "Review plan"],
+        .maintenanceExecuteAction: [.simplifiedChinese: "执行已批准的", .english: "Run approved ones"],
+        .maintenanceApproveAction: [.simplifiedChinese: "批准", .english: "Approve"],
+        .maintenanceRejectAction: [.simplifiedChinese: "拒绝", .english: "Reject"],
+        .maintenanceAllowMultiple: [.simplifiedChinese: "允许一次跑多条高开销（我知情）", .english: "Allow several high-cost tasks in one run (I understand the cost)"],
+        .maintenanceNoPlan: [.simplifiedChinese: "还没有计划：先写几行、再点「审阅计划」。", .english: "No plan yet: write a few lines, then press Review plan."],
+        .maintenanceNothingApproved: [.simplifiedChinese: "没有已批准且可执行的任务。", .english: "Nothing is approved and runnable."],
+        .maintenanceStatePending: [.simplifiedChinese: "待批", .english: "pending"],
+        .maintenanceStateApproved: [.simplifiedChinese: "已批准", .english: "approved"],
+        .maintenanceStateRejected: [.simplifiedChinese: "已拒绝", .english: "rejected"],
+        .maintenanceStateExecuted: [.simplifiedChinese: "已执行", .english: "done"],
+        .maintenanceStateFailed: [.simplifiedChinese: "失败", .english: "failed"],
+        .maintenanceSandboxedConnection: [.simplifiedChinese: "当前是沙箱构建：备份 / 恢复这类要起外部程序的任务不可执行。", .english: "This is the sandboxed build: tasks that spawn external programs (backup / restore) cannot run."],
+        .maintenanceReadOnlyBadge: [.simplifiedChinese: "只读连接：写操作会被拒绝，且批准也不能绕过。", .english: "Read-only connection: writes are refused and approval cannot bypass it."],
+        .maintenanceExecutedOne: [.simplifiedChinese: "已执行 %@", .english: "Ran %@"],
+        .maintenanceFailedOne: [.simplifiedChinese: "%@ 失败：%@", .english: "%@ failed: %@"],
         .diagnosisTitle: [.simplifiedChinese: "诊断这条查询", .english: "Diagnose this query"],
         .menuDiagnoseQuery: [.simplifiedChinese: "诊断这条查询…", .english: "Diagnose this query…"],
         .diagnosisQuestionField: [.simplifiedChinese: "问题", .english: "Question"],

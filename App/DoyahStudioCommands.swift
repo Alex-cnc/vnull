@@ -83,6 +83,11 @@ struct DoyahStudioCommands: Commands {
                 appState.openDiagnosis()
             }
 
+            // 维护任务编排（FR-AI-04）：与 ⌘K 的 `maintenanceTasks` 打开同一个面板。
+            Button(L(.menuMaintenanceTasks)) {
+                appState.openMaintenance()
+            }
+
             Divider()
 
             Button(L(.menuDataTask)) {

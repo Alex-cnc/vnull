@@ -326,6 +326,14 @@ final class AppState: ObservableObject {
     // 对话式诊断（FR-AI-03）：面板状态与取证结果。
     // 与 Core 的分工：这里只负责"把证据取回来、把回答交出去解读"，判据全在 Core。
     @Published var isDiagnosisPresented = false
+
+    // 维护任务编排（FR-AI-04）：计划文本、审阅结果与执行状态。
+    @Published var isMaintenancePresented = false
+    @Published var maintenancePlanText = ""
+    @Published var maintenanceReview: MaintenancePlanReview?
+    @Published var maintenanceMessage: String?
+    @Published var maintenanceAllowMultipleHighCost = false
+    @Published var maintenanceIsRunning = false
     @Published var diagnosisQuestion = ""
     @Published var diagnosisEvidence: [DiagnosisEvidence] = []
     @Published var diagnosisReply = ""
@@ -3804,6 +3812,7 @@ final class AppState: ObservableObject {
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
         case "diagnoseQuery": openDiagnosis()
+        case "maintenanceTasks": openMaintenance()
         case "schemaDiff": isSchemaDiffPresented = true
         case "erDiagram": isERDiagramPresented = true
         case "serverObjects":
@@ -5764,6 +5773,97 @@ final class AppState: ObservableObject {
         sshTunnels[configuration.id] = tunnel
         statusMessage = L(.sshTunnelReady, String(localPort))
         return (SSHTunnelEndpoint.loopbackHost, localPort)
+    }
+
+    // MARK: - 维护任务编排（FR-AI-04）
+
+    /// 当前是不是沙箱构建（决定"起外部程序"的任务能不能跑，R-18）。
+    var isSandboxedBuild: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    func openMaintenance() {
+        maintenanceMessage = nil
+        if maintenancePlanText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // 给一份模板：类别与行格式是我们自己声明的，**示例比说明更快**。
+            maintenancePlanText = """
+            task: analyze | 更新 customers 的统计信息 | sql: ANALYZE public.customers
+            """
+        }
+        isMaintenancePresented = true
+    }
+
+    private var maintenancePolicy: MaintenancePolicy {
+        MaintenancePolicy(
+            allowMultipleHighCost: maintenanceAllowMultipleHighCost,
+            isReadOnly: selectedConnection?.isReadOnly ?? false,
+            isSandboxed: isSandboxedBuild
+        )
+    }
+
+    private var maintenanceDatabaseType: DatabaseType {
+        selectedConnection?.dbType ?? .postgresql
+    }
+
+    /// 审阅计划：解析 + 逐条定"能不能跑 / 要不要审批"（判据全在 Core）。
+    func reviewMaintenancePlan() {
+        let review = MaintenancePlanner.makePlan(
+            from: maintenancePlanText,
+            policy: maintenancePolicy,
+            databaseType: maintenanceDatabaseType
+        )
+        maintenanceReview = review
+        if review.tasks.isEmpty {
+            maintenanceMessage = L(.maintenanceNoPlan)
+        } else {
+            maintenanceMessage = nil
+        }
+    }
+
+    func approveMaintenanceTask(id: String) {
+        guard let review = maintenanceReview else { return }
+        maintenanceReview = MaintenancePlanner.approve(review, ids: [id])
+    }
+
+    func rejectMaintenanceTask(id: String) {
+        guard let review = maintenanceReview else { return }
+        maintenanceReview = MaintenancePlanner.reject(review, ids: [id])
+    }
+
+    /// 执行**已批准且可执行**的任务。失败要带服务端原话，且失败的任务不会因为再批准而复活。
+    func executeApprovedMaintenanceTasks() async {
+        guard var review = maintenanceReview else { return }
+        let runnable = review.executableTasks(isSandboxed: isSandboxedBuild)
+        guard !runnable.isEmpty else {
+            maintenanceMessage = L(.maintenanceNothingApproved)
+            return
+        }
+        guard let tab = selectedTab, let configuration = connection(for: tab) else {
+            maintenanceMessage = L(.stateNotConnected)
+            return
+        }
+        maintenanceIsRunning = true
+        defer { maintenanceIsRunning = false }
+
+        do {
+            let service = try await ensureService(for: configuration, database: tab.database)
+            for task in runnable {
+                guard let sql = task.sql else { continue }
+                do {
+                    _ = try await runSingleQuery(sql, on: service)
+                    review = MaintenancePlanner.record(review, taskID: task.id)
+                    maintenanceMessage = L(.maintenanceExecutedOne, task.summary)
+                } catch {
+                    if error is CancellationError { break }
+                    review = MaintenancePlanner.record(review, taskID: task.id, failureReason: error.localizedDescription)
+                    maintenanceMessage = L(.maintenanceFailedOne, task.id, error.localizedDescription)
+                }
+                maintenanceReview = review
+            }
+            maintenanceReview = review
+        } catch {
+            maintenanceMessage = ErrorPresenter.message(for: error)
+        }
     }
 
     // MARK: - 对话式诊断（FR-AI-03）
