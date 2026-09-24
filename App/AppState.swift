@@ -391,6 +391,8 @@ final class AppState: ObservableObject {
     @Published var dataTaskDecisions: [UUID: ScheduleDecision] = [:]
     /// 已授权目录（`directory-bookmarks.json`），可在多个任务间复用（FR-AI-08）。
     @Published var storedDirectoryBookmarks: [DirectoryBookmark] = []
+    /// 下载期间保持的目录访问权（FR-EDIT-34，完成 / 失败后统一释放）。
+    private var browserDownloadGrants: [DirectoryGrant] = []
     /// 面板内的一行提示（保存成功 / 已提交审批 / 产物已导出…）。
     @Published var dataTaskMessage: String?
     /// 面板内的错误（读取 / 保存 / 导出 / 执行失败）。
@@ -2335,8 +2337,82 @@ final class AppState: ObservableObject {
                 self?.browserEngineLoadedPageIDs.insert(updated.id)
             }
         }
+        // 下载落盘目录与外发留痕（FR-EDIT-34）：目录走用户**显式授权**过的那一个
+        // （与数据任务产物同一套），没有授权就拒绝并说明 —— 沙箱里偷偷落到容器里，
+        // 用户会"下载成功但找不到文件"。
+        engine.downloadDirectory = { [weak self] in
+            self?.authorizedDownloadDirectory()
+        }
+        engine.onDownloadEvent = { [weak self] outcome in
+            guard let self else { return }
+            let page = self.browserPages.first { $0.id == page.id } ?? BrowserPage(id: page.id)
+            self.handleBrowserDownload(outcome, page: page)
+        }
         browserEngines[page.id] = engine
         return engine
+    }
+
+    /// 下载用的授权目录（FR-EDIT-34，与 FR-AI-08 同一套 `SecureDirectoryAccess`）。
+    ///
+    /// 取**最近一次授权过**的目录。返回 `nil` 时引擎会拒绝这次下载并说明原因 ——
+    /// 这是有意的：沙箱里往未授权的地方写不进去，而"悄悄落到 App 容器里"更糟
+    /// （用户看到下载完成，却在任何地方都找不到文件）。
+    func authorizedDownloadDirectory() -> URL? {
+        guard let bookmark = storedDirectoryBookmarks.last else { return nil }
+        guard let grant = try? MacDirectoryAccess.open(bookmark) else { return nil }
+        // 访问权要保持到下载结束（WebKit 是异步写的），所以在这里攒着，完成 / 失败时统一释放。
+        browserDownloadGrants.append(grant)
+        return grant.url
+    }
+
+    /// 下载进展 → 外发日志 + 界面状态（FR-EDIT-34 / NFR-SEC-08）。
+    ///
+    /// **下载也是出网**：不管成功、失败还是被拒，都留一条账 —— 与浏览器导航同一条纪律。
+    func handleBrowserDownload(_ outcome: WebKitBrowserEngine.DownloadOutcome, page: BrowserPage) {
+        let tabTitle = page.title ?? page.url?.absoluteString
+        let target = page.url?.absoluteString ?? "(未知来源)"
+
+        func record(_ result: EgressOutcome, detail: String) {
+            Task {
+                await egressLog.record(
+                    kind: .browser,
+                    target: target,
+                    origin: "浏览器 · 下载",
+                    outcome: result,
+                    detail: detail,
+                    tabID: page.id,
+                    tabTitle: tabTitle
+                )
+                await refreshEgressLog()
+            }
+        }
+
+        func showNotice(_ message: String) {
+            guard let index = browserPages.firstIndex(where: { $0.id == page.id }) else { return }
+            browserPages[index].setNotice(message)
+        }
+
+        switch outcome {
+        case .refused(let reason):
+            record(.denied, detail: reason)
+            showNotice(reason)
+        case .started(let filename):
+            showNotice(L(.browserDownloadStarted, filename))
+        case .finished(let filename, let url):
+            releaseDownloadGrants()
+            record(.allowed, detail: BrowserDownload.logDetail(filename: filename, outcome: "完成"))
+            showNotice(L(.browserDownloadFinished, url.path))
+        case .failed(let filename, let reason):
+            releaseDownloadGrants()
+            record(.failed, detail: BrowserDownload.logDetail(filename: filename, outcome: "失败：\(reason)"))
+            showNotice(L(.browserDownloadFailed, filename, reason))
+        }
+    }
+
+    /// 释放下载期间保持的目录访问权（幂等）。
+    private func releaseDownloadGrants() {
+        for grant in browserDownloadGrants { grant.stopAccessing() }
+        browserDownloadGrants.removeAll()
     }
 
     /// 把引擎回报的状态写回模型（引擎在主线程回调，这里只做转发）。

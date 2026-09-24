@@ -1055,6 +1055,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case erDiagramZoomOut
     case erDiagramFit
     case erDiagramExported
+    case egressFilterAllTabs
+    case browserDownloadStarted
+    case browserDownloadFinished
+    case browserDownloadFailed
     case schemaDiffCopy
     case schemaDiffOpenInTab
     case schemaDiffFailed
@@ -2109,6 +2113,10 @@ public enum LocalizedStrings {
         .erDiagramZoomOut: [.simplifiedChinese: "缩小", .english: "Zoom out"],
         .erDiagramFit: [.simplifiedChinese: "复位", .english: "Reset view"],
         .erDiagramExported: [.simplifiedChinese: "已导出：%@", .english: "Exported: %@"],
+        .egressFilterAllTabs: [.simplifiedChinese: "全部页签", .english: "All tabs"],
+        .browserDownloadStarted: [.simplifiedChinese: "开始下载：%@", .english: "Downloading: %@"],
+        .browserDownloadFinished: [.simplifiedChinese: "已下载到 %@", .english: "Downloaded to %@"],
+        .browserDownloadFailed: [.simplifiedChinese: "下载失败（%@）：%@", .english: "Download failed (%@): %@"],
         .schemaDiffCopy: [.simplifiedChinese: "复制脚本", .english: "Copy script"],
         .schemaDiffOpenInTab: [.simplifiedChinese: "在新查询页签打开", .english: "Open in a new query tab"],
         .schemaDiffFailed: [.simplifiedChinese: "对比失败：%@", .english: "Comparison failed: %@"],

@@ -41,6 +41,13 @@ public struct EgressEntry: Codable, Equatable, Identifiable, Sendable {
     public let outcome: EgressOutcome
     /// 可读补充（失败原因等）。**不得包含密钥或结果集行数据**（写入前统一脱敏）。
     public let detail: String?
+    /// 这条出网属于哪个**浏览器页签**（FR-EDIT-34）。非浏览器来源为 nil。
+    ///
+    /// 为什么要它：一个窗口里可能同时开着好几个页签，日志只有"浏览器 · 页签"这句来源时，
+    /// 根本分不清是哪一次浏览发出的请求 —— 而"这条外发是谁发起的"正是审计要回答的第一个问题。
+    public let tabID: UUID?
+    /// 页签的显示名（页面标题或地址），用于日志筛选与阅读；同样可空。
+    public let tabTitle: String?
 
     public init(
         id: UUID = UUID(),
@@ -49,7 +56,9 @@ public struct EgressEntry: Codable, Equatable, Identifiable, Sendable {
         target: String,
         origin: String,
         outcome: EgressOutcome,
-        detail: String? = nil
+        detail: String? = nil,
+        tabID: UUID? = nil,
+        tabTitle: String? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -58,6 +67,8 @@ public struct EgressEntry: Codable, Equatable, Identifiable, Sendable {
         self.origin = origin
         self.outcome = outcome
         self.detail = detail
+        self.tabID = tabID
+        self.tabTitle = tabTitle
     }
 }
 
@@ -182,14 +193,18 @@ public actor EgressLog {
         target: String,
         origin: String,
         outcome: EgressOutcome,
-        detail: String? = nil
+        detail: String? = nil,
+        tabID: UUID? = nil,
+        tabTitle: String? = nil
     ) -> EgressEntry {
         let entry = EgressEntry(
             kind: kind,
             target: target,
             origin: origin,
             outcome: outcome,
-            detail: detail
+            detail: detail,
+            tabID: tabID,
+            tabTitle: tabTitle
         )
         append(entry)
         return entry
@@ -324,15 +339,23 @@ public struct EgressFilter: Equatable, Sendable {
     public var outcome: EgressOutcome?
     /// 关键词：匹配目标 / 触发来源 / 补充说明（不区分大小写）。
     public var keyword: String
+    /// 只看某个浏览器页签的出网（`nil` = 不限页签）。
+    public var tabID: UUID?
 
-    public init(kind: EgressKind? = nil, outcome: EgressOutcome? = nil, keyword: String = "") {
+    public init(
+        kind: EgressKind? = nil,
+        outcome: EgressOutcome? = nil,
+        keyword: String = "",
+        tabID: UUID? = nil
+    ) {
         self.kind = kind
         self.outcome = outcome
         self.keyword = keyword
+        self.tabID = tabID
     }
 
     public var isActive: Bool {
-        kind != nil || outcome != nil || !keyword.trimmingCharacters(in: .whitespaces).isEmpty
+        kind != nil || outcome != nil || tabID != nil || !keyword.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     public func apply(to entries: [EgressEntry]) -> [EgressEntry] {
@@ -340,6 +363,7 @@ public struct EgressFilter: Equatable, Sendable {
         return entries.filter { entry in
             if let kind, entry.kind != kind { return false }
             if let outcome, entry.outcome != outcome { return false }
+            if let tabID, entry.tabID != tabID { return false }
             guard !trimmed.isEmpty else { return true }
             let haystack = [entry.target, entry.origin, entry.detail ?? ""]
                 .joined(separator: " ")

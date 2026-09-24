@@ -37,6 +37,23 @@ struct EgressLogSheet: View {
         .task { await appState.refreshEgressLog() }
     }
 
+    /// 日志里出现过的页签（最近出现的在前）——筛选项从**日志本身**派生，
+    /// 而不是从"当前开着的页签"派生：关掉页签后那些记录仍然要能被筛出来。
+    private var tabOptions: [(id: UUID, label: String)] {
+        var seen: [UUID: String] = [:]
+        var order: [UUID] = []
+        for entry in appState.egressEntries {
+            guard let tabID = entry.tabID else { continue }
+            if seen[tabID] == nil {
+                order.append(tabID)
+                seen[tabID] = entry.tabTitle ?? String(tabID.uuidString.prefix(8))
+            } else if seen[tabID]?.count ?? 0 < 12, let title = entry.tabTitle, !title.isEmpty {
+                seen[tabID] = title
+            }
+        }
+        return order.map { (id: $0, label: seen[$0] ?? String($0.uuidString.prefix(8))) }
+    }
+
     // MARK: 头部
 
     private var header: some View {
@@ -73,6 +90,18 @@ struct EgressLogSheet: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 140)
+
+                // 按**浏览器页签**筛选（FR-EDIT-34）：一个窗口里开着多个页签时，
+                // 光看"浏览器 · 页签"这句来源分不清是谁发的 —— 审计要能回答"这条是谁发起的"。
+                Picker("", selection: $filter.tabID) {
+                    Text(L(.egressFilterAllTabs)).tag(UUID?.none)
+                    ForEach(tabOptions, id: \.id) { option in
+                        Text(option.label).tag(UUID?.some(option.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 180)
+                .disabled(tabOptions.isEmpty)
                 Button(L(.egressExportJSON)) {
                     Task { await appState.exportEgressLog(asCSV: false) }
                 }

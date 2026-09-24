@@ -69,6 +69,11 @@ public struct BrowserPage: Identifiable, Equatable, Sendable, Codable {
     public private(set) var isLoading: Bool
     /// 最近一次失败 / 被拒绝的原因（可读）。
     public private(set) var lastError: String?
+    /// 一条**中性的页内提示**（下载开始 / 完成这类"不是错误、但用户需要看见"的消息）。
+    ///
+    /// 为什么不用 `AppState.statusMessage`：全局状态栏**没有任何视图在读**（本仓踩过两次），
+    /// 写进去等于没说；提示挂在页模型上，页签的工具条/提示条就能显示，切页签也不会串。
+    public private(set) var notice: String?
 
     private var history: [URL]
     private var historyIndex: Int
@@ -82,8 +87,19 @@ public struct BrowserPage: Identifiable, Equatable, Sendable, Codable {
         self.title = title
         self.isLoading = false
         self.lastError = nil
+        self.notice = nil
         self.history = url.map { [$0] } ?? []
         self.historyIndex = url == nil ? -1 : 0
+    }
+
+    /// 记一条页内提示（下载进展等）。传 `nil` 清掉。
+    public mutating func setNotice(_ message: String?) {
+        notice = message
+    }
+
+    /// 把提示也写进历史记录重建时的落点（`Codable` 反序列化后由界面设置，不参与导航语义）。
+    public mutating func clearNotice() {
+        notice = nil
     }
 
     public var canGoBack: Bool { historyIndex > 0 }
@@ -94,6 +110,7 @@ public struct BrowserPage: Identifiable, Equatable, Sendable, Codable {
         self.url = url
         self.isLoading = true
         self.lastError = nil
+        self.notice = nil
 
         // 截断前进分支：这是浏览器的标准语义（新导航丢弃"前进"里的旧路径）。
         if historyIndex < history.count - 1 {
@@ -268,6 +285,8 @@ public enum BrowserSession {
     public static func record(
         _ transition: Transition,
         origin: String,
+        tabID: UUID? = nil,
+        tabTitle: String? = nil,
         log: EgressLog = .shared
     ) async -> EgressEntry? {
         guard transition.shouldRecord else { return nil }
@@ -276,7 +295,9 @@ public enum BrowserSession {
             target: transition.egressTarget,
             origin: origin,
             outcome: transition.egressOutcome,
-            detail: transition.egressDetail
+            detail: transition.egressDetail,
+            tabID: tabID,
+            tabTitle: tabTitle
         )
     }
 }

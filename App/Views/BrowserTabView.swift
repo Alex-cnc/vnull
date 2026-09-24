@@ -26,6 +26,10 @@ struct BrowserTabView: View {
                 errorBar(error)
                 HairlineView()
             }
+            if let notice = page.notice, !notice.isEmpty {
+                noticeBar(notice)
+                HairlineView()
+            }
             content
         }
         .onAppear { address = page.url?.absoluteString ?? "" }
@@ -90,6 +94,22 @@ struct BrowserTabView: View {
         }
         .padding(.horizontal, Spacing.m)
         .padding(.vertical, Spacing.s)
+    }
+
+    /// 中性提示条（下载开始 / 完成）：与错误条同一位置，但不用警示图标与警示色 ——
+    /// 把"下载完成"画成警告，会让人以为出了问题。
+    private func noticeBar(_ message: String) -> some View {
+        HStack(spacing: Spacing.s) {
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(Theme.text(.secondary))
+            Text(message)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(.horizontal, Spacing.m)
+        .padding(.vertical, Spacing.xs)
     }
 
     private func errorBar(_ message: String) -> some View {

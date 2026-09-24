@@ -268,4 +268,61 @@ final class EgressFilterTests: XCTestCase {
         XCTAssertEqual(filtered.count, 1)
         XCTAssertEqual(filtered.first?.outcome, .allowed)
     }
+
+    // MARK: - 按浏览器页签筛选（FR-EDIT-34）
+
+    private func tabEntry(_ tabID: UUID, title: String, target: String) -> EgressEntry {
+        EgressEntry(
+            kind: .browser,
+            target: target,
+            origin: "浏览器 · 页签",
+            outcome: .allowed,
+            detail: nil,
+            tabID: tabID,
+            tabTitle: title
+        )
+    }
+
+    func testTabFilterKeepsOnlyThatTab() {
+        let first = UUID()
+        let second = UUID()
+        let entries = [
+            tabEntry(first, title: "文档", target: "https://docs.example/a"),
+            tabEntry(second, title: "工单", target: "https://tickets.example/b"),
+            tabEntry(first, title: "文档", target: "https://docs.example/c"),
+        ]
+        let filter = EgressFilter(tabID: first)
+        XCTAssertTrue(filter.isActive)
+        let filtered = filter.apply(to: entries)
+        XCTAssertEqual(filtered.count, 2)
+        XCTAssertTrue(filtered.allSatisfy { $0.tabID == first })
+    }
+
+    /// 非浏览器来源（tabID 为 nil）不该被"某个页签"的筛选带出来。
+    func testTabFilterExcludesEntriesWithoutTab() {
+        let tab = UUID()
+        let entries = [entry(.agentModel, .allowed), tabEntry(tab, title: "文档", target: "https://docs.example")]
+        XCTAssertEqual(EgressFilter(tabID: tab).apply(to: entries).count, 1)
+    }
+
+    /// **向后兼容**：老日志文件里没有 `tabID` / `tabTitle` 这两个键，必须还能解码
+    /// （否则升级后整个外发日志读不出来，历史审计记录等于丢了）。
+    func testEntriesDecodeWithoutTabFields() throws {
+        let legacy = """
+        {"id":"6B29FC40-CA47-1067-B31D-00DD010662DA","timestamp":760000000,"kind":"browser",
+         "target":"https://docs.example/page","origin":"浏览器 · 页签","outcome":"allowed"}
+        """
+        let entry = try JSONDecoder().decode(EgressEntry.self, from: Data(legacy.utf8))
+        XCTAssertNil(entry.tabID)
+        XCTAssertNil(entry.tabTitle)
+        XCTAssertEqual(entry.target, "https://docs.example/page")
+    }
+
+    func testEntriesRoundTripWithTabFields() throws {
+        let tab = UUID()
+        let original = tabEntry(tab, title: "文档", target: "https://docs.example/a")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(EgressEntry.self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
 }

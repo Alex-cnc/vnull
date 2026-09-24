@@ -26,6 +26,28 @@ public final class WebKitBrowserEngine: NSObject, BrowserEngine {
     /// 交给 SwiftUI 承载的视图。
     public let view: WKWebView
 
+    /// 一次下载的进展（引擎 → 应用层）。
+    ///
+    /// 为什么由应用层收：**落哪个目录、要不要记外发日志、界面说什么**都是产品决定，
+    /// 引擎只回答"技术上下载成了没成"。这也让 Core 的命名规则（`BrowserDownload`）能被单测。
+    public enum DownloadOutcome: Equatable, Sendable {
+        /// 没有可用目录（或同名太多）：`nil` 目标会被 WebKit 当成取消。
+        case refused(reason: String)
+        case started(filename: String)
+        case finished(filename: String, url: URL)
+        case failed(filename: String, reason: String)
+    }
+
+    /// 下载落地的目录（应用层注入：走用户授权目录，见 `BrowserDownload` 的说明）。
+    /// 返回 `nil` 表示"没有可用目录"，引擎会拒绝这次下载并如实说明。
+    public var downloadDirectory: (@MainActor () -> URL?)?
+    /// 下载进展回调（应用层据此写外发日志与界面状态）。
+    public var onDownloadEvent: (@MainActor (DownloadOutcome) -> Void)?
+
+    /// 正在进行的下载：`WKDownload` 的完成 / 失败回调里拿不到文件名与落盘位置，
+    /// 得在"选目标"那一步自己记下来（这也是唯一知道目标的时刻）。
+    private var downloadTargets: [ObjectIdentifier: (filename: String, url: URL)] = [:]
+
     private let origin: String
     private let log: EgressLog
     private var page: BrowserPage
@@ -140,6 +162,27 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
             return .allow
         }
 
+        // 下载：`shouldPerformDownload` 是 WebKit 给的明确信号（点了下载链接 / 附件）。
+        // 它仍然要**记一条外发日志**再走 —— 下载同样是出网。
+        if navigationAction.shouldPerformDownload {
+            let transition = BrowserSession.navigate(
+                page: page,
+                to: url,
+                origin: origin,
+                isUserInitiated: Self.isUserInitiated(navigationAction.navigationType)
+            )
+            page = transition.page
+            publish()
+            await BrowserSession.record(
+                transition,
+                origin: origin,
+                tabID: pageID,
+                tabTitle: page.title ?? page.url?.absoluteString,
+                log: log
+            )
+            return .download
+        }
+
         let userInitiated = Self.isUserInitiated(navigationAction.navigationType)
         let transition = BrowserSession.navigate(
             page: page,
@@ -151,7 +194,13 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
         publish()
 
         // 页面内点击 / 脚本跳转同样"记完再走"。
-        await BrowserSession.record(transition, origin: origin, log: log)
+        await BrowserSession.record(
+            transition,
+            origin: origin,
+            tabID: pageID,
+            tabTitle: page.title ?? page.url?.absoluteString,
+            log: log
+        )
 
         return transition.urlToLoad == nil ? .cancel : .allow
     }
@@ -170,6 +219,33 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
         @unknown default:
             return false
         }
+    }
+
+    /// 响应阶段：WebKit 显示不了的 MIME（附件、二进制）转下载。
+    ///
+    /// `canShowMIMEType == false` 是官方判据 —— 自己去看 `Content-Disposition` 字符串
+    /// 容易漏（大小写、参数、引号），而且 `navigationResponse.response` 未必带那个头。
+    public func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse
+    ) async -> WKNavigationResponsePolicy {
+        navigationResponse.canShowMIMEType ? .allow : .download
+    }
+
+    public func webView(
+        _ webView: WKWebView,
+        navigationAction: WKNavigationAction,
+        didBecome download: WKDownload
+    ) {
+        download.delegate = self
+    }
+
+    public func webView(
+        _ webView: WKWebView,
+        navigationResponse: WKNavigationResponse,
+        didBecome download: WKDownload
+    ) {
+        download.delegate = self
     }
 
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -198,5 +274,55 @@ extension WebKitBrowserEngine: WKNavigationDelegate {
     ) {
         page.failNavigation(reason: error.localizedDescription)
         publish()
+    }
+}
+
+// MARK: - WKDownloadDelegate（FR-EDIT-34）
+
+extension WebKitBrowserEngine: WKDownloadDelegate {
+
+    /// 目标路径：授权目录 + 安全文件名 + 不覆盖已有文件（规则全在 `BrowserDownload` 里）。
+    public func download(
+        _ download: WKDownload,
+        decideDestinationUsing response: URLResponse,
+        suggestedFilename: String,
+        completionHandler: @escaping (URL?) -> Void
+    ) {
+        let filename = BrowserDownload.sanitizeFilename(suggestedFilename)
+
+        guard let directory = downloadDirectory?() else {
+            onDownloadEvent?(.refused(reason: BrowserDownload.noDirectoryReason))
+            completionHandler(nil)
+            return
+        }
+
+        let destination = BrowserDownload.destination(
+            suggestedFilename: suggestedFilename,
+            directory: directory,
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
+        switch destination {
+        case .ready(let url):
+            downloadTargets[ObjectIdentifier(download)] = (filename: filename, url: url)
+            onDownloadEvent?(.started(filename: filename))
+            completionHandler(url)
+        case .refused(let reason):
+            onDownloadEvent?(.refused(reason: reason))
+            completionHandler(nil)
+        }
+    }
+
+    public func downloadDidFinish(_ download: WKDownload) {
+        let target = downloadTargets.removeValue(forKey: ObjectIdentifier(download))
+        onDownloadEvent?(
+            .finished(filename: target?.filename ?? "download", url: target?.url ?? URL(fileURLWithPath: "download"))
+        )
+    }
+
+    public func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
+        let target = downloadTargets.removeValue(forKey: ObjectIdentifier(download))
+        onDownloadEvent?(
+            .failed(filename: target?.filename ?? "download", reason: error.localizedDescription)
+        )
     }
 }
