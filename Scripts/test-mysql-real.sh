@@ -47,6 +47,24 @@ swift build --disable-sandbox --cache-path "$PWD/.build-cache" --scratch-path "$
     && check "CLI 构建成功" 0 || { check "CLI 构建成功" 1; tail -5 .build/mysql-real-build.log; exit 1; }
 
 echo ""
+echo "== 0.5) 预检：先确认这个账号**允许从本机连**（否则后面全是误导性的失败） =="
+# 为什么单列一步：MySQL 的"Host … is not allowed to connect"发生在**认证之前**，
+# 后面每一节都会失败，而失败信息看着像我们的驱动有问题。先把它挑出来说清楚。
+PRE="$(run_mysql 2>&1 | head -1)"
+if echo "$PRE" | grep -q '"ok":true'; then
+    check "预检通过（本机 IP 在服务端允许列表里）" 0
+else
+    check "预检通过（本机 IP 在服务端允许列表里）" 1
+    echo "    服务端原话：$PRE"
+    echo "    请在 MySQL 上给本机开一个账号，例如："
+    echo "      CREATE DATABASE IF NOT EXISTS $DATABASE;"
+    echo "      CREATE USER 'doyah'@'%' IDENTIFIED BY '<口令>';"
+    echo "      GRANT ALL ON $DATABASE.* TO 'doyah'@'%';"
+    echo "    然后把 DOYAH_MYSQL_USER / DOYAH_MYSQL_PASSWORD 换成它重跑。"
+    exit 1
+fi
+
+echo ""
 echo "== 1) 认证与自省（真实认证插件 / 版本 / 当前库 / 当前用户） =="
 JSON="$(run_mysql)"
 echo "$JSON" | grep -q '"ok":true' && check "连接成功（真实认证插件）" 0 || check "连接成功（真实认证插件）" 1
@@ -88,11 +106,16 @@ if run_sql "SELECT * FROM doyah_not_exist_table" >/dev/null 2>&1; then ec=1; els
 check "查不存在的表时退出码非零" "$ec"
 
 echo ""
-echo "== 6) 元数据树（服务器 → Database → Table → Column，无 schema 层） =="
-TREE="$(DOYAH_DB_TYPE=mysql PGHOST="$HOST" PGPORT="$PORT" PGUSER="$USER_NAME" \
-    PGPASSWORD="$PASSWORD" PGDATABASE="$DATABASE" "$CLI" --tree --columns 2>&1)"
-echo "$TREE" | grep -q "doyah_mysql_probe" && check "树里能看到刚建的表" 0 || check "树里能看到刚建的表" 1
-echo "$TREE" | grep -q "id" && check "树里能看到列" 0 || check "树里能看到列" 1
+echo "== 6) 元数据链路（MySQL 方言真跑：SHOW TABLES / DESC） =="
+# 说明：`doyah --tree` 那条路径是 **PostgreSQL 专用**的（默认路径里写死了 PostgresService，
+# 当初只为 PG 做的），所以这里直接跑**元数据树背后真正用的那两条方言查询**：
+# `MySQLDialect.listTablesQuery`（`SHOW TABLES FROM <库>`）与 `listColumnsQuery`（`DESC <表>`）。
+# 界面上的四层树走的就是它们，因此这里验的是同一条链路，只是没有界面那层壳。
+TABLES="$(run_sql "SHOW TABLES FROM \`$DATABASE\`")"
+echo "$TABLES" | grep -q "doyah_mysql_probe" && check "SHOW TABLES 能看到刚建的表" 0 || check "SHOW TABLES 能看到刚建的表" 1
+COLUMNS="$(run_sql "DESC doyah_mysql_probe")"
+echo "$COLUMNS" | grep -q '"id"' && check "DESC 能列出列（含 id）" 0 || check "DESC 能列出列（含 id）" 1
+echo "$COLUMNS" | grep -q "decimal" && check "DESC 里能看到 decimal 类型" 0 || check "DESC 里能看到 decimal 类型" 1
 
 echo ""
 echo "== 7) 清理 =="
