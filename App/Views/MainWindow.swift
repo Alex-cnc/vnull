@@ -266,6 +266,12 @@ struct MainWindow: View {
                 set: { if !$0 { appState.errorMessage = nil } }
             )
         ) {
+            // 系统弹窗的正文**不能选中**，所以给一个复制按钮 —— 错误原文一长串，
+            // 截图或手抄都会丢信息（用户实测反馈过这一条）。
+            Button(L(.connectionFormCopyFullError)) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(appState.errorMessage ?? "", forType: .string)
+            }
             Button(L(.commonOk), role: .cancel) {}
         } message: {
             Text(appState.errorMessage ?? "")

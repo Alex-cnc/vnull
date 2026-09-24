@@ -431,6 +431,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionFormConnecting
     case connectionFormConnected
     case connectionFormFailed
+    case connectionFormCopyFullError
+    case connectionFormErrorTruncated
 
     // 查询工作区
     case workspaceNoTabsTitle
@@ -2024,6 +2026,8 @@ public enum LocalizedStrings {
         .connectionFormConnecting: [.simplifiedChinese: "正在连接 %@ ...", .english: "Connecting to %@ ..."],
         .connectionFormConnected: [.simplifiedChinese: "连接成功：%@ · %@ · %@", .english: "Connected: %@ · %@ · %@"],
         .connectionFormFailed: [.simplifiedChinese: "连接失败：%@", .english: "Connection failed: %@"],
+        .connectionFormCopyFullError: [.simplifiedChinese: "复制完整错误", .english: "Copy the full error"],
+        .connectionFormErrorTruncated: [.simplifiedChinese: "对话框里只显示了前一段，复制得到的是全文。", .english: "Only the first part is shown here; copying gives you the full text."],
 
         .workspaceNoTabsTitle: [.simplifiedChinese: "没有查询页签", .english: "No Query Tab"],
         .workspaceNoTabsDescription: [.simplifiedChinese: "按 ⌘T 新建一个查询页签", .english: "Press ⌘T to create a query tab"],

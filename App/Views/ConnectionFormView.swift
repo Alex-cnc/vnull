@@ -30,6 +30,9 @@ struct ConnectionFormView: View {
     @State private var sslMode: SSLMode
     @State private var timeout: Int
     @State private var bannerMessage: String?
+    /// **可复制的完整文本**：显示层为了不撑爆对话框会截断，但用户要复制的是**全文**
+    /// （错误原文常常一长串，截图或转述都会丢信息）。没截断时就与 `bannerMessage` 相同。
+    @State private var bannerCopyText: String?
     /// 从连接 URL 导入（FR-CONN-19）。
     @State private var urlText: String = ""
     @State private var urlMessage: String?
@@ -134,13 +137,30 @@ struct ConnectionFormView: View {
 
             Form {
                 if let bannerMessage {
-                    Text(bannerMessage)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.yellow.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(bannerMessage)
+                            .font(Theme.font(.monoSmall))
+                            .foregroundStyle(Theme.text(.secondary))
+                            // **文本要能选中复制**：以前只能截图或手抄，错误原文一长串就丢了。
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let copy = bannerCopyText, copy != bannerMessage {
+                            HStack(spacing: Spacing.s) {
+                                Button(L(.connectionFormCopyFullError)) {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(copy, forType: .string)
+                                }
+                                .font(Theme.font(.caption))
+                                Text(L(.connectionFormErrorTruncated))
+                                    .font(Theme.font(.caption))
+                                    .foregroundStyle(Theme.text(.secondary))
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.surface(.panel))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
                 // 从连接 URL 导入（FR-CONN-19）：粘一行 `postgres://…` 就把表单填好。
@@ -163,6 +183,7 @@ struct ConnectionFormView: View {
                         Text(urlMessage)
                             .font(Theme.font(.caption))
                             .foregroundStyle(urlMessageIsError ? Theme.status(.danger) : Theme.text(.secondary))
+                            .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -407,6 +428,7 @@ struct ConnectionFormView: View {
                     Text(message)
                         .font(Theme.font(.caption))
                         .foregroundStyle(Theme.status(.danger))
+                        .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -419,6 +441,7 @@ struct ConnectionFormView: View {
                         Text(sshTestMessage)
                             .font(Theme.font(.caption))
                             .foregroundStyle(sshTestIsError ? Theme.status(.danger) : Theme.text(.secondary))
+                            .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -608,6 +631,7 @@ struct ConnectionFormView: View {
             if let tunnelConfig {
                 guard let localPort = LocalPort.free() else {
                     bannerMessage = L(.connectionFormFailed, L(.sshTunnelNoFreePort))
+                    bannerCopyText = nil
                     return
                 }
                 let started = SSHTunnelProcess(
@@ -623,6 +647,7 @@ struct ConnectionFormView: View {
                     _ = try await started.start()
                 } catch {
                     bannerMessage = L(.sshTestFailed, error.localizedDescription)
+                    bannerCopyText = nil
                     return
                 }
                 tunnel = started
@@ -634,12 +659,15 @@ struct ConnectionFormView: View {
             do {
                 let serverInfo = try await service.connect()
                 bannerMessage = L(.connectionFormConnected, serverInfo.version, serverInfo.database, serverInfo.user)
+                bannerCopyText = nil
                 await service.disconnect()
             } catch {
                 // 失败信息给人看：`String(reflecting:)` 会带上一堆类型名，先截断再说。
                 let detail = String(reflecting: error)
                 let preview = detail.count > 600 ? String(detail.prefix(600)) + "..." : detail
                 bannerMessage = L(.connectionFormFailed, preview)
+                // 显示用截断预览，复制用全文 —— 上面那个按钮拿的就是它。
+                bannerCopyText = L(.connectionFormFailed, detail)
             }
         }
     }
