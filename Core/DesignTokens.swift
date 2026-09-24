@@ -55,7 +55,14 @@ public enum Metrics {
     public static let hairline: CGFloat = 0.5
     /// 标签 / 列表 / 表格行高 —— "紧凑但留白严格"的具体含义。
     public static let rowHeight: CGFloat = 26
-    public static let listRowHeight: CGFloat = 26
+    /// 树 / 列表行的**内容高度**（对象树、工作区文件树共用）。
+    ///
+    /// 2026-09-24 由 26 收到 22：需求提出者实测「层级行与行的间隔太大了，显得很松散，
+    /// 表稍微多一点就要向下拉滚动条」。实测显示**行距 34pt 而内容只有 26pt** ——
+    /// `List` 每行还自带 ~4pt 上下的内边距（见下面 `.listRowInsets(EdgeInsets())` 那处修复）。
+    /// 两处一起改之后行距 = 22pt（比原来的 34 密三分之一），仍然放得下 caption 字与图标。
+    public static let listRowHeight: CGFloat = 22
+
     public static let tabHeight: CGFloat = 30
     public static let toolbarHeight: CGFloat = 44
     public static let statusBarHeight: CGFloat = 24

@@ -75,9 +75,17 @@ struct ObjectTreeView: View {
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.text(.secondary))
             } else {
-                refreshRow
-                ForEach(visibleRows) { row in
-                    rowView(row)
+                // 整棵树放进**一个** `List` 行里（下面的 `VStack`）：`List`（sidebar 样式）会给
+                // 每个行加固定行距、且**不理会** `listRowInsets`（实测：行内容 22pt 却排成 28pt，
+                // 清零与负内边距都没用）。把行距的所有权拿回来，树的密度才是我们说了算 ——
+                // 需求提出者实测：「层级行与行的间隔太大了，显得很松散，表稍微多一点就要向下拉滚动条」。
+                // 队列的副作用是"整棵树是一行"：它本来就自带选中高亮 / 右键菜单 / 点击展开，
+                // 不依赖 `List` 的行级能力。
+                VStack(alignment: .leading, spacing: 0) {
+                    refreshRow
+                    ForEach(visibleRows) { row in
+                        rowView(row)
+                    }
                 }
             }
         }
@@ -536,6 +544,9 @@ struct ObjectTreeView: View {
 
     private func loadChildren(of object: DatabaseObject) async {
         loadingIDs.insert(object.id)
+        // **必须**用 defer 收：取消（切连接 / 视图重建时 `.task` 被取消）也会从这里返回，
+        // 漏掉这一步那一行就永远转圈（2026-09-24 实测："对象树一直在加载"）。
+        defer { loadingIDs.remove(object.id) }
         errors[object.id] = nil
         do {
             childrenCache[object.id] = try await appState.loadMetadataChildren(of: object)
@@ -560,6 +571,9 @@ struct ObjectTreeView: View {
         }
 
         if !isLoadingRoot { isLoadingRoot = true }
+        // 同上：**任何**返回路径（含"取消 → 直接 return"）都必须把"加载中"收掉，
+        // 否则首屏会永远停在「正在加载对象…」。
+        defer { if isLoadingRoot { isLoadingRoot = false } }
         if rootError != nil { rootError = nil }
 
         var loaded: [DatabaseObject] = []
@@ -578,6 +592,7 @@ struct ObjectTreeView: View {
         } catch {
             // 同上：`.task(id:)` 在连接切换 / 视图重建时会取消上一次加载，
             // 那不是"对象树加载失败"，不该把错误留在界面上。
+            // （"加载中"的收尾由上面的 defer 负责 —— 取消路径不能把它漏掉。）
             guard !CancellationNoise.isNoise(error, taskIsCancelled: Task.isCancelled) else { return }
             roots = []
             childrenCache = [:]
