@@ -277,6 +277,15 @@ struct SQLEditorView: NSViewRepresentable {
                 clear(in: textView)
             case .format:
                 format(in: textView)
+            case .selectNextOccurrence:
+                textView.window?.makeFirstResponder(textView)
+                textView.selectNextOccurrence()
+            case .addCursorAbove:
+                textView.window?.makeFirstResponder(textView)
+                textView.addCursorAbove()
+            case .addCursorBelow:
+                textView.window?.makeFirstResponder(textView)
+                textView.addCursorBelow()
             }
         }
 
@@ -393,6 +402,15 @@ struct SQLEditorView: NSViewRepresentable {
 /// 只做属性渲染的 NSTextView。
 final class SQLTextView: NSTextView {
     private(set) var isApplyingAttributes = false
+    /// ⌥ 拖拽列选择时的起始文本偏移（nil = 当前不是列选择）。
+    private var columnSelectionAnchor: Int?
+
+    /// `NSTextView.selectedRanges` 在 Swift 里是 `[NSValue]`（不是 `[NSRange]`），
+    /// 而 Core 的多光标引擎按 `[NSRange]` 工作 —— 两处转换集中在这里，免得散落十几处。
+    private var rangeValues: [NSRange] { selectedRanges.map(\.rangeValue) }
+    private func setRangeValues(_ ranges: [NSRange]) {
+        selectedRanges = ranges.map { NSValue(range: $0) }
+    }
 
     /// 补全使用「SQL 标识符」范围：字母、数字、下划线，
     /// 这样 `my_table` 这类名字不会被系统按标点切成两段。
@@ -415,13 +433,123 @@ final class SQLTextView: NSTextView {
         return NSRange(location: location, length: length)
     }
 
-    /// ⌃Space 主动唤出补全（系统默认只有 F5 / Esc）。
+    /// ⌃Space 主动唤出补全（系统默认只有 F5 / Esc）；⌥⌘ 系列是多光标操作（FR-EDIT-27）。
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 49, event.modifierFlags.contains(.control) {
             complete(nil)
             return
         }
+        if event.modifierFlags.contains([.command, .option]) {
+            switch event.charactersIgnoringModifiers {
+            case "d":
+                selectNextOccurrence()
+                return
+            case "\u{F700}":   // ↑
+                addCursorAbove()
+                return
+            case "\u{F701}":   // ↓
+                addCursorBelow()
+                return
+            default:
+                break
+            }
+        }
         super.keyDown(with: event)
+    }
+
+    // MARK: - 多光标与列编辑（FR-EDIT-27）
+
+    /// ⌥⌘D：选中下一处与当前选区相同的内容。
+    ///
+    /// **注意键位与需求原文不同**：需求写的是 ⌘D，但 ⌘D 在本产品已绑定「保存查询」
+    /// （FR-EDIT-28 的快捷键表），所以这里用 ⌥⌘D，并在帮助面板登记。冲突是实测出来的，
+    /// 不静默改需求 —— 已写进需求行的「仍未做 / 已知偏差」。
+    func selectNextOccurrence() {
+        var cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        guard cursor.selectNextOccurrence(in: string) else { return }
+        setRangeValues(cursor.selections)
+        scrollRangeToVisible(cursor.primary)
+    }
+
+    /// ⌥⌘↑ / ⌥⌘↓：在相邻行的同列处加一个光标。
+    func addCursorAbove() {
+        var cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        guard cursor.addCursorAbove(in: string) else { return }
+        setRangeValues(cursor.selections)
+    }
+
+    func addCursorBelow() {
+        var cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        guard cursor.addCursorBelow(in: string) else { return }
+        setRangeValues(cursor.selections)
+    }
+
+    /// 把一批编辑一次性写回去：**一次撤销**、保留输入法上下文。
+    private func applyMultiCursor(_ transform: (String) -> (text: String, cursors: MultiCursor)) {
+        let (newText, cursors) = transform(string)
+        guard newText != string else { return }
+        let full = NSRange(location: 0, length: (string as NSString).length)
+        guard shouldChangeText(in: full, replacementString: newText) else { return }
+        textStorage?.replaceCharacters(in: full, with: newText)
+        didChangeText()
+        setRangeValues(cursors.selections)
+    }
+
+    /// 多选区打字：走引擎统一应用（AppKit 对"多个选区同时输入"的行为不保证，
+    /// 自己算能保证语义，也能保证**整批改动是一次撤销**）。
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        let text = (insertString as? String)
+            ?? (insertString as? NSAttributedString)?.string
+            ?? ""
+        guard selectedRanges.count > 1, !text.isEmpty else {
+            super.insertText(insertString, replacementRange: replacementRange)
+            return
+        }
+        let cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        applyMultiCursor { cursor.applying(text, to: $0) }
+    }
+
+    /// 多选区退格：每个光标删一个完整字符（emoji 的代理对一起删）。
+    override func deleteBackward(_ sender: Any?) {
+        guard selectedRanges.count > 1 else {
+            super.deleteBackward(sender)
+            return
+        }
+        let cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        applyMultiCursor { cursor.deletingBackward(in: $0) }
+    }
+
+    /// ⌥ 拖拽：列选择。
+    ///
+    /// 用 `characterIndexForInsertion(at:)` 把鼠标位置换算成文本偏移，再交给 Core
+    /// 逐行取列（短行夹到行尾、绝不跨换行）—— 换算与语义都在 Core 里，这里只搬坐标。
+    override func mouseDown(with event: NSEvent) {
+        guard event.modifierFlags.contains(.option) else {
+            super.mouseDown(with: event)
+            return
+        }
+        columnSelectionAnchor = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
+        updateColumnSelection(to: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let anchor = columnSelectionAnchor else {
+            super.mouseDragged(with: event)
+            return
+        }
+        updateColumnSelection(to: event, anchor: anchor)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        columnSelectionAnchor = nil
+        super.mouseUp(with: event)
+    }
+
+    private func updateColumnSelection(to event: NSEvent, anchor: Int? = nil) {
+        guard let anchor = anchor ?? columnSelectionAnchor else { return }
+        let current = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
+        let ranges = MultiCursor.columnSelection(in: string, from: anchor, to: current)
+        setRangeValues(MultiCursor.normalized(ranges, textLength: string.utf16.count))
     }
 
     func apply(

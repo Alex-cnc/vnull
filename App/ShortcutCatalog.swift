@@ -67,6 +67,13 @@ enum AppShortcut: CaseIterable {
     /// 查询归档（FR-EDIT-31）。
     case archive
 
+    // 多光标与列编辑（FR-EDIT-27）。**注意**：需求原文写的是 ⌘D，
+    // 但 ⌘D 已绑定「保存查询」（见 `.saveQuery`），所以这里用 ⌥⌘D，
+    // 并把这条偏差登记在需求行与帮助面板里 —— 冲突是实测出来的，不静默改需求。
+    case selectNextOccurrence
+    case addCursorAbove
+    case addCursorBelow
+
     var key: KeyEquivalent {
         switch self {
         case .execute: return .return
@@ -99,6 +106,9 @@ enum AppShortcut: CaseIterable {
         case .help: return "/"
         case .terminal: return "j"
         case .archive: return "r"
+        case .selectNextOccurrence: return "d"
+        case .addCursorAbove: return "\u{F700}"
+        case .addCursorBelow: return "\u{F701}"
         }
     }
 
@@ -110,7 +120,8 @@ enum AppShortcut: CaseIterable {
             return [.command]
         case .check, .executionPlan, .saveFileAs, .savedQueries, .history, .clearEditor, .format, .agentAudit, .egressLog, .newBrowserTab, .dataTask, .help, .terminal, .archive:
             return [.command, .shift]
-        case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites:
+        case .replace, .scopeAll, .scopeCurrentStatement, .scopeSelection, .safeMode, .confirmAllWrites,
+             .selectNextOccurrence, .addCursorAbove, .addCursorBelow:
             return [.command, .option]
         }
     }
@@ -122,7 +133,13 @@ enum AppShortcut: CaseIterable {
         if modifiers.contains(.option) { text += "⌥" }
         if modifiers.contains(.shift) { text += "⇧" }
         if modifiers.contains(.command) { text += "⌘" }
-        text += key == .return ? "↩" : String(key.character)
+        switch key.character {
+        case "\u{F700}": text += "↑"
+        case "\u{F701}": text += "↓"
+        case "\u{F702}": text += "←"
+        case "\u{F703}": text += "→"
+        default: text += key == .return ? "↩" : String(key.character)
+        }
         return text
     }
 

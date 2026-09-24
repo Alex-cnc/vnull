@@ -10,6 +10,10 @@ enum EditorCommand: Equatable {
     case outdent
     case clear
     case format
+    /// 多光标与列编辑（FR-EDIT-27）。
+    case selectNextOccurrence
+    case addCursorAbove
+    case addCursorBelow
 }
 
 /// 工具栏 → 当前编辑器（`NSTextView`）的一次性命令通道。

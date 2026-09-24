@@ -1125,6 +1125,9 @@ public enum LKey: String, CaseIterable, Sendable {
     case editMenuOutdent
     case editMenuClear
     case editMenuFormat
+    case editMenuSelectNextOccurrence
+    case editMenuAddCursorAbove
+    case editMenuAddCursorBelow
     case workspaceUnboundTab
     case workspaceUnboundHint
     case fileOpenFailed
@@ -2193,6 +2196,9 @@ public enum LocalizedStrings {
         .editMenuOutdent: [.simplifiedChinese: "反缩进选中文本", .english: "Outdent Selection"],
         .editMenuClear: [.simplifiedChinese: "清除查询", .english: "Clear Query"],
         .editMenuFormat: [.simplifiedChinese: "格式化 SQL", .english: "Format SQL"],
+        .editMenuSelectNextOccurrence: [.simplifiedChinese: "选中下一处相同内容（多光标）", .english: "Select next occurrence (multi-cursor)"],
+        .editMenuAddCursorAbove: [.simplifiedChinese: "在上方加一个光标", .english: "Add cursor above"],
+        .editMenuAddCursorBelow: [.simplifiedChinese: "在下方加一个光标", .english: "Add cursor below"],
         .workspaceUnboundTab: [.simplifiedChinese: "未绑定连接", .english: "No connection"],
         .workspaceUnboundHint: [.simplifiedChinese: "未绑定连接 · 选择服务器后即可执行", .english: "No connection · choose a server to run"],
         .fileOpenFailed: [.simplifiedChinese: "打开文件失败：%@", .english: "Failed to open file: %@"],

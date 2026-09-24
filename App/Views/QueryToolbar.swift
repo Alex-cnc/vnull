@@ -297,6 +297,27 @@ struct QueryToolbar: View {
                 onEditCommand(.format)
             }
             .keyboardShortcut(AppShortcut.format.key, modifiers: AppShortcut.format.modifiers)
+
+            Divider()
+
+            // 多光标与列编辑（FR-EDIT-27）：⌥ 拖拽直接可用，这三项是键盘入口。
+            Button(L(.editMenuSelectNextOccurrence)) {
+                onEditCommand(.selectNextOccurrence)
+            }
+            .keyboardShortcut(
+                AppShortcut.selectNextOccurrence.key,
+                modifiers: AppShortcut.selectNextOccurrence.modifiers
+            )
+
+            Button(L(.editMenuAddCursorAbove)) {
+                onEditCommand(.addCursorAbove)
+            }
+            .keyboardShortcut(AppShortcut.addCursorAbove.key, modifiers: AppShortcut.addCursorAbove.modifiers)
+
+            Button(L(.editMenuAddCursorBelow)) {
+                onEditCommand(.addCursorBelow)
+            }
+            .keyboardShortcut(AppShortcut.addCursorBelow.key, modifiers: AppShortcut.addCursorBelow.modifiers)
         } label: {
             toolbarIcon("pencil")
         }
@@ -521,6 +542,9 @@ struct ShortcutHelpContent: View {
         (.editMenuOutdent, .outdent),
         (.editMenuClear, .clearEditor),
         (.editMenuFormat, .format),
+        (.editMenuSelectNextOccurrence, .selectNextOccurrence),
+        (.editMenuAddCursorAbove, .addCursorAbove),
+        (.editMenuAddCursorBelow, .addCursorBelow),
         (.runScopeAll, .scopeAll),
         (.runScopeCurrentStatement, .scopeCurrentStatement),
         (.runScopeSelection, .scopeSelection),
