@@ -4802,6 +4802,8 @@ final class AppState: ObservableObject {
                 setIfChanged(\.selectedDatabase, serverInfos[configuration.id]?.database ?? names.first)
             }
         } catch {
+            // 取消（`.task(id:)` 在连接切换 / 视图重建时必然发生）**不是故障**，不写错误状态。
+            guard !CancellationNoise.isNoise(error, taskIsCancelled: Task.isCancelled) else { return }
             setIfChanged(\.availableDatabases, [])
             setIfChanged(\.databaseError, ErrorPresenter.message(for: error))
         }
@@ -4823,6 +4825,10 @@ final class AppState: ObservableObject {
             }
         }
         guard let lastResult else {
+            // 取消不是"没有结果集"：`.task` 被取消时流会**提前结束**，调用方看到的同样是"什么都没拿到"。
+            // 不区分这两者，一次正常的取消就会被显示成「SQL 执行失败：查询没有返回结果集」
+            // （实测：启动时 `loadDatabases` 就是这么报出来的）。
+            if Task.isCancelled { throw CancellationError() }
             throw AppError.queryFailed(L(.stateQueryNoResultSet))
         }
         return lastResult

@@ -540,6 +540,9 @@ struct ObjectTreeView: View {
         do {
             childrenCache[object.id] = try await appState.loadMetadataChildren(of: object)
         } catch {
+            // 取消不是故障（见 `CancellationNoise`）：展开/折叠与切连接时 `.task` 会被取消，
+            // 不区分的话树上会莫名出现一条"加载失败"。
+            guard !CancellationNoise.isNoise(error, taskIsCancelled: Task.isCancelled) else { return }
             errors[object.id] = ErrorPresenter.message(for: error)
         }
         loadingIDs.remove(object.id)
@@ -573,6 +576,9 @@ struct ObjectTreeView: View {
             // 留着它会让 ⌘K 里的"浏览数据"作用在一个陈旧的节点上。
             appState.selectedTreeObject = nil
         } catch {
+            // 同上：`.task(id:)` 在连接切换 / 视图重建时会取消上一次加载，
+            // 那不是"对象树加载失败"，不该把错误留在界面上。
+            guard !CancellationNoise.isNoise(error, taskIsCancelled: Task.isCancelled) else { return }
             roots = []
             childrenCache = [:]
             expandedIDs = []
