@@ -144,7 +144,18 @@ public struct MetadataService: Sendable {
         }
 
         let result = try await run(query)
-        return result.rows.compactMap { row -> TableColumnDefinition? in
+        return Self.columnDefinitions(from: result)
+    }
+
+    /// 表结构查询结果的解析（**单一事实源**）。
+    ///
+    /// 为什么抽成静态方法：内联编辑（FR-DATA-04）也要读同一份表结构来判断"哪几列是主键"，
+    /// 而 CLI 不走 `MetadataService` 实例。两处各写一份解析，迟早出现"App 认为有主键、CLI 认为没有"。
+    public static func columnDefinitions(from result: QueryResult) -> [TableColumnDefinition] {
+        result.rows.compactMap { row -> TableColumnDefinition? in
+            func value(_ row: [String?], at index: Int) -> String? {
+                row.indices.contains(index) ? row[index] : nil
+            }
             guard let name = value(row, at: 0), !name.isEmpty else { return nil }
             let typeName = value(row, at: 1) ?? ""
             let isNullable = (value(row, at: 2) ?? "YES").uppercased() != "NO"

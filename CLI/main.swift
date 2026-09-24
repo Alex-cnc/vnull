@@ -343,6 +343,13 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // row-edit：结果集内联编辑（FR-DATA-04）。默认**只预览 DML**，`--apply` 才真写库。
+        if arguments.first == "row-edit" {
+            let code = await runRowEditCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
         // search-objects：全库对象搜索（FR-META-12）。一次元数据查询 + 客户端匹配。
         if arguments.first == "search-objects" {
             let code = await runObjectSearchCommand(
@@ -1110,6 +1117,180 @@ struct DoyahCLI {
     ///
     /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
     /// 而不是靠人在界面里看一眼。
+    /// `row-edit --table T [--schema S] [--pk col=value …] [--set col=value …] [--insert col=value,…] [--delete] [--json] [--apply]`
+    ///
+    /// 默认**只打印将要执行的 DML**（与界面里的"提交前预览"同一份语句）；`--apply` 才在**单个事务**里执行，
+    /// 任何一条失败即整批回滚 —— 需求原文的两条设计要点（单事务 / 失败整批回滚）就落在这里。
+    private static func runRowEditCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func values(for flag: String) -> [String] {
+            var result: [String] = []
+            for (index, argument) in arguments.enumerated() where argument == flag {
+                if index + 1 < arguments.count { result.append(arguments[index + 1]) }
+            }
+            return result
+        }
+        func value(for flag: String) -> String? { values(for: flag).first }
+
+        guard let table = value(for: "--table") else {
+            print("用法：row-edit --table <表> [--schema S] [--pk 列=值 …] [--set 列=值 …] [--insert 列=值,…] [--delete] [--json] [--apply]")
+            return 64
+        }
+        let schema = value(for: "--schema")
+        let dialect = PostgresDialect()
+
+        // 表结构：主键与列类型都从这里来（不靠猜）
+        guard let structureQuery = dialect.tableStructureQuery(table: table, schema: schema) else {
+            print("当前方言不支持读取表结构，无法安全生成 DML")
+            return 66
+        }
+        var structureResult: QueryResult?
+        do {
+            for try await event in service.execute(structureQuery, options: .default) {
+                if case .resultSet(let value) = event { structureResult = value }
+            }
+        } catch {
+            print("读取表结构失败：\(error)")
+            return 66
+        }
+        guard let structureResult else {
+            print("没有取到表结构")
+            return 66
+        }
+        let definitions = MetadataService.columnDefinitions(from: structureResult)
+        guard !definitions.isEmpty else {
+            print("表 \(table) 没有列（表名是否正确？）")
+            return 1
+        }
+        let columns = definitions.map {
+            InlineEdit.Column(
+                name: $0.name,
+                typeName: $0.typeName,
+                isPrimaryKey: $0.isPrimaryKey,
+                isNullable: $0.isNullable
+            )
+        }
+
+        // 行定位：`--pk 列=值`（可多次，复合主键）
+        let primaryKeys = columns.filter(\.isPrimaryKey)
+        // 三处 `列=值` 的拆分都带 `omittingEmptySubsequences: false`：Swift 的 `split` 默认
+        // **丢掉空子串**，于是 `--set note=` 会被拆成 ["note"] 而不是 ["note", ""] ——
+        // 那就没法用命令行表达"空串"（而空串与 NULL 必须能区分，这是本项的设计要点之一）。
+        let locator = values(for: "--pk").compactMap { pair -> (String, String)? in
+            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            return parts.count == 2 ? (parts[0], parts[1]) : nil
+        }
+        // 定位行的值：一律按**主键顺序**取，与 `columnNames` 的登记顺序严格一致 ——
+        // 顺序错位会让 WHERE 拼到别的列上（这类错误在预览里几乎看不出来）。
+        let locatorValues: [String?] = primaryKeys.map { key in
+            locator.first { $0.0.lowercased() == key.name.lowercased() }?.1
+        }
+        let planRows: [[String?]] = [locatorValues]
+        let planColumnNames: [String] = primaryKeys.map(\.name)
+
+        // 改动
+        var changes: [InlineEdit.Change] = []
+        for assignment in values(for: "--set") {
+            let parts = assignment.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 2 else {
+                print("--set 需要写成 列=值：\(assignment)")
+                return 64
+            }
+            changes.append(.update(rowIndex: 0, column: parts[0], value: typed(parts[1], column: parts[0], columns: columns)))
+        }
+        if let insertList = value(for: "--insert") {
+            var payload: [String: InlineEdit.Value] = [:]
+            for pair in insertList.split(separator: ",") {
+                let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+                guard parts.count == 2 else {
+                    print("--insert 需要写成 列=值,列=值：\(insertList)")
+                    return 64
+                }
+                payload[parts[0]] = typed(parts[1], column: parts[0], columns: columns)
+            }
+            changes.append(.insert(values: payload))
+        }
+        if arguments.contains("--delete") {
+            guard !primaryKeys.isEmpty else {
+                print("这张表没有主键，无法安全删除单行")
+                return 3
+            }
+            changes.append(.delete(rowIndex: 0))
+        }
+        guard !changes.isEmpty else {
+            print("没有改动（用 --set / --insert / --delete）")
+            return 64
+        }
+        let plan = InlineEdit.plan(
+            table: table,
+            schema: schema,
+            columnNames: planColumnNames,
+            columns: columns,
+            rows: planRows,
+            changes: changes,
+            dialect: dialect
+        )
+
+        if arguments.contains("--json") {
+            let payload: [String: Any] = [
+                "applicable": plan.isApplicable,
+                "statements": plan.statements,
+                "refusals": plan.refusals
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                print(text)
+                return plan.isApplicable ? 0 : 3
+            }
+        }
+
+        if !plan.refusals.isEmpty {
+            for refusal in plan.refusals { print("⚠️ \(refusal)") }
+            return 3
+        }
+
+        print("将执行 \(plan.statements.count) 条语句：")
+        for statement in plan.statements { print("  \(statement);") }
+
+        guard arguments.contains("--apply") else {
+            print("（预览模式：加 --apply 才真正执行；执行包在单个事务里，任何一条失败即整批回滚）")
+            return 0
+        }
+
+        do {
+            try await service.beginTransaction()
+            for statement in plan.statements {
+                for try await _ in service.execute(statement, options: .default) {}
+            }
+            try await service.commit()
+            print("已提交 \(plan.statements.count) 条改动（单个事务）")
+            return 0
+        } catch {
+            try? await service.rollback()
+            print("已回滚整批：\(error)")
+            return 1
+        }
+    }
+
+    /// 按**列类型**把命令行里的文本变成类型化的值；`NULL`（不分大小写）表示空值。
+    /// 注意空串与 NULL 是两回事：`--set note=` 是空串，`--set note=NULL` 才是 NULL。
+    private static func typed(
+        _ raw: String,
+        column: String,
+        columns: [InlineEdit.Column]
+    ) -> InlineEdit.Value {
+        if raw.uppercased() == "NULL" { return .null }
+        let typeName = (columns.first { $0.name.lowercased() == column.lowercased() }?.typeName ?? "").lowercased()
+        if typeName.contains("bool") {
+            return .boolean(raw.lowercased() == "true" || raw == "1")
+        }
+        let numeric = ["int", "numeric", "decimal", "real", "double", "float", "serial"].contains { typeName.contains($0) }
+        if numeric, Double(raw) != nil { return .number(raw) }
+        return .text(raw)
+    }
+
     private static func runObjectSearchCommand(
         arguments: [String],
         service: any DatabaseService
