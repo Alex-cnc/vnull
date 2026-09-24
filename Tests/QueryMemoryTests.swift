@@ -25,6 +25,49 @@ final class QueryMemoryTests: XCTestCase {
         XCTAssertNotEqual(orders, customers)
     }
 
+    /// **回归（2026-09-23 实测抓到的真缺陷）**：表名里的数字**不是**参数。
+    ///
+    /// 逐字符扫描的旧实现把 `orders1` / `orders2` / `orders3` 都归一成 `orders?`，
+    /// 三条不同表的记忆被并成一条（实测 6 次、3 个变体），补全于是会把 orders1 的语句
+    /// 推给正在查 orders2 的人 —— 正是本文件注释声称要防的那种错。
+    /// 当初的验证脚本没用过"只有数字不同的表名"这种现场，所以漏了。
+    func testDigitsInsideIdentifiersAreNotParameters() {
+        let one = QueryMemory.coarseFingerprint("SELECT * FROM orders1 WHERE id = 1")
+        let two = QueryMemory.coarseFingerprint("SELECT * FROM orders2 WHERE id = 1")
+        let three = QueryMemory.coarseFingerprint("SELECT * FROM orders3 WHERE id = 1")
+        XCTAssertNotEqual(one, two)
+        XCTAssertNotEqual(two, three)
+        XCTAssertTrue(one.contains("orders1"), one)
+        XCTAssertTrue(two.contains("orders2"), two)
+        // 数字**字面量**该归一还是要归一（别把修法做过头）
+        XCTAssertEqual(one, QueryMemory.coarseFingerprint("SELECT * FROM orders1 WHERE id = 99"))
+    }
+
+    /// 列名里的数字同理。
+    func testDigitsInsideColumnNamesAreNotParameters() {
+        XCTAssertNotEqual(
+            QueryMemory.coarseFingerprint("SELECT col1, col2 FROM t"),
+            QueryMemory.coarseFingerprint("SELECT col3, col4 FROM t")
+        )
+    }
+
+    /// 带引号的标识符里数字也必须保留（`"t1"` 与 `"t2"` 不是同一条）。
+    func testDigitsInsideQuotedIdentifiersArePreserved() {
+        XCTAssertNotEqual(
+            QueryMemory.coarseFingerprint("SELECT * FROM \"t1\""),
+            QueryMemory.coarseFingerprint("SELECT * FROM \"t2\"")
+        )
+        XCTAssertTrue(QueryMemory.coarseFingerprint("SELECT * FROM \"t1\"").contains("\"t1\""))
+    }
+
+    /// 位置参数 `$1` / `$2` 是**不同的占位**，不能被归一成同一个。
+    func testPositionalParametersStayDistinct() {
+        XCTAssertNotEqual(
+            QueryMemory.coarseFingerprint("SELECT * FROM t WHERE a = $1 AND b = $2"),
+            QueryMemory.coarseFingerprint("SELECT * FROM t WHERE a = $2 AND b = $1")
+        )
+    }
+
     /// 字符串里的引号转义不能把后续内容判错（`'it''s'` 是一个字面量）。
     func testEscapedQuotesInsideLiteral() {
         let fingerprint = QueryMemory.coarseFingerprint("SELECT * FROM t WHERE note = 'it''s ok' AND id = 3")

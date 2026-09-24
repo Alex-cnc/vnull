@@ -248,7 +248,49 @@ public enum QueryMemory {
                 continue
             }
 
-            // 数字字面量 → `?`
+            // 引号包起来的**标识符**（`"orders1"` / `` `orders1` ``）原样保留。
+            //
+            // 这一步不能省：只按"逐个字符扫"的写法，引号内的数字会在下面那条
+            // 数字分支里被换成 `?`，于是 `"t1"` 与 `"t2"` 变成同一个骨架。
+            if character == "\"" || character == "`" {
+                let quote = character
+                var cursor = sql.index(after: index)
+                while cursor < sql.endIndex {
+                    let current = sql[cursor]
+                    cursor = sql.index(after: cursor)
+                    if current == quote {
+                        // 双写引号是转义（`"a""b"` 是一个标识符）。
+                        if cursor < sql.endIndex, sql[cursor] == quote {
+                            cursor = sql.index(after: cursor)
+                            continue
+                        }
+                        break
+                    }
+                }
+                result += String(sql[index..<cursor])
+                index = cursor
+                continue
+            }
+
+            // 标识符：**连同其中的数字一起**原样保留。
+            //
+            // 2026-09-23 修：原先逐字符扫描，`FROM orders1` 与 `FROM orders2` 都会被归一成
+            // `from orders?` 而**并成一条记忆** —— 频次被合并、补全会把 orders1 的语句推给
+            // 正在查 orders2 的人，正是本文件注释里声称要防的"张冠李戴"。当初的 16 项单测
+            // 与验证脚本没用过"只有数字不同的表名"这种现场，所以没抓出来。
+            if character.isLetter || character == "_" || character == "$" {
+                var cursor = index
+                while cursor < sql.endIndex {
+                    let current = sql[cursor]
+                    guard current.isLetter || current.isNumber || current == "_" || current == "$" else { break }
+                    cursor = sql.index(after: cursor)
+                }
+                result += String(sql[index..<cursor])
+                index = cursor
+                continue
+            }
+
+            // 数字**字面量** → `?`（只有以数字开头的独立词才走这里）
             if character.isNumber {
                 var cursor = index
                 while cursor < sql.endIndex, sql[cursor].isNumber || sql[cursor] == "." {

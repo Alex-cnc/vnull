@@ -162,6 +162,27 @@ PY
 [ $? -eq 0 ] || fail=1
 
 echo ""
+echo "== 10) 骨架保真回归：表名里的数字不是参数（2026-09-23 实测抓到的真缺陷）=="
+# 旧实现逐字符扫描，把 orders1 / orders2 / orders3 都归一成 `orders?`，
+# 三条不同表的记忆被并成一条（6 次、3 变体），补全会张冠李戴。
+# **这个现场当初没有** —— 所以 16 项单测与第 1~9 节全过了，缺陷却还在。
+DIGIT_DIR="$(mktemp -d -t doyah-memory-digits)"
+for n in 1 2 3; do
+    "$CLI" archive-add --dir "$DIGIT_DIR" --sql "SELECT * FROM orders$n WHERE id = 1" \
+        --connection 生产库 --runs 2 --at "2026-09-21T0$n:00:00Z" >/dev/null
+done
+DIGIT_OUT="$("$CLI" memory --dir "$DIGIT_DIR" 2>&1)"
+echo "$DIGIT_OUT" | sed 's/^/  /'
+echo "$DIGIT_OUT" | grep -q "派生出 3 条记忆" && check "三张只有数字不同的表 → 三条记忆（不被误合并）" 0 \
+    || { check "表名里的数字被误当参数（会张冠李戴）" 1; echo "$DIGIT_OUT" | head -4; }
+echo "$DIGIT_OUT" | grep -q "orders1" && echo "$DIGIT_OUT" | grep -q "orders2" && echo "$DIGIT_OUT" | grep -q "orders3" \
+    && check "三条骨架各自保留了真实表名" 0 || check "骨架应保留表名里的数字" 1
+# 频次不能被合并成 6：每条应为 2 次
+[ "$(echo "$DIGIT_OUT" | grep -c "2 次")" = "3" ] && check "频次按表分别累计（各 2 次，不是合并的 6 次）" 0 \
+    || check "频次累计" 1
+rm -rf "$DIGIT_DIR"
+
+echo ""
 if [ "$fail" -eq 0 ]; then
     echo "通过：记忆层聚类 / 频次 / 跨天 / 连接隔离 / 纯派生缓存（搬目录等价）/ 坏文件容错 / 补全合并策略都成立"
 else
