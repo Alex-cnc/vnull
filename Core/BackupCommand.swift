@@ -102,7 +102,8 @@ public enum BackupCommand {
         archivePath: String,
         clean: Bool = false,
         jobs: Int? = nil,
-        section: String? = nil
+        section: String? = nil,
+        exitOnError: Bool = false
     ) -> [String]? {
         guard isValidPort(target.port),
               !archivePath.isEmpty,
@@ -116,6 +117,7 @@ public enum BackupCommand {
         if clean { argv.append("--clean") }
         if let jobs { argv += ["--jobs", "\(jobs)"] }
         if let section, !section.isEmpty { argv += ["--section", section] }
+        if exitOnError { argv.append("--exit-on-error") }
         argv.append(archivePath)
         return argv
     }

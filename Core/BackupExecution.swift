@@ -20,6 +20,16 @@ public struct BackupPlan: Equatable, Sendable {
     public var jobs: Int?
     public var noOwner: Bool
     public var clean: Bool
+    /// 恢复的分段（`pg_restore --section`）：把一次恢复拆成三段，是「失败续跑」的基础 ——
+    /// 失败后不必从头再来，从没做完的那一段接着做。
+    public var section: String?
+    /// 遇到第一个错误就停（`--exit-on-error`）。
+    ///
+    /// 默认**不停**（pg_restore 自己会在结束时汇总错误）—— 因为"继续跑完、最后一次性看报告"
+    /// 更适合恢复：中途因一条权限错误就停下，剩下的表全没恢复，反而更难收场。
+    /// 但**想从断点续跑时**要打开它：否则你不知道该从哪一段接（错误之后它还在继续写）。
+    public var exitOnError: Bool
+
     /// 集群级备份的互斥选项。
     public var rolesOnly: Bool
     public var globalsOnly: Bool
@@ -36,6 +46,8 @@ public struct BackupPlan: Equatable, Sendable {
         jobs: Int? = nil,
         noOwner: Bool = false,
         clean: Bool = false,
+        section: String? = nil,
+        exitOnError: Bool = false,
         rolesOnly: Bool = false,
         globalsOnly: Bool = false,
         noRolePasswords: Bool = false,
@@ -48,6 +60,8 @@ public struct BackupPlan: Equatable, Sendable {
         self.jobs = jobs
         self.noOwner = noOwner
         self.clean = clean
+        self.section = section
+        self.exitOnError = exitOnError
         self.rolesOnly = rolesOnly
         self.globalsOnly = globalsOnly
         self.noRolePasswords = noRolePasswords
@@ -90,7 +104,9 @@ public struct BackupPlan: Equatable, Sendable {
                 target: target,
                 archivePath: filePath,
                 clean: clean,
-                jobs: jobs
+                jobs: jobs,
+                section: section,
+                exitOnError: exitOnError
             )
         }
         guard var argv = generated, !argv.isEmpty else { return nil }
