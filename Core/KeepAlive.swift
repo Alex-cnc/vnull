@@ -18,9 +18,13 @@ public struct KeepAlivePolicy: Equatable, Sendable {
     /// 空闲多久之后发一次心跳（秒）。下限 5 秒：再密就不是保活、而是刷屏了。
     public var intervalSeconds: Int
 
+    /// 间隔下限（秒）。放成公开常量是因为**界面 / 偏好读取 / 策略**三处都要用同一个下限 ——
+    /// 界面里再写一个字面量 5，迟早出现"界面允许 3 秒、策略却按 5 秒跑"的错位。
+    public static let minimumIntervalSeconds = 5
+
     public init(isEnabled: Bool = true, intervalSeconds: Int = 60) {
         self.isEnabled = isEnabled
-        self.intervalSeconds = max(5, intervalSeconds)
+        self.intervalSeconds = max(Self.minimumIntervalSeconds, intervalSeconds)
     }
 
     public static let `default` = KeepAlivePolicy()

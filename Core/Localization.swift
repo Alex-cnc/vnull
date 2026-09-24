@@ -880,6 +880,24 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionFormGroup
     case connectionFormGroupExisting
     case connectionFormStartupSQLHint
+    // 从连接 URL 导入（FR-CONN-19）
+    case connectionFormURLImport
+    case connectionFormURLPlaceholder
+    case connectionFormURLImportAction
+    case connectionFormURLImported
+    case connectionFormURLIgnored
+    case connectionFormURLFailed
+    // 连接保活设置（FR-CONN-20）
+    case connectionSettingsTitle
+    case connectionSettingsKeepAliveSection
+    case connectionSettingsKeepAliveToggle
+    case connectionSettingsKeepAliveInterval
+    case connectionSettingsKeepAliveLowerBound
+    case connectionSettingsKeepAliveHint
+    case connectionSettingsKeepAliveNever
+    case connectionSettingsKeepAliveStatus
+    case connectionSettingsKeepAliveUnhealthy
+    case menuConnectionSettings
     case safetyConfirmRun
     case safetyConfirmCancel
 
@@ -1679,6 +1697,22 @@ public enum LocalizedStrings {
         .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
         .connectionFormGroup: [.simplifiedChinese: "分组 / 文件夹（可留空）", .english: "Group / folder (optional)"],
         .connectionFormGroupExisting: [.simplifiedChinese: "已有分组：%@", .english: "Existing groups: %@"],
+        .connectionFormURLImport: [.simplifiedChinese: "从连接 URL 导入（postgres://…）", .english: "Import from a connection URL (postgres://…)"],
+        .connectionFormURLPlaceholder: [.simplifiedChinese: "粘贴 postgres://user:pass@host:5432/dbname?sslmode=require", .english: "Paste postgres://user:pass@host:5432/dbname?sslmode=require"],
+        .connectionFormURLImportAction: [.simplifiedChinese: "导入并填充表单", .english: "Import and fill in"],
+        .connectionFormURLImported: [.simplifiedChinese: "已按 URL 填充：%@（密码已填入，保存后写入凭据）", .english: "Filled from URL: %@ (password filled in; stored when you save)"],
+        .connectionFormURLIgnored: [.simplifiedChinese: "已忽略不支持的参数：%@", .english: "Ignored unsupported parameters: %@"],
+        .connectionFormURLFailed: [.simplifiedChinese: "URL 解析失败：%@", .english: "Could not parse the URL: %@"],
+        .connectionSettingsTitle: [.simplifiedChinese: "连接设置", .english: "Connection settings"],
+        .connectionSettingsKeepAliveSection: [.simplifiedChinese: "连接保活", .english: "Keep-alive"],
+        .connectionSettingsKeepAliveToggle: [.simplifiedChinese: "空闲时发送心跳（只有确实空闲够久才发，正在用的连接不打扰）", .english: "Send a heartbeat when idle (only when genuinely idle — connections in use are left alone)"],
+        .connectionSettingsKeepAliveInterval: [.simplifiedChinese: "间隔：%d 秒", .english: "Interval: %d s"],
+        .connectionSettingsKeepAliveLowerBound: [.simplifiedChinese: "下限 5 秒 —— 再密就不是保活，而是刷屏", .english: "Minimum 5 s — anything tighter is spam, not keep-alive"],
+        .connectionSettingsKeepAliveHint: [.simplifiedChinese: "心跳是 `SELECT 1`（只读、无副作用）；失败只如实记录，**不会**据此断开连接", .english: "The heartbeat is `SELECT 1` (read-only, no side effects); a failure is recorded and never used to drop the connection"],
+        .connectionSettingsKeepAliveNever: [.simplifiedChinese: "本次运行还没有发过心跳", .english: "No heartbeat sent in this run yet"],
+        .connectionSettingsKeepAliveStatus: [.simplifiedChinese: "本次运行：成功 %d 次 / 失败 %d 次", .english: "This run: %d succeeded / %d failed"],
+        .connectionSettingsKeepAliveUnhealthy: [.simplifiedChinese: "最近一次心跳失败：%@", .english: "Last heartbeat failed: %@"],
+        .menuConnectionSettings: [.simplifiedChinese: "连接设置…", .english: "Connection Settings…"],
         .backupRestoreTitle: [.simplifiedChinese: "备份 / 恢复", .english: "Backup / restore"],
         .backupRestoreHint: [.simplifiedChinese: "封装 `pg_dump` / `pg_restore` / `pg_dumpall`：**执行前先比工具与服务端主版本**，不兼容就提前拦下并说明原因与办法", .english: "Wraps pg_dump / pg_restore / pg_dumpall. Tool and server major versions are compared before running; incompatible pairs are stopped early with a reason and a remedy"],
         .backupRestoreKindDump: [.simplifiedChinese: "单库备份", .english: "Dump one database"],

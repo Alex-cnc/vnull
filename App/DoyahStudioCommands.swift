@@ -101,6 +101,10 @@ struct DoyahStudioCommands: Commands {
                 appState.isAppearancePresented = true
             }
 
+            Button(L(.menuConnectionSettings)) {
+                appState.isConnectionSettingsPresented = true
+            }
+
             Divider()
 
             Button(L(.lowerPaneToggle)) {

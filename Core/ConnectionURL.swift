@@ -46,6 +46,25 @@ public enum ConnectionURL {
         }
     }
 
+    /// 「从 URL 导入」并进**用户已经填了一半的表单**时的两条合并规则（FR-CONN-19）。
+    ///
+    /// 为什么抽成纯函数：这两条恰恰是"做错了也没人立刻发现"的地方 ——
+    /// 覆盖掉用户手写的连接名、把"URL 里没写密码"当成"把密码清空"，
+    /// 都属于"导入一下，我填的东西没了"。放进 Core 才能用单测钉住。
+    public enum FormMerge {
+
+        /// 连接名：用户写了就**保留用户写的**；空着才采用 URL 推断出的名字。
+        public static func resolvedName(current: String, imported: String) -> String {
+            current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? imported : current
+        }
+
+        /// 密码：URL 里带了才覆盖；没带就保持用户已输入的（**不静默清空**）。
+        public static func resolvedPassword(current: String, imported: String?) -> String {
+            guard let imported else { return current }
+            return imported
+        }
+    }
+
     /// 解析连接 URL。
     ///
     /// - Parameter name: 连接名；不给就用"主机/库"拼一个可读的默认名。

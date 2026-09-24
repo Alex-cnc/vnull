@@ -26,6 +26,10 @@ struct ConnectionFormView: View {
     @State private var sslMode: SSLMode
     @State private var timeout: Int
     @State private var bannerMessage: String?
+    /// 从连接 URL 导入（FR-CONN-19）。
+    @State private var urlText: String = ""
+    @State private var urlMessage: String?
+    @State private var urlMessageIsError = false
     private var existingGroups: [String] { ConnectionGrouping.groupNames(existingConnections) }
     @State private var isTesting: Bool = false
 
@@ -80,6 +84,30 @@ struct ConnectionFormView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.yellow.opacity(0.18))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
+                // 从连接 URL 导入（FR-CONN-19）：粘一行 `postgres://…` 就把表单填好。
+                // 解析 / 序列化 / "配置文件里不留密码" 三条纪律由 Core 的 `ConnectionURL` 负责
+                // （已有单测与脚本），这里只做"填进哪几个字段"的映射，不重复实现解析。
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text(L(.connectionFormURLImport))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
+                    HStack(spacing: Spacing.s) {
+                        TextField(L(.connectionFormURLPlaceholder), text: $urlText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { importFromURL() }
+                        Button(L(.connectionFormURLImportAction)) {
+                            importFromURL()
+                        }
+                        .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    if let urlMessage {
+                        Text(urlMessage)
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(urlMessageIsError ? Theme.status(.danger) : Theme.text(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 TextField(L(.connectionFormName), text: $name)
@@ -200,6 +228,45 @@ struct ConnectionFormView: View {
             .padding()
         }
         .frame(width: 520, height: 600)
+    }
+
+    /// 把一行连接 URL 映射到表单字段（FR-CONN-19）。
+    ///
+    /// 三条刻意的选择：
+    /// ① **失败只说人话**：直接把 `ConnectionURL.ParseError` 的 `errorDescription` 显示出来，
+    ///    它是给用户看的（哪一段不合法、缺什么），不是给开发者看的。
+    /// ② **被忽略的参数要报出来**：URL 里带了 `application_name` 之类我们没实现的参数时，
+    ///    静默丢弃会让人以为"设置生效了"。
+    /// ③ **名称只在空的时候填**：用户已经写了名字就别覆盖。
+    private func importFromURL() {
+        let raw = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+
+        switch ConnectionURL.parse(raw) {
+        case .failure(let error):
+            urlMessageIsError = true
+            urlMessage = L(.connectionFormURLFailed, error.errorDescription ?? "\(error)")
+
+        case .success(let imported):
+            let config = imported.configuration
+            dbType = config.dbType
+            host = config.host
+            port = String(config.port)
+            database = config.database
+            username = config.username
+            sslMode = config.sslMode
+            // 两条合并规则在 Core 里（`ConnectionURL.FormMerge`，有单测）：
+            // 名称只在空着的时候采用 URL 推断值；密码只在 URL 里带了才覆盖。
+            password = ConnectionURL.FormMerge.resolvedPassword(current: password, imported: imported.password)
+            name = ConnectionURL.FormMerge.resolvedName(current: name, imported: config.name)
+
+            urlMessageIsError = false
+            var message = L(.connectionFormURLImported, config.endpointDescription)
+            if !imported.ignoredParameters.isEmpty {
+                message += " " + L(.connectionFormURLIgnored, imported.ignoredParameters.joined(separator: ", "))
+            }
+            urlMessage = message
+        }
     }
 
     private func testConnection() {

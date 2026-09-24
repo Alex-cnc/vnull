@@ -112,6 +112,11 @@ struct MainWindow: View {
         .sheet(isPresented: $appState.isAppearancePresented) {
             AppearanceSheet()
         }
+        // 连接设置（FR-CONN-20）：保活心跳的开关与间隔。
+        .sheet(isPresented: $appState.isConnectionSettingsPresented) {
+            ConnectionSettingsSheet()
+                .environmentObject(appState)
+        }
         .alert(
             L(.accountUndecidedTitle),
             isPresented: $appState.isAccountNoticePresented

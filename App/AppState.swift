@@ -196,6 +196,11 @@ final class AppState: ObservableObject {
     /// 「外观」面板（FR-EDIT-33：强调色可配置）。
     @Published var isAppearancePresented = false
 
+    /// 「连接设置」面板（FR-CONN-20：保活心跳的开关与间隔）。
+    ///
+    /// 保活是**应用级**策略，所以开关不放连接表单 —— 放那儿会让人以为它是逐连接的属性。
+    @Published var isConnectionSettingsPresented = false
+
     /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
     @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
         id: UserDefaults.standard.string(forKey: ActivityBarItem.storageKey)
@@ -3021,6 +3026,7 @@ final class AppState: ObservableObject {
         case "objectSearch": isObjectSearchPresented = true
         case "routineCandidates": isRoutineCandidatesPresented = true
         case "backupRestore": isBackupRestorePresented = true
+        case "connectionSettings": isConnectionSettingsPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)

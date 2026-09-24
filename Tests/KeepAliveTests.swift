@@ -30,6 +30,14 @@ final class KeepAliveTests: XCTestCase {
         XCTAssertEqual(KeepAlivePolicy(intervalSeconds: 120).intervalSeconds, 120, "可配置的间隔要原样保留")
     }
 
+    /// 下限是**一个**常量：界面（设置面板的 Stepper）与策略都读它，
+    /// 不允许界面再写一个字面量 5 —— 否则迟早出现"界面允许 3 秒、策略按 5 秒跑"。
+    func testMinimumIntervalIsTheSameConstantUsedForClamping() {
+        XCTAssertEqual(KeepAlivePolicy.minimumIntervalSeconds, 5)
+        XCTAssertEqual(KeepAlivePolicy(intervalSeconds: 0).intervalSeconds, KeepAlivePolicy.minimumIntervalSeconds)
+        XCTAssertEqual(KeepAlivePolicy(intervalSeconds: -100).intervalSeconds, KeepAlivePolicy.minimumIntervalSeconds)
+    }
+
     func testNextPingDateAndCountdown() {
         let policy = KeepAlivePolicy(intervalSeconds: 60)
         let last = ago(20)

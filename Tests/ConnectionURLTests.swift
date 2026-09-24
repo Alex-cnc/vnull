@@ -70,6 +70,29 @@ final class ConnectionURLTests: XCTestCase {
         XCTAssertEqual(named.configuration.name, "生产")
     }
 
+    // MARK: 导入合并规则（FR-CONN-19 的界面接线依赖它们）
+
+    func testMergeKeepsUserTypedName() {
+        XCTAssertEqual(
+            ConnectionURL.FormMerge.resolvedName(current: "我的生产库", imported: "db.internal/orders"),
+            "我的生产库"
+        )
+    }
+
+    func testMergeFillsNameWhenBlank() {
+        XCTAssertEqual(ConnectionURL.FormMerge.resolvedName(current: "   ", imported: "db.internal/orders"), "db.internal/orders")
+        XCTAssertEqual(ConnectionURL.FormMerge.resolvedName(current: "", imported: "db.internal/orders"), "db.internal/orders")
+    }
+
+    func testMergeKeepsPasswordWhenURLHasNone() {
+        // URL 里没写密码 => 保持用户已输入的，**不清空**。
+        XCTAssertEqual(ConnectionURL.FormMerge.resolvedPassword(current: "typed", imported: nil), "typed")
+    }
+
+    func testMergeUsesPasswordFromURLWhenPresent() {
+        XCTAssertEqual(ConnectionURL.FormMerge.resolvedPassword(current: "typed", imported: "from-url"), "from-url")
+    }
+
     // MARK: 解析失败
 
     func testFailuresAreSpecific() {

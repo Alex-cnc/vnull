@@ -32,6 +32,7 @@ public enum MenuLocalization {
         .menuNewBrowserTab,
         .menuLanguage,
         .menuAppearance,
+        .menuConnectionSettings,
         .menuViewDatabase,
         .menuViewWorkspace
     ]
