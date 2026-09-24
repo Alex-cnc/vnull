@@ -3820,6 +3820,21 @@ final class AppState: ObservableObject {
     @Published var isSessionCommandPresented = false
     @Published var isLockCommandPresented = false
     @Published var isSyntheticCommandPresented = false
+
+    // MARK: 对象树里的面板目标（为什么放这里，而不是留在 ObjectTreeView 的 @State）
+    //
+    // 2026-09-24 修「编辑表结构」点取消时界面连续闪烁时定的规矩：**呈现方必须挂在单个视图上**。
+    // 元凶是 `.sheet` 挂在 `Group` 上 —— SwiftUI 会把修饰符**分发到每个子视图**，而对象树的
+    // 内容就是"N 行"，于是每行各挂一份（实测 16 行 × 11 个 sheet = 176 个呈现槽），
+    // 取消时它们逐个收起 ⇒ 界面来回闪很多次才关。
+    // 修法是把这些 sheet 移到**父级那个唯一的 `List`** 上（`ConnectionListView`），
+    // 而目标状态必须跟着上移，于是放进 AppState（与 `isBrowseRowsCommandPresented` 同一套路）。
+    @Published var createTableTarget: DatabaseObject?
+    @Published var alterTableTarget: DatabaseObject?
+    @Published var isCreateDatabasePresented = false
+    @Published var isPropertiesPresented = false
+    @Published var isDropDatabasePresented = false
+    @Published var isPrivilegePanelPresented = false
     /// 切换连接（⌘K → 切换连接）：侧栏与查询上下文栏都有连接选择器，但没有全局入口，
     /// 所以这条命令弹一个**最小可用的**切换 sheet（见 `MainWindow` 的 `ConnectionSwitchSheet`）。
     @Published var isConnectionSwitchPresented = false

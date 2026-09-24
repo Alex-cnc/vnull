@@ -21,20 +21,16 @@ struct ObjectTreeView: View {
     @State private var errors: [String: String] = [:]
     @State private var isLoadingRoot = false
     @State private var rootError: String?
-    @State private var isCreateDatabasePresented = false
-    /// 「新建表」的目标节点（数据库或 schema 节点）；非 nil 时呈现表设计面板。
-    @State private var createTableTarget: DatabaseObject?
-    /// 「编辑表结构」的目标表节点；非 nil 时呈现表设计面板（编辑模式）。
-    @State private var alterTableTarget: DatabaseObject?
-    // 注：「按条件浏览 / 合成数据」这两个面板**没有**本地目标 state。
-    // 它们的入口有两个（右键菜单与 ⌘K 命令面板），目标统一取 `appState.selectedTreeObject`、
-    // 呈现开关统一取 AppState 的标志位 —— 本地 state 与全局标志位各存一份，
+    // 注：所有「弹出面板」的目标与开关都**不在这里** —— 它们住在 `AppState`
+    // （`createTableTarget` / `alterTableTarget` / `isCreateDatabasePresented` …）。
+    //
+    // 为什么（2026-09-24 修闪烁时定的规矩）：呈现方必须挂在**单个视图**上。
+    // 修饰符挂在 `Group` 上会被 SwiftUI **分发到每个子视图**，而对象树的内容就是"N 行",
+    // 于是每个 sheet 各挂 N 份（实测 16 行 × 11 个 sheet），取消时逐个收起 ⇒ 界面连续闪烁。
+    // 所以这 11 个 `.sheet` 现在由 `ConnectionListView` 挂在它那个唯一的 `List` 上，
+    // 目标状态跟着上移到 AppState —— 与「按条件浏览 / 合成数据」同一套路（见下面原注）。
+    // 原注（对本地 state 的告诫，仍然适用）：本地 state 与全局标志位各存一份，
     // 迟早出现"面板开了、对象却是上一个"。
-    /// 库属性 / 删除数据库（FR-SESS-05）。
-    @State private var isPropertiesPresented = false
-    @State private var isDropDatabasePresented = false
-    /// 权限面板（FR-SESS-04）。
-    @State private var isPrivilegePanelPresented = false
     /// 是否按类型分组显示（FR-META-15）。切换只重新聚合缓存，不重新查库。
     @State private var groupByType = false
 
@@ -97,76 +93,12 @@ struct ObjectTreeView: View {
         ) {
             await reloadRoot()
         }
-        .sheet(item: $createTableTarget) { target in
-            TableDesignSheet(
-                mode: .create,
-                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
-                initialSchema: target.kind == .schema ? target.name : target.schema
-            ) { submission in
-                Task {
-                    _ = await appState.createTable(
-                        named: submission.name,
-                        schema: submission.schema,
-                        columns: submission.changeSet.editedColumns,
-                        extras: submission.changeSet
-                    )
-                }
-            }
-        }
-        .sheet(isPresented: $appState.isBrowseRowsCommandPresented) {
-            if let target = appState.selectedTreeObject {
-                BrowseRowsSheet(object: target) {
-                    appState.isBrowseRowsCommandPresented = false
-                }
-                .environmentObject(appState)
-            }
-        }
-        .sheet(item: $alterTableTarget) { target in
-            TableDesignSheet(
-                mode: .alter(tableName: target.name),
-                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
-                initialSchema: target.schema,
-                loadStructure: { try await appState.tableStructure(of: target) },
-                loadExtras: { try await appState.tableExtras(of: target) }
-            ) { submission in
-                Task { _ = await appState.alterTable(target, changeSet: submission.changeSet) }
-            }
-        }
-        .sheet(isPresented: $isCreateDatabasePresented) {
-            CreateDatabaseSheet { name in
-                Task { await appState.createDatabase(named: name) }
-            }
-        }
-        .sheet(isPresented: $isPropertiesPresented) {
-            if let database = appState.adminTargetDatabase {
-                DatabasePropertiesSheet(databaseName: database) { alterations in
-                    Task { await appState.alterDatabase(name: database, alterations: alterations) }
-                }
-            }
-        }
-        .sheet(isPresented: $isDropDatabasePresented) {
-            if let database = appState.adminTargetDatabase {
-                DropDatabaseSheet(databaseName: database) { name in
-                    Task { await appState.dropDatabase(name: name) }
-                }
-            }
-        }
-        .sheet(isPresented: $isPrivilegePanelPresented) {
-            PrivilegePanel()
-        }
-        .sheet(isPresented: $appState.isSyntheticCommandPresented) {
-            if let target = appState.selectedTreeObject {
-                SyntheticDataPanel(object: target)
-                    .environmentObject(appState)
-            }
-        }
-        .sheet(isPresented: $appState.isSessionCommandPresented) {
-            SessionPanel()
-                .environmentObject(appState)
-        }
-        .sheet(isPresented: $appState.isLockCommandPresented) {
-            LockPanel()
-        }
+        // 注：10 个 `.sheet` **不在这里** —— 它们挂在 `ConnectionListView` 那个唯一的 `List` 上。
+        //
+        // 原因（2026-09-24 修「编辑表结构」取消时连续闪烁）：修饰符挂在 `Group` 上会被
+        // SwiftUI 分发到**每个子视图**，而这里的内容是"N 行"，于是每个 sheet 各挂 N 份
+        // （实测 16 行 × 10 个 sheet = 160 个呈现槽）—— 取消时它们逐个收起，界面就连续闪烁。
+        // 留在本文件里的话，"挂哪儿"这件事迟早又会被改回 Group 上，所以在这一行留个路标。
     }
 
     // MARK: - 扁平化
@@ -461,14 +393,14 @@ struct ObjectTreeView: View {
             if object.kind == .database || object.kind == .schema {
                 Divider()
                 Button(L(.tableDesignTitle)) {
-                    createTableTarget = object
+                    appState.createTableTarget = object
                 }
             }
 
             if object.kind == .table {
                 Divider()
                 Button(L(.tableDesignAlterTitle)) {
-                    alterTableTarget = object
+                    appState.alterTableTarget = object
                 }
             }
 
@@ -525,12 +457,12 @@ struct ObjectTreeView: View {
 
         // 库级管理（FR-SESS-05）：目标是「当前正在用的库」，没连库时不呈现入口。
         Button(L(.objectTreeMenuDatabaseProperties)) {
-            isPropertiesPresented = true
+            appState.isPropertiesPresented = true
         }
         .disabled(appState.adminTargetDatabase == nil)
 
         Button(L(.objectTreeMenuDropDatabase)) {
-            isDropDatabasePresented = true
+            appState.isDropDatabasePresented = true
         }
         .disabled(appState.adminTargetDatabase == nil)
 
@@ -538,7 +470,7 @@ struct ObjectTreeView: View {
 
         // 诊断与权限面板（FR-SESS-04 / FR-DIAG-05）；未连接时查询必然失败，故禁用。
         Button(L(.objectTreeMenuPrivileges)) {
-            isPrivilegePanelPresented = true
+            appState.isPrivilegePanelPresented = true
         }
         .disabled(!isConnected)
 
@@ -561,7 +493,7 @@ struct ObjectTreeView: View {
             Divider()
 
             Button(L(.objectTreeMenuCreateDatabase)) {
-                isCreateDatabasePresented = true
+                appState.isCreateDatabasePresented = true
             }
         }
     }

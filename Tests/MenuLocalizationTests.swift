@@ -8,14 +8,22 @@ import XCTest
 /// 这里锁住那张反向映射表的两条性质：**不漏**（menu 前缀的键都登记了）与**不串**（标题不撞车）。
 final class MenuLocalizationTests: XCTestCase {
 
-    /// 新增了 `menu` 前缀的键却忘了登记进反向映射表，菜单那一项就会停在旧语言。
+    /// 新增了 `menu` 前缀的键却忘了登记，菜单那一项就会停在旧语言。
+    ///
+    /// 覆盖面从"只看前缀"扩到**三类表全并**：自有项（`menuKeys`）、系统顶层标题
+    /// （`systemMenuTitles`）、系统叶子项（`systemMenuItems` 的值）。
+    /// 为什么改：2026-09-24 实测发现 `.archiveTitle` / `.databaseStatsTitle` /
+    /// `.schemaDiffTitle` / `.lowerPaneToggle` 这四个**自有**菜单项的键没有 `menu` 前缀，
+    /// 于是旧版测试完全没覆盖它们 —— 切到中文后那四项停在英文。
     func testEveryMenuPrefixedKeyIsRegistered() {
         let registered = Set(MenuLocalization.menuKeys)
-        let prefixed = Set(LKey.allCases.map(\.rawValue).filter { $0.hasPrefix("menu") })
-        let missing = prefixed.subtracting(registered.map(\.rawValue))
+            .union(MenuLocalization.systemMenuTitles)
+            .union(MenuLocalization.systemMenuItems.values)
+        let prefixed = Set(LKey.allCases.filter { $0.rawValue.hasPrefix("menu") })
+        let missing = prefixed.subtracting(registered)
         XCTAssertTrue(
             missing.isEmpty,
-            "有 menu 前缀的键没登记进 MenuLocalization.menuKeys：\(missing.sorted())"
+            "有 menu 前缀的键没登记进任何一张菜单表：\(missing.map(\.rawValue).sorted())"
         )
     }
 
@@ -55,19 +63,52 @@ final class MenuLocalizationTests: XCTestCase {
         }
     }
 
-    /// 系统菜单项绝不能被改写：它们在运行时改不动，硬改只会让系统菜单中英混杂。
-    func testSystemProvidedTitlesAreLeftAlone() {
-        let systemTitles = [
-            "文件", "编辑", "显示", "窗口", "帮助", "服务", "退出Doyah Studio",
-            "File", "Edit", "View", "Window", "Help",
-            "关闭", "全部关闭", "撤销", "重做", "全选", "拷贝", "粘贴",
-            "", "关于Doyah Studio"
-        ]
-        for title in systemTitles {
-            XCTAssertNil(
-                MenuLocalization.retitled(title, to: .english),
-                "不该改写系统菜单项：\(title)"
-            )
+    // MARK: 系统菜单（2026-09-24 起改为**由我们改写**，于是"换语言要重启"这条限制去掉）
+
+    /// 系统菜单的**叶子项**按 `action selector` 认，两种语言都要给得出来。
+    func testSystemLeafItemsAreRetitledBySelector() {
+        XCTAssertEqual(MenuLocalization.retitled(action: "undo:", appName: "Doyah Studio", to: .simplifiedChinese), "撤销")
+        XCTAssertEqual(MenuLocalization.retitled(action: "undo:", appName: "Doyah Studio", to: .english), "Undo")
+        XCTAssertEqual(MenuLocalization.retitled(action: "copy:", appName: "x", to: .simplifiedChinese), "拷贝")
+        XCTAssertEqual(MenuLocalization.retitled(action: "selectAll:", appName: "x", to: .english), "Select All")
+        XCTAssertEqual(MenuLocalization.retitled(action: "toggleSidebar:", appName: "x", to: .simplifiedChinese), "显示/隐藏边栏")
+    }
+
+    /// 带应用名的项要用 `appName` 填 `%@`（名字不写死在文案表里）。
+    func testSystemAppNamedItemsUseTheBundleName() {
+        XCTAssertEqual(
+            MenuLocalization.retitled(action: "terminate:", appName: "Doyah Studio", to: .simplifiedChinese),
+            "退出 Doyah Studio"
+        )
+        XCTAssertEqual(
+            MenuLocalization.retitled(action: "showHelp:", appName: "Doyah Studio", to: .english),
+            "Doyah Studio Help"
+        )
+        XCTAssertEqual(
+            MenuLocalization.retitled(action: "orderFrontStandardAboutPanel:", appName: "Doyah Studio", to: .simplifiedChinese),
+            "关于 Doyah Studio"
+        )
+    }
+
+    /// 表里没有的 selector 返回 `nil`（调用方退回按标题查）——不能瞎猜一个文案出来。
+    func testUnknownSelectorIsNotGuessed() {
+        XCTAssertNil(MenuLocalization.retitled(action: "noSuchAction:", appName: "x", to: .english))
+    }
+
+    /// 菜单栏**顶层标题**（没有 action，只能按标题认）双向都要成立且幂等。
+    func testSystemTopLevelTitlesRoundTrip() {
+        let pairs = [("File", "文件"), ("Edit", "编辑"), ("View", "显示"), ("Window", "窗口"), ("Help", "帮助")]
+        for (english, chinese) in pairs {
+            XCTAssertEqual(MenuLocalization.retitled(english, to: .simplifiedChinese), chinese)
+            XCTAssertEqual(MenuLocalization.retitled(chinese, to: .english), english)
+            XCTAssertEqual(MenuLocalization.retitled(chinese, to: .simplifiedChinese), chinese)
+        }
+    }
+
+    /// 空标题 / 不认识的标题一律不动（`nil`），免得把分隔符之类的东西改成文案。
+    func testUnrelatedTitlesAreLeftAlone() {
+        for title in ["", "Doyah Studio", "Services…"] {
+            XCTAssertNil(MenuLocalization.retitled(title, to: .english), "不该改写：\(title)")
         }
     }
 }

@@ -22,6 +22,14 @@ enum MainMenuLocalizer {
 
     @MainActor private static var observing = false
 
+    /// 「补刷窗口」的截止时刻：语言切换后的头几秒里，**窗口每次刷新都顺手把菜单栏对齐一次**。
+    ///
+    /// 为什么需要这么密：`setLanguage` 之后 SwiftUI 会重建命令图，那次重建把系统菜单标题恢复成
+    /// **启动语言**（实测重建落在切换后 0.2~0.5 秒之间）—— 只在掐好的时间点补刷，
+    /// 总有一小段窗口对不上（菜单栏会「新语言 → 启动语言 → 新语言」闪一下）。
+    /// 挂到窗口刷新上，这段窗口就缩到一帧以内；代价是走一遍菜单、**不一样才写 title**。
+    @MainActor private static var healUntil: Date = .distantPast
+
     /// 在 App 启动时调用一次：挂上「展开 / 收起 / 启动完成」三个时点的自愈。
     nonisolated static func start() {
         DispatchQueue.main.async { MainActor.assumeIsolated { install() } }
@@ -34,11 +42,18 @@ enum MainMenuLocalizer {
         let names: [Notification.Name] = [
             NSMenu.didBeginTrackingNotification,
             NSMenu.didEndTrackingNotification,
-            NSApplication.didFinishLaunchingNotification
+            NSApplication.didFinishLaunchingNotification,
+            // 命令图被重建时菜单项会被换掉（标题也跟着回到启动语言）——补一个**因果**时点，
+            // 比只靠"切换后掐几个时间点补刷"可靠（那条仍然留着，见 `LocalizationManager.setLanguage`）。
+            NSMenu.didAddItemNotification,
+            // 语言切换后的头几秒：窗口每次刷新都对齐一次（见 `healUntil` 的说明）。
+            NSWindow.didUpdateNotification
         ]
         for name in names {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated {
+                    // 窗口刷新很频繁：只在语言切换后的补刷窗口里动手，平时一次都不做。
+                    if name == NSWindow.didUpdateNotification, Date() >= healUntil { return }
                     refresh(to: LocalizationManager.shared.language)
                 }
             }
@@ -65,13 +80,38 @@ enum MainMenuLocalizer {
         retitle(mainMenu, to: language)
     }
 
+    /// 语言切换时调用：在接下来几秒里把「窗口刷新」当成补刷时机（见 `healUntil`）。
+    ///
+    /// 入口与 `refresh` 一样保持 `nonisolated`（调用方是普通 `ObservableObject`）。
+    nonisolated static func beginHealing() {
+        DispatchQueue.main.async { MainActor.assumeIsolated { healUntil = Date().addingTimeInterval(3) } }
+    }
+
+    /// 应用显示名（系统菜单里"关于 / 隐藏 / 退出 / 帮助"都带它，不该写死在文案表里）。
+    @MainActor
+    private static var appDisplayName: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? "DoyahStudio"
+    }
+
     @MainActor
     private static func retitle(_ menu: NSMenu, to language: AppLanguage) {
+        let appName = appDisplayName
         for item in menu.items {
+            // 先按 **action selector** 认（系统菜单项走这条，与启动语言无关），
+            // 认不出再按标题认（自有菜单项、以及没有 action 的顶层菜单标题）。
+            let byAction = item.action.map {
+                MenuLocalization.retitled(action: NSStringFromSelector($0), appName: appName, to: language)
+            } ?? nil
             // 只在真的不一致时才写：避免对着已经正确的菜单反复置脏、白刷一次界面。
-            if let retitled = MenuLocalization.retitled(item.title, to: language),
+            if let retitled = byAction ?? MenuLocalization.retitled(item.title, to: language),
                retitled != item.title {
                 item.title = retitled
+                // **菜单栏顶层项还要改 `NSMenu.title`**：AppKit 显示的是子菜单自己的 title，
+                // 只写 `item.title` 在菜单栏上看不出来（2026-09-24 实测：File/Edit/View 不动，
+                // 它们下面的子项却都变了）。子菜单标题不是用户可见文案时改它无副作用。
+                if item.submenu?.title != retitled { item.submenu?.title = retitled }
             }
             if let submenu = item.submenu {
                 retitle(submenu, to: language)

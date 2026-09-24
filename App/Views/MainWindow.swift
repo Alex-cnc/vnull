@@ -210,8 +210,9 @@ struct MainWindow: View {
             ImportPanel()
                 .environmentObject(appState)
         }
-        // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
-        .sheet(isPresented: $localization.isRestartPromptPresented) {
+        // 显式「重启应用」（R-36）。**换语言不再走这里** —— 语言是就地切换的，
+        // 系统菜单由 `MainMenuLocalizer` 运行时改写；这条入口只服务"我就是想重开一个进程"。
+        .sheet(isPresented: $localization.isRelaunchPromptPresented) {
             RelaunchPromptSheet()
         }
         .task {

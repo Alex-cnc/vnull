@@ -42,6 +42,15 @@ struct DoyahStudioCommands: Commands {
             .keyboardShortcut(AppShortcut.newBrowserTab.key, modifiers: AppShortcut.newBrowserTab.modifiers)
         }
 
+        // 「重启应用…」（R-36）：换语言已经不需要它了，但"重开一个进程"本身仍是正当需求
+        // （例如让系统级界面 / 服务子菜单也换成新语言），所以保留一个**显式**入口，
+        // 而不是把它绑在换语言这个日常动作上。
+        CommandGroup(after: .appInfo) {
+            Button(L(.menuRelaunchApp)) {
+                localization.isRelaunchPromptPresented = true
+            }
+        }
+
         CommandGroup(after: .newItem) {
             Button(L(.archiveTitle)) {
                 appState.isSQLArchivePresented = true

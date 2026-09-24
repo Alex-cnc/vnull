@@ -77,6 +77,83 @@ struct ConnectionListView: View {
             }
         }
         .listStyle(.sidebar)
+        // MARK: 对象树里那些面板（**挂在这里，别挂回 `ObjectTreeView`**）
+        //
+        // 为什么：修饰符挂在 `Group` 上会被 SwiftUI **分发到每个子视图**，而对象树的内容就是
+        // "N 行" —— 这些 sheet 原先挂在它的 `Group` 上，于是每行各挂一份
+        // （实测 16 行 × 10 个 sheet = 160 个呈现槽）。症状：「编辑表结构」点取消时
+        // 界面来回闪很多次才关（2026-09-24 需求提出者实测）。挂到这个**唯一的 `List`** 上，
+        // 宿主就只有 1 个。目标状态因此住在 `AppState`（见那边的注释）。
+        .sheet(item: $appState.createTableTarget) { target in
+            TableDesignSheet(
+                mode: .create,
+                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
+                initialSchema: target.kind == .schema ? target.name : target.schema
+            ) { submission in
+                Task {
+                    _ = await appState.createTable(
+                        named: submission.name,
+                        schema: submission.schema,
+                        columns: submission.changeSet.editedColumns,
+                        extras: submission.changeSet
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $appState.isBrowseRowsCommandPresented) {
+            if let target = appState.selectedTreeObject {
+                BrowseRowsSheet(object: target) {
+                    appState.isBrowseRowsCommandPresented = false
+                }
+                .environmentObject(appState)
+            }
+        }
+        .sheet(item: $appState.alterTableTarget) { target in
+            TableDesignSheet(
+                mode: .alter(tableName: target.name),
+                databaseType: appState.selectedConnection?.dbType ?? .postgresql,
+                initialSchema: target.schema,
+                loadStructure: { try await appState.tableStructure(of: target) },
+                loadExtras: { try await appState.tableExtras(of: target) }
+            ) { submission in
+                Task { _ = await appState.alterTable(target, changeSet: submission.changeSet) }
+            }
+        }
+        .sheet(isPresented: $appState.isCreateDatabasePresented) {
+            CreateDatabaseSheet { name in
+                Task { await appState.createDatabase(named: name) }
+            }
+        }
+        .sheet(isPresented: $appState.isPropertiesPresented) {
+            if let database = appState.adminTargetDatabase {
+                DatabasePropertiesSheet(databaseName: database) { alterations in
+                    Task { await appState.alterDatabase(name: database, alterations: alterations) }
+                }
+            }
+        }
+        .sheet(isPresented: $appState.isDropDatabasePresented) {
+            if let database = appState.adminTargetDatabase {
+                DropDatabaseSheet(databaseName: database) { name in
+                    Task { await appState.dropDatabase(name: name) }
+                }
+            }
+        }
+        .sheet(isPresented: $appState.isPrivilegePanelPresented) {
+            PrivilegePanel()
+        }
+        .sheet(isPresented: $appState.isSyntheticCommandPresented) {
+            if let target = appState.selectedTreeObject {
+                SyntheticDataPanel(object: target)
+                    .environmentObject(appState)
+            }
+        }
+        .sheet(isPresented: $appState.isSessionCommandPresented) {
+            SessionPanel()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.isLockCommandPresented) {
+            LockPanel()
+        }
         .confirmationDialog(
             L(.connectionDeleteConfirmTitle),
             isPresented: Binding(

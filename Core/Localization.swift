@@ -1366,6 +1366,47 @@ public enum LKey: String, CaseIterable, Sendable {
     case importDone
     case importDoneCopy
     case importFailed
+    // 系统菜单（AppKit 渲染的那些，NFR-I18N-03）。
+    //
+    // 为什么连这些也要登记：它们在**运行时**不会随 `AppleLanguages` 变，只能由我们改
+    // `NSMenuItem.title`。按标题查表需要"两种语言的所有写法"，按 **action selector** 查表
+    // 只需要一份 —— 因此这些项由 `MenuLocalization.systemMenuItems` 按 selector 对上，
+    // 顶层菜单标题（没有 selector）才按标题对。
+    case menuSystemAbout
+    case menuSystemServices
+    case menuSystemHide
+    case menuSystemHideOthers
+    case menuSystemShowAll
+    case menuSystemQuit
+    case menuSystemFile
+    case menuSystemEdit
+    case menuSystemView
+    case menuSystemWindow
+    case menuSystemHelp
+    case menuSystemClose
+    case menuSystemCloseAll
+    case menuSystemUndo
+    case menuSystemRedo
+    case menuSystemCut
+    case menuSystemCopy
+    case menuSystemPaste
+    case menuSystemDelete
+    case menuSystemSelectAll
+    case menuSystemAutoFill
+    case menuSystemContact
+    case menuSystemPasswords
+    case menuSystemCreditCard
+    case menuSystemDictation
+    case menuSystemEmoji
+    case menuSystemMinimize
+    case menuSystemZoom
+    case menuSystemBringAllToFront
+    case menuSystemEnterFullScreen
+    case menuSystemToggleSidebar
+    case menuSystemAppHelp
+    // 显式「重启应用」（R-36 的入口：以前只有"换语言的副作用"，现在换语言不再需要它）
+    case menuRelaunchApp
+
     case importPartial
     case importCancelled
     case importLog
@@ -1540,8 +1581,8 @@ public enum LocalizedStrings {
         .terminalCursorBlinking: [.simplifiedChinese: "闪烁", .english: "blinking"],
         .terminalCursorSteady: [.simplifiedChinese: "稳定", .english: "steady"],
         .terminalStopped: [.simplifiedChinese: "已停止", .english: "Stopped"],
-        .relaunchTitle: [.simplifiedChinese: "系统菜单需要重启才能跟随", .english: "Restart to switch the system menus"],
-        .relaunchMessage: [.simplifiedChinese: "应用界面已经切换。系统级菜单（文件 / 编辑 / 显示 / 窗口 / 帮助）由 macOS 渲染，语言在启动时就已固定，需要重启才能一起切换。", .english: "The app UI has switched. macOS renders the system menus (File, Edit, View, Window, Help) and fixes their language at launch, so a restart is needed for them to follow."],
+        .relaunchTitle: [.simplifiedChinese: "重启应用", .english: "Relaunch the app"],
+        .relaunchMessage: [.simplifiedChinese: "重启会关掉当前进程再打开一个：界面上的页签、光标位置与展开状态都会重来（连接与页签本身存在配置里，不会丢）。\n换语言**不需要**这一步 —— 语言是就地切换的，这个入口只服务\"我就是想重开一个进程\"。", .english: "Relaunching closes this process and starts a new one: on-screen tabs, cursor positions and expansion state start over (connections and tabs live in config, so they survive).\nSwitching language does **not** need this — the language switches in place; this entry is only for when you actually want a fresh process."],
         .relaunchMessageUnsaved: [.simplifiedChinese: "注意：还有 %d 个页签有未保存的改动，重启会丢失。", .english: "Note: %d tab(s) have unsaved changes that would be lost."],
         .relaunchNow: [.simplifiedChinese: "立即重启", .english: "Restart now"],
         .relaunchLater: [.simplifiedChinese: "稍后", .english: "Later"],
@@ -1931,7 +1972,7 @@ public enum LocalizedStrings {
         .menuEgressLog: [.simplifiedChinese: "外发日志…", .english: "Egress Log…"],
         .menuNewBrowserTab: [.simplifiedChinese: "新建浏览器页签", .english: "New Browser Tab"],
         .browserTitle: [.simplifiedChinese: "浏览器", .english: "Browser"],
-        .relaunchBlocked: [.simplifiedChinese: "还有未保存的查询，已取消重启 —— 请先保存再换语言。", .english: "There are unsaved queries, so the restart was cancelled — save them first, then switch language."],        .browserRestoredTitle: [.simplifiedChinese: "已恢复的页签（尚未加载）", .english: "Restored tab (not loaded yet)"],
+        .relaunchBlocked: [.simplifiedChinese: "还有未保存的查询，已取消重启 —— 请先保存再重启。", .english: "There are unsaved queries, so the relaunch was cancelled — save them first, then relaunch."],        .browserRestoredTitle: [.simplifiedChinese: "已恢复的页签（尚未加载）", .english: "Restored tab (not loaded yet)"],
         .browserRestoredHint: [.simplifiedChinese: "恢复会话不会自动发起请求 —— 点「刷新」才会真正加载。", .english: "Restoring a session never fires a request by itself — press Reload to actually load it."],        .browserAddressPlaceholder: [.simplifiedChinese: "输入地址后回车（默认不加载任何远程内容）", .english: "Type an address and press Return (nothing remote loads by default)"],
         .browserBack: [.simplifiedChinese: "后退", .english: "Back"],
         .browserForward: [.simplifiedChinese: "前进", .english: "Forward"],
@@ -2656,6 +2697,44 @@ public enum LocalizedStrings {
         .importDone: [.simplifiedChinese: "导入完成：写入 %d 行（%d 批）", .english: "Import complete: %d rows written (%d batches)"],
         .importDoneCopy: [.simplifiedChinese: "COPY 写入完成：%d 行，用时 %.2f 秒", .english: "COPY finished: %d rows in %.2f s"],
         .importFailed: [.simplifiedChinese: "导入失败：%@", .english: "Import failed: %@"],
+
+        // 系统菜单（按 selector / 顶层标题对上；见 `Core/MenuLocalization.swift`）
+        //
+        // 带 `%@` 的几条是**带应用名**的项（关于 / 隐藏 / 退出 / 帮助）：名字不该写死在文案里，
+        // 由调用方传 `CFBundleName` 进来 —— 改名时这里不用跟着改。
+        .menuSystemAbout: [.simplifiedChinese: "关于 %@", .english: "About %@"],
+        .menuSystemServices: [.simplifiedChinese: "服务", .english: "Services"],
+        .menuSystemHide: [.simplifiedChinese: "隐藏 %@", .english: "Hide %@"],
+        .menuSystemHideOthers: [.simplifiedChinese: "隐藏其他", .english: "Hide Others"],
+        .menuSystemShowAll: [.simplifiedChinese: "全部显示", .english: "Show All"],
+        .menuSystemQuit: [.simplifiedChinese: "退出 %@", .english: "Quit %@"],
+        .menuSystemFile: [.simplifiedChinese: "文件", .english: "File"],
+        .menuSystemEdit: [.simplifiedChinese: "编辑", .english: "Edit"],
+        .menuSystemView: [.simplifiedChinese: "显示", .english: "View"],
+        .menuSystemWindow: [.simplifiedChinese: "窗口", .english: "Window"],
+        .menuSystemHelp: [.simplifiedChinese: "帮助", .english: "Help"],
+        .menuSystemClose: [.simplifiedChinese: "关闭", .english: "Close"],
+        .menuSystemCloseAll: [.simplifiedChinese: "全部关闭", .english: "Close All"],
+        .menuSystemUndo: [.simplifiedChinese: "撤销", .english: "Undo"],
+        .menuSystemRedo: [.simplifiedChinese: "重做", .english: "Redo"],
+        .menuSystemCut: [.simplifiedChinese: "剪切", .english: "Cut"],
+        .menuSystemCopy: [.simplifiedChinese: "拷贝", .english: "Copy"],
+        .menuSystemPaste: [.simplifiedChinese: "粘贴", .english: "Paste"],
+        .menuSystemDelete: [.simplifiedChinese: "删除", .english: "Delete"],
+        .menuSystemSelectAll: [.simplifiedChinese: "全选", .english: "Select All"],
+        .menuSystemAutoFill: [.simplifiedChinese: "自动填充", .english: "AutoFill"],
+        .menuSystemContact: [.simplifiedChinese: "联系人…", .english: "Contact…"],
+        .menuSystemPasswords: [.simplifiedChinese: "密码…", .english: "Passwords…"],
+        .menuSystemCreditCard: [.simplifiedChinese: "信用卡…", .english: "Credit Card…"],
+        .menuSystemDictation: [.simplifiedChinese: "开始听写…", .english: "Start Dictation…"],
+        .menuSystemEmoji: [.simplifiedChinese: "表情与符号", .english: "Emoji & Symbols"],
+        .menuSystemMinimize: [.simplifiedChinese: "最小化", .english: "Minimize"],
+        .menuSystemZoom: [.simplifiedChinese: "缩放", .english: "Zoom"],
+        .menuSystemBringAllToFront: [.simplifiedChinese: "全部置于顶层", .english: "Bring All to Front"],
+        .menuSystemEnterFullScreen: [.simplifiedChinese: "进入全屏幕", .english: "Enter Full Screen"],
+        .menuSystemToggleSidebar: [.simplifiedChinese: "显示/隐藏边栏", .english: "Toggle Sidebar"],
+        .menuSystemAppHelp: [.simplifiedChinese: "%@ 帮助", .english: "%@ Help"],
+        .menuRelaunchApp: [.simplifiedChinese: "重启应用…", .english: "Relaunch App…"],
         .importPartial: [.simplifiedChinese: "已写入 %d 行（前面的批次已生效，请按需清理）", .english: "%d rows were written (earlier batches are committed; clean up as needed)"],
         .importCancelled: [.simplifiedChinese: "已停止：已写入 %d 行（前面的批次已生效）", .english: "Stopped: %d rows written (earlier batches are committed)"],
         .importLog: [.simplifiedChinese: "逐批日志", .english: "Batch log"],

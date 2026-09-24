@@ -30,14 +30,14 @@ struct RelaunchPromptSheet: View {
             HStack {
                 Spacer()
                 Button(L(.relaunchLater)) {
-                    localization.isRestartPromptPresented = false
+                    localization.isRelaunchPromptPresented = false
                 }
                 .keyboardShortcut(.cancelAction)
 
                 Button(L(.relaunchNow)) {
                     // **先把面板收起来再重启**：模态面板还开着时 `NSApp.terminate` 可能被挡住，
                     // 而"旧的没退、新的已经起来"正是用户报的那个现象。留一拍让面板真的收起。
-                    localization.isRestartPromptPresented = false
+                    localization.isRelaunchPromptPresented = false
                     Task {
                         try? await Task.sleep(nanoseconds: 250_000_000)
                         do {
