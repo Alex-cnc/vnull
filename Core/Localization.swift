@@ -178,6 +178,12 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
     case treeMenuEmpty
+    // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case sshTunnelLaunchFailed
+    case sshTunnelProcessExited
+    case sshTunnelProcessExitedSilently
+    case sshTunnelTimedOut
+    case sshTunnelPortInUse
     // 工作区原生体验（FR-EDIT-35 / 36）：页签、Home 页、打开与保存文件
     case workspaceHomeWelcome
     case workspaceHomeSubtitle
@@ -1637,6 +1643,11 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .sshTunnelLaunchFailed: [.simplifiedChinese: "起 ssh 失败：%@", .english: "Could not start ssh: %@"],
+        .sshTunnelProcessExited: [.simplifiedChinese: "ssh 已退出：%@", .english: "ssh exited: %@"],
+        .sshTunnelProcessExitedSilently: [.simplifiedChinese: "ssh 已退出（没有任何输出）", .english: "ssh exited without any output"],
+        .sshTunnelTimedOut: [.simplifiedChinese: "等隧道就绪超时（%@ 秒）", .english: "Timed out waiting for the tunnel to become ready (%@ s)"],
+        .sshTunnelPortInUse: [.simplifiedChinese: "本地端口 %@ 已被占用", .english: "Local port %@ is already in use"],
         .workspaceHomeWelcome: [.simplifiedChinese: "欢迎回来", .english: "Welcome back"],
         .workspaceHomeSubtitle: [.simplifiedChinese: "左边选工作区，点文件就能在编辑器里打开；配色与补全按文件类型自动匹配。", .english: "Pick a workspace on the left, then click a file to open it here. Highlighting and completion follow the file type."],
         .workspaceHomeBuildLine: [.simplifiedChinese: "版本 %@（构建 %@）", .english: "Version %@ (build %@)"],

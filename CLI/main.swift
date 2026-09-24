@@ -146,6 +146,13 @@ struct DoyahCLI {
             exit(runCodeTokensCommand(arguments: Array(arguments.dropFirst())))
         }
 
+        // tunnel：SSH 隧道的可复跑出口（FR-CONN-18）。
+        // 为什么要有它：隧道成不成、参数对不对、清理干不干净，**在界面里只能靠"连不上"来感知**；
+        // 命令行能给出一条可断言、可脚本化的路径（脚本用替身 ssh 做端到端转发验证）。
+        if arguments.first == "tunnel" {
+            exit(runTunnelCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -865,6 +872,165 @@ struct DoyahCLI {
     /// **鼠标路由**（本机 / 转发，含 ⌥ 与右键的反向规则）；DECCKM 两种键序；四类查询应答）。
     /// 带 `--feed`：把这段字节喂进真实的屏幕模型，打印**模式位与回给 PTY 的字节** ——
     /// 也就是说，验的是解析器而不是纯函数（两者都要对）。
+    /// `tunnel --ssh-host <h> [--ssh-port 22] --ssh-user <u> [--ssh-agent | --ssh-key <path> | --ssh-password <口令>]
+    ///         --target-host <h> --target-port <p> [--local-port <n>] [--hold <秒>] [--json]`
+    ///
+    /// 行为：起隧道 → 打印本地端点 → 保持（默认到被信号打断；给了 `--hold` 就等这么多秒）→ 收干净。
+    /// 退出码：0 成功；2 参数不对；1 隧道起不来（stderr 带 ssh 的输出，已脱敏）。
+    private static func runTunnelCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let sshHost = value(for: "--ssh-host"),
+              let sshUser = value(for: "--ssh-user"),
+              let targetHost = value(for: "--target-host"),
+              let targetPortText = value(for: "--target-port"),
+              let targetPort = Int(targetPortText) else {
+            FileHandle.standardError.write(Data(("用法：tunnel --ssh-host <h> [--ssh-port 22] --ssh-user <u> "
+                + "[--ssh-agent | --ssh-key <path> | --ssh-password <口令>] "
+                + "--target-host <h> --target-port <p> [--local-port <n>] [--hold <秒>] [--json]\n").utf8))
+            return 2
+        }
+
+        let authentication: SSHTunnelConfig.Authentication
+        if arguments.contains("--ssh-agent") {
+            authentication = .agent
+        } else if let key = value(for: "--ssh-key") {
+            authentication = .privateKey(path: key, isEncrypted: false)
+        } else if value(for: "--ssh-password") != nil {
+            authentication = .password
+        } else {
+            authentication = .agent
+        }
+
+        let config = SSHTunnelConfig(
+            host: sshHost,
+            port: Int(value(for: "--ssh-port") ?? "22") ?? 22,
+            username: sshUser,
+            authentication: authentication,
+            hostKeyPolicy: arguments.contains("--strict-host-key") ? .strict : .acceptNew,
+            connectTimeoutSeconds: Int(value(for: "--timeout") ?? "15") ?? 15
+        )
+        let issues = config.issues()
+        guard issues.isEmpty else {
+            FileHandle.standardError.write(Data("SSH 隧道配置不完整：\(issues)\n".utf8))
+            return 2
+        }
+
+        guard let localPort = Int(value(for: "--local-port") ?? "") ?? freeLocalPort() else {
+            FileHandle.standardError.write(Data("找不到空闲的本地端口\n".utf8))
+            return 1
+        }
+
+        // known_hosts 放我们自己的目录：不动用户的 ~/.ssh/known_hosts（与 App 侧同一口径）。
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let knownHosts = base
+            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent("known_hosts", isDirectory: false)
+
+        let tunnel = SSHTunnelProcess(
+            config: config,
+            target: SSHTunnelTarget(host: targetHost, port: targetPort),
+            localPort: localPort,
+            knownHostsPath: knownHosts.path,
+            password: value(for: "--ssh-password"),
+            executable: ProcessInfo.processInfo.environment["DOYAH_SSH_BINARY"] ?? "/usr/bin/ssh",
+            isPortOpen: { host, port in isLocalPortOpen(host: host, port: port) }
+        )
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var exitCode: Int32 = 0
+        Task {
+            do {
+                try await tunnel.start()
+                if arguments.contains("--json") {
+                    let payload: [String: Any] = [
+                        "localPort": localPort,
+                        "targetHost": targetHost,
+                        "targetPort": targetPort,
+                        "ssh": config.displayName,
+                        "state": "ready",
+                    ]
+                    if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+                       let text = String(data: data, encoding: .utf8) {
+                        print(text)
+                    }
+                } else {
+                    print("隧道就绪：127.0.0.1:\(localPort) → \(targetHost):\(targetPort)（经 \(config.displayName)）")
+                }
+                fflush(stdout)
+                let hold = Double(value(for: "--hold") ?? "")
+                if let hold {
+                    try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
+                } else {
+                    // 没给 --hold：等信号（Ctrl-C / kill），像普通隧道命令那样挂着
+                    while true { try? await Task.sleep(nanoseconds: 500_000_000) }
+                }
+                tunnel.stop()
+                semaphore.signal()
+            } catch {
+                FileHandle.standardError.write(Data("隧道起不来：\(error.localizedDescription)\n".utf8))
+                let diagnostics = tunnel.diagnosticText
+                if !diagnostics.isEmpty {
+                    FileHandle.standardError.write(Data("ssh 输出：\n\(diagnostics)\n".utf8))
+                }
+                exitCode = 1
+                semaphore.signal()
+            }
+        }
+        semaphore.wait()
+        return exitCode
+    }
+
+    /// 本机端口有没有人在监听（隧道就绪判定）。
+    private static func isLocalPortOpen(host: String, port: Int) -> Bool {
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(UInt16(port).bigEndian)
+        address.sin_addr.s_addr = inet_addr(host == "localhost" ? "127.0.0.1" : host)
+        var timeout = timeval(tv_sec: 0, tv_usec: 200_000)
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        let result = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                connect(descriptor, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
+    }
+
+    /// 让系统给一个空闲端口（bind 到 0 再读回来）。
+    private static func freeLocalPort() -> Int? {
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return nil }
+        defer { close(descriptor) }
+        var reuse: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = 0
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                bind(descriptor, socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bound == 0 else { return nil }
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                getsockname(descriptor, socketAddress, &length)
+            }
+        }
+        guard named == 0 else { return nil }
+        return Int(UInt16(bigEndian: address.sin_port))
+    }
+
     /// `code-tokens [--detect <路径>] [--language <raw>] [--text <代码> | --file <路径>] [--complete <前缀>]`
     ///
     /// 三个用途：① 判语言（`--detect`）；② 打印着色记号表（哪一段被认成什么）；
