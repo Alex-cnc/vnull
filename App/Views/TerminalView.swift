@@ -99,7 +99,7 @@ final class TerminalModel: ObservableObject {
         return text.isEmpty ? nil : text
     }
 
-    /// ⌘C：把选区写进系统剪贴板；没有选中时返回 false，让按键继续往下走。
+    /// ⌘C / 菜单「复制」：把选区写进系统剪贴板；没有选中时返回 false，让按键继续往下走。
     @discardableResult
     func copySelectionToPasteboard() -> Bool {
         guard let text = selectedText() else { return false }
@@ -107,6 +107,37 @@ final class TerminalModel: ObservableObject {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         return true
+    }
+
+    /// ⌘V / 菜单「粘贴」：读系统剪贴板并发给 shell。
+    ///
+    /// 走 `TerminalPaste`（Core 的纯函数）而不是直接 `session.write(text:)`：
+    /// 前台程序开了**括号粘贴**（SGR 2004）时必须把内容包起来，否则 vim 会逐行自动缩进、
+    /// 多行 SQL 可能被逐行提交。包装规则与换行处理都是纯逻辑，那边有单测。
+    @discardableResult
+    func pasteFromPasteboard() -> Bool {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return false }
+        let payload = TerminalPaste.payload(
+            for: text,
+            isBracketedPasteEnabled: screen.isBracketedPasteEnabled
+        )
+        guard !payload.isEmpty else { return false }
+        send(payload)
+        return true
+    }
+
+    /// ⌘A：全选**当前显示的那几行**（含回滚区偏移后的视图）。
+    ///
+    /// 只选可见范围而不是整个回滚区：回滚区可能有上万行，全选之后复制会得到一个
+    /// 巨大字符串；终端惯例（Terminal.app / iTerm2）也是按可见范围来的。
+    func selectAllVisible() {
+        let lines = displayLines()
+        guard let last = lines.indices.last, lines[last].indices.last != nil else { return }
+        selection = TerminalSelection(
+            anchor: TerminalCellPosition(row: 0, column: 0),
+            focus: TerminalCellPosition(row: last, column: max(0, lines[last].count - 1))
+        )
+        requestRedraw?()
     }
 
     func startIfNeeded(columns: Int, rows: Int) {
@@ -187,7 +218,7 @@ final class TerminalModel: ObservableObject {
 /// 终端视图：把字符网格画出来，把按键写成字节。
 ///
 /// 按行拼 `NSAttributedString` 再整行绘制——比逐格绘制简单，80×24 这个量级完全够用。
-final class TerminalHostView: NSView {
+final class TerminalHostView: NSView, NSMenuItemValidation {
 
     private let model: TerminalModel
     /// 外观偏好（可覆盖系统外观；解析在 Core 的 `TerminalAppearance`）。
@@ -264,6 +295,41 @@ final class TerminalHostView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+
+    // MARK: 标准编辑动作（让菜单栏「编辑 → 复制 / 粘贴 / 全选」也对终端生效）
+    //
+    // 为什么必须有：⌘C / ⌘V 在 `keyDown` 里能拦住，但**菜单项走的是响应链上的
+    // `copy:` / `paste:` 选择器** —— 视图不实现它们，菜单里那两项就是灰的 / 点了没反应。
+    // 同一件事做两条路径容易分叉，所以都指向上面同一组方法。
+
+    // `copy:` / `paste:` / `selectAll:` 是 NSResponder 上已有的动作，所以要 override。
+    @objc func copy(_ sender: Any?) {
+        _ = model.copySelectionToPasteboard()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        _ = model.pasteFromPasteboard()
+    }
+
+    // `selectAll:` 在 NSResponder 上有实现（要 override），而 `copy:` / `paste:` 是
+    // 响应链上的标准动作（协议提供、不加 override）—— 三条名字看着一样，处理却不同。
+    override func selectAll(_ sender: Any?) {
+        model.selectAllVisible()
+    }
+
+    /// 没有选区时「复制」应当是灰的（而不是点了没反应）。
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(copy(_:)):
+            return model.selectedText() != nil
+        case #selector(paste(_:)):
+            return NSPasteboard.general.string(forType: .string)?.isEmpty == false
+        case #selector(selectAll(_:)):
+            return true
+        default:
+            return true
+        }
+    }
 
     // MARK: 配色（全部来自 Core/TerminalPalette）
 
@@ -547,12 +613,9 @@ final class TerminalHostView: NSView {
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) {
             switch event.charactersIgnoringModifiers {
-            // ⌘V 粘贴：把整段文本喂给 shell。
+            // ⌘V 粘贴：整段文本喂给 shell（括号粘贴包装见 `pasteFromPasteboard`）。
             case "v":
-                if let text = NSPasteboard.general.string(forType: .string) {
-                    model.send(text: text)
-                    return
-                }
+                if model.pasteFromPasteboard() { return }
             // ⌘C 复制选区；没有选中就不拦，让按键照常往下走。
             case "c":
                 if model.copySelectionToPasteboard() { return }

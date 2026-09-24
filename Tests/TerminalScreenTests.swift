@@ -443,3 +443,67 @@ final class TerminalExtendedColorTests: XCTestCase {
         XCTAssertTrue(cell(terminal, 0).bold)
     }
 }
+
+// MARK: - 括号粘贴（SGR 2004）与粘贴载荷（FR-EDIT-29）
+
+/// 粘贴语义的纯逻辑：前台程序开了括号粘贴就必须包 `ESC[200~ … ESC[201~`，
+/// 否则 vim 会逐行自动缩进、多行 SQL 可能被逐行提交。
+final class TerminalPasteTests: XCTestCase {
+
+    func testRawPayloadWhenBracketedPasteIsOff() {
+        let payload = TerminalPaste.payload(for: "SELECT 1;\n", isBracketedPasteEnabled: false)
+        XCTAssertEqual(String(decoding: payload, as: UTF8.self), "SELECT 1;\n")
+    }
+
+    func testWrappedPayloadWhenBracketedPasteIsOn() {
+        let payload = TerminalPaste.payload(for: "SELECT 1;\n", isBracketedPasteEnabled: true)
+        XCTAssertEqual(String(decoding: payload, as: UTF8.self), "\u{1B}[200~SELECT 1;\n\u{1B}[201~")
+    }
+
+    /// 空文本不发送任何东西（避免给程序塞一个"空粘贴"事件）。
+    func testEmptyTextSendsNothing() {
+        XCTAssertTrue(TerminalPaste.payload(for: "", isBracketedPasteEnabled: false).isEmpty)
+        XCTAssertTrue(TerminalPaste.payload(for: "", isBracketedPasteEnabled: true).isEmpty)
+    }
+
+    /// 换行**原样发送**（PTY 的行规程负责 CR/NL 转换，我们不偷偷改）。
+    func testLineEndingsAreSentVerbatim() {
+        let text = "a\r\nb\nc"
+        XCTAssertEqual(
+            String(decoding: TerminalPaste.payload(for: text, isBracketedPasteEnabled: false), as: UTF8.self),
+            text
+        )
+    }
+}
+
+/// `TerminalScreen` 对 SGR 2004 的跟踪。
+final class TerminalBracketedPasteStateTests: XCTestCase {
+
+    private func screen(_ text: String) -> TerminalScreen {
+        let screen = TerminalScreen(columns: 20, rows: 4)
+        screen.feed(text: text)
+        return screen
+    }
+
+    func testBracketedPasteModeIsTrackedFromCSI() {
+        XCTAssertFalse(screen("").isBracketedPasteEnabled, "默认关闭")
+        XCTAssertTrue(screen("\u{1B}[?2004h").isBracketedPasteEnabled)
+        let toggled = screen("\u{1B}[?2004h\u{1B}[?2004l")
+        XCTAssertFalse(toggled.isBracketedPasteEnabled)
+    }
+
+    /// 备用屏切换（vim / less）要把这个模式一起保存与恢复：不然从 vim 退出来之后
+    /// 粘贴就"突然不包了"，而 shell 还开着括号粘贴。
+    func testAlternateScreenSavesAndRestoresTheMode() {
+        let terminal = screen("\u{1B}[?1049h\u{1B}[?2004h\u{1B}[?1049l")
+        XCTAssertFalse(terminal.isBracketedPasteEnabled, "回到主屏应当恢复主屏当时的状态（关闭）")
+        XCTAssertFalse(terminal.isAlternateScreen)
+    }
+
+    func testResetClearsBracketedPaste() {
+        // 注意是 **RIS**（`ESC c`，全复位），不是 `CSI c`（设备属性查询）——
+        // 写错成后者时这条断言会失败，正好说明两者的区别是真的（第一版就写错了）。
+        let terminal = screen("\u{1B}[?2004h\u{1B}c")
+        XCTAssertFalse(terminal.isBracketedPasteEnabled, "RIS 复位要把它清掉")
+    }
+}

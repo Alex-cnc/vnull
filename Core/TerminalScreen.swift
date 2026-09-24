@@ -75,7 +75,7 @@ public struct TerminalCell: Equatable, Sendable {
 /// - CSI：光标移动（A B C D E F G H f）、擦除（J K X）、插入删除（@ P L M）、
 ///   滚动（S T）、SGR（m）、屏幕对齐（r，滚动区域）
 /// - OSC：忽略（窗口标题一类）
-/// - 私有模式：`?25`（光标显隐）、`?7`（自动换行）、`?47` / `?1049`（备用屏）
+/// - 私有模式：`?25`（光标显隐）、`?7`（自动换行）、`?47` / `?1049`（备用屏）、`?2004`（括号粘贴）
 ///
 /// 明确不做的：鼠标上报、字符集切换（只当两字节吞掉）、双向文本、图片协议。
 public final class TerminalScreen {
@@ -97,6 +97,9 @@ public final class TerminalScreen {
     public private(set) var cursorColumn: Int = 0
     public private(set) var isCursorVisible: Bool = true
     public var isAutoWrapEnabled: Bool = true
+    /// 括号粘贴（SGR 2004）：前台程序要求把粘贴内容包在 `ESC[200~ … ESC[201~` 里。
+    /// 不跟踪它的话，粘一段代码进 vim 会被逐行自动缩进、粘多行 SQL 可能被逐行提交。
+    public var isBracketedPasteEnabled: Bool = false
 
     /// 当前 SGR 属性（新写入的字符用它）。
     private var attributes = TerminalCell()
@@ -115,7 +118,7 @@ public final class TerminalScreen {
     /// 视觉上就是"新旧内容叠在一起"。
     private var savedMainScreen: [[TerminalCell]]?
     private var savedMainCursor: (row: Int, column: Int)?
-    private var savedMainFlags: (cursorVisible: Bool, autoWrap: Bool)?
+    private var savedMainFlags: (cursorVisible: Bool, autoWrap: Bool, bracketedPaste: Bool)?
 
     /// 当前是否在备用屏上。
     public private(set) var isAlternateScreen = false
@@ -540,6 +543,7 @@ public final class TerminalScreen {
             // 47 与 1049 都切备用屏；1049 额外保存/恢复光标与模式（xterm 的约定）。
             case 47: setAlternateScreen(enabled, savesCursor: false)
             case 1049: setAlternateScreen(enabled, savesCursor: true)
+            case 2004: isBracketedPasteEnabled = enabled
             default: break
             }
         }
@@ -552,7 +556,7 @@ public final class TerminalScreen {
             savedMainScreen = screen
             if savesCursor {
                 savedMainCursor = (cursorRow, cursorColumn)
-                savedMainFlags = (isCursorVisible, isAutoWrapEnabled)
+                savedMainFlags = (isCursorVisible, isAutoWrapEnabled, isBracketedPasteEnabled)
             }
             screen = Array(repeating: blankRow(), count: rows)
             cursorRow = 0
@@ -571,6 +575,7 @@ public final class TerminalScreen {
             if let flags = savedMainFlags {
                 isCursorVisible = flags.cursorVisible
                 isAutoWrapEnabled = flags.autoWrap
+                isBracketedPasteEnabled = flags.bracketedPaste
             }
             savedMainScreen = nil
             savedMainCursor = nil
@@ -673,6 +678,7 @@ public final class TerminalScreen {
         scrollBottom = rows - 1
         isCursorVisible = true
         isAutoWrapEnabled = true
+        isBracketedPasteEnabled = false
         savedCursor = nil
         savedMainScreen = nil
         savedMainCursor = nil
