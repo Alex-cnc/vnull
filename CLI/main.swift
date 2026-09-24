@@ -1285,6 +1285,69 @@ struct DoyahCLI {
                 return sections.isEmpty ? 1 : 0
             }
 
+            // `--import-url <postgres://…>`：一行建连（FR-CONN-19）。
+            // 默认**只解析并展示**；`--save` 才写入配置文件（**不含密码** —— 密码只进本项目的密钥存储）。
+            if let raw = value(for: "--import-url") {
+                switch ConnectionURL.parse(raw, name: value(for: "--name")) {
+                case .failure(let error):
+                    print("URL 解析失败：\(error.localizedDescription)")
+                    return 64
+                case .success(let imported):
+                    var lines: [String] = []
+                    lines.append("解析结果：\(imported.configuration.name)")
+                    lines.append("  \(imported.configuration.endpointDescription)  库=\(imported.configuration.database)")
+                    lines.append("  SSL=\(imported.configuration.sslMode.rawValue)")
+                    if imported.password != nil {
+                        lines.append("  ⚠️ URL 里带了密码：它**不会**写入配置文件（密码只进本项目的密钥存储，DR-02）")
+                    }
+                    for ignored in imported.ignoredParameters {
+                        lines.append("  （不认识的参数已忽略：\(ignored)）")
+                    }
+                    if arguments.contains("--save") {
+                        var all = configurations
+                        if let index = all.firstIndex(where: { $0.name == imported.configuration.name }) {
+                            all[index] = imported.configuration
+                        } else {
+                            all.append(imported.configuration)
+                        }
+                        do {
+                            try await store.save(all)
+                            lines.append("  已保存（不含密码）")
+                        } catch {
+                            print("保存失败：\(error.localizedDescription)")
+                            return 66
+                        }
+                    } else {
+                        lines.append("  （未保存；加 --save 写入配置文件）")
+                    }
+                    print(lines.joined(separator: "\n"))
+                    return 0
+                }
+            }
+
+            // `--export-url <连接名>`：导出成一行 URL，**不含密码**。
+            if let name = value(for: "--export-url") {
+                guard let configuration = configurations.first(where: { $0.name == name }) else {
+                    print("没有这个连接：\(name)")
+                    return 66
+                }
+                print(ConnectionURL.url(for: configuration))
+                return 0
+            }
+
+            // `--export-bundle <文件>`：导出配置包（换机迁移），**不含密码**。
+            if let path = value(for: "--export-bundle") {
+                let bundle = ConnectionBundle(connections: configurations)
+                do {
+                    try bundle.encoded().write(to: URL(fileURLWithPath: path))
+                    print("已导出 \(configurations.count) 条连接配置 → \(path)（不含密码）")
+                    return 0
+                } catch {
+                    print("导出失败：\(error.localizedDescription)")
+                    return 66
+                }
+            }
+
             print("连接配置：\(configurations.count) 条（文件 \(await store.fileLocation().path)）")
             if summary.didMigrate {
                 print("（本次读入时迁移了 \(summary.migrated.count) 条）")
