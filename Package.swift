@@ -13,13 +13,17 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(path: "Vendor/postgres-nio")
+        // 依赖一律**随仓库带走**（Vendor/，见 §8.2）：版本可复现、离线可构建，
+        // 不因为上游发新版就把这个工程编不过。许可证随目录一起留档（都是 Apache-2.0）。
+        .package(path: "Vendor/postgres-nio"),
+        .package(path: "Vendor/mysql-nio")
     ],
     targets: [
         .target(
             name: "DoyahCore",
             dependencies: [
-                .product(name: "PostgresNIO", package: "postgres-nio")
+                .product(name: "PostgresNIO", package: "postgres-nio"),
+                .product(name: "MySQLNIO", package: "mysql-nio")
             ],
             path: "Core"
         ),
