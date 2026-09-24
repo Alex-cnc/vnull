@@ -288,6 +288,87 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(isSQLArchiveEnabled, forKey: "sqlArchive.enabled") }
     }
 
+    // MARK: 备份 / 恢复面板（FR-IO-04）
+
+    /// 面板是否呈现。
+    @Published var isBackupRestorePresented = false
+    /// 执行日志（逐行追加；面板直接显示它 —— 与 CLI 是同一份输出）。
+    @Published private(set) var backupRestoreLog: [String] = []
+    /// 正在执行。
+    @Published private(set) var isBackupRunning = false
+
+    /// 前置诊断（工具与服务器主版本不兼容时给出「为什么 + 怎么办」）。
+    func diagnoseBackupTool(_ plan: BackupPlan, password: String?) async -> String? {
+        // 工具版本：跑一次 `--version` 并解析（Core 已有解析器，不重复实现）
+        var toolVersion: DatabaseVersion?
+        if let arguments = plan.arguments {
+            let versionArguments = [arguments[0], "--version"]
+            let output = await runExternalProcess(executable: versionArguments[0], arguments: Array(versionArguments.dropFirst()))
+            toolVersion = BackupToolCheck.parseToolVersion(output)
+        }
+        // 服务器版本：用当前连接已经取到的那份（`serverInfos`），**不再建新连接**；
+        // 解析交给方言层（各家的版本串写法不同，解析规则只有一处）
+        let serverVersion = selectedConnection.flatMap { configuration in
+            serverInfos[configuration.id].map {
+                SQLDialectFactory.make(for: configuration.dbType).parseServerVersion($0.version)
+            }
+        }
+        // 拿不到时**不假装通过**：说清"不确定"，由用户决定
+        guard let serverVersion else {
+            return "拿不到服务器版本，无法判断工具兼容性（可继续，但可能跑到一半才失败）"
+        }
+        let compatibility = BackupToolCheck.evaluate(toolVersion: toolVersion, serverVersion: serverVersion)
+        guard !compatibility.isUsable else { return nil }
+        return BackupToolCheck.diagnosis(for: compatibility, toolName: plan.executableName)
+    }
+
+    /// 跑一个外部程序并把输出**收集**回来（只用于 `--version` 这类只读探测）。
+    ///
+    /// 执行器是回调式的（返回退出码、输出逐行走回调），所以这里用一个 actor 收集 ——
+    /// 回调是 `@Sendable` 且可能来自别的线程，直接往数组里 append 会踩并发。
+    private func runExternalProcess(executable: String, arguments: [String]) async -> String {
+        let collector = OutputCollector()
+        do {
+            _ = try await FoundationProcessRunner().run(
+                executable: executable,
+                arguments: arguments,
+                environment: [:]
+            ) { line in
+                Task { await collector.append(line) }
+            }
+            return await collector.joined()
+        } catch {
+            return ""
+        }
+    }
+
+    /// 执行备份 / 恢复。
+    ///
+    /// **沙箱下起子进程可能被拒** —— 那种失败要给可读指引，而不是把原始错误丢给用户：
+    /// 这条纪律与"外部程序调用"一致（用户必须知道为什么点了没反应、以及替代路径是什么）。
+    @discardableResult
+    func runBackupPlan(_ plan: BackupPlan, password: String?) async -> Int32 {
+        backupRestoreLog = ["命令：" + plan.displayCommand(password: password)]
+        isBackupRunning = true
+        defer { isBackupRunning = false }
+        do {
+            let result = try await BackupExecutor().execute(plan, password: password) { [weak self] line in
+                Task { @MainActor in self?.backupRestoreLog.append(line) }
+            }
+            if result.isFailure {
+                backupRestoreLog.append("失败（退出码 \(result.exitCode)）：")
+                if let summary = result.failureSummary { backupRestoreLog.append(summary) }
+                return result.exitCode
+            }
+            backupRestoreLog.append("完成：\(result.outputLineCount) 行输出")
+            return 0
+        } catch {
+            backupRestoreLog.append(L(.backupSandboxHint))
+            backupRestoreLog.append("原因：\(error.localizedDescription)")
+            return 68
+        }
+    }
+
     // MARK: 连接保活心跳（FR-CONN-20）
 
     /// 是否开启保活（间隔可配置、可关闭）。持久化到 UserDefaults。
@@ -2939,6 +3020,7 @@ final class AppState: ObservableObject {
         case "help": isShortcutHelpCommandPresented = true
         case "objectSearch": isObjectSearchPresented = true
         case "routineCandidates": isRoutineCandidatesPresented = true
+        case "backupRestore": isBackupRestorePresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
@@ -4224,4 +4306,13 @@ final class AppState: ObservableObject {
 
         serverInfos[connectionID] = nil
     }
+}
+
+/// 逐行收集外部程序输出（见 `runExternalProcess` 的说明）。
+private actor OutputCollector {
+    private var lines: [String] = []
+
+    func append(_ line: String) { lines.append(line) }
+
+    func joined() -> String { lines.joined(separator: "\n") }
 }

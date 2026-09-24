@@ -163,6 +163,10 @@ struct MainWindow: View {
             RoutineCandidatesPanel()
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $appState.isBackupRestorePresented) {
+            BackupRestoreSheet()
+                .environmentObject(appState)
+        }
         // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
         .sheet(isPresented: $localization.isRestartPromptPresented) {
             RelaunchPromptSheet()

@@ -860,6 +860,19 @@ public enum LKey: String, CaseIterable, Sendable {
     case safetyConfirmMessage
     case safetyReadOnlyRefused
     case startupSQLFailed
+    case backupRestoreTitle
+    case backupRestoreHint
+    case backupRestoreKindDump
+    case backupRestoreKindDumpAll
+    case backupRestoreKindRestore
+    case backupRestoreFormat
+    case backupRestoreArchive
+    case backupRestoreChoose
+    case backupRestoreTool
+    case backupRestoreCheck
+    case backupRestoreRun
+    case backupRestoreCommandPreview
+    case backupSandboxHint
     case startupSQLRefused
     case connectionFormReadOnly
     case connectionFormReadOnlyHint
@@ -1666,6 +1679,19 @@ public enum LocalizedStrings {
         .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
         .connectionFormGroup: [.simplifiedChinese: "分组 / 文件夹（可留空）", .english: "Group / folder (optional)"],
         .connectionFormGroupExisting: [.simplifiedChinese: "已有分组：%@", .english: "Existing groups: %@"],
+        .backupRestoreTitle: [.simplifiedChinese: "备份 / 恢复", .english: "Backup / restore"],
+        .backupRestoreHint: [.simplifiedChinese: "封装 `pg_dump` / `pg_restore` / `pg_dumpall`：**执行前先比工具与服务端主版本**，不兼容就提前拦下并说明原因与办法", .english: "Wraps pg_dump / pg_restore / pg_dumpall. Tool and server major versions are compared before running; incompatible pairs are stopped early with a reason and a remedy"],
+        .backupRestoreKindDump: [.simplifiedChinese: "单库备份", .english: "Dump one database"],
+        .backupRestoreKindDumpAll: [.simplifiedChinese: "集群备份（含角色）", .english: "Dump the cluster"],
+        .backupRestoreKindRestore: [.simplifiedChinese: "恢复到库", .english: "Restore into a database"],
+        .backupRestoreFormat: [.simplifiedChinese: "格式", .english: "Format"],
+        .backupRestoreArchive: [.simplifiedChinese: "归档文件", .english: "Archive file"],
+        .backupRestoreChoose: [.simplifiedChinese: "选择…", .english: "Choose…"],
+        .backupRestoreTool: [.simplifiedChinese: "工具路径（PATH 里常常没有 pg_dump）", .english: "Tool path (pg_dump is often not on PATH)"],
+        .backupRestoreCheck: [.simplifiedChinese: "检查工具兼容性", .english: "Check tool compatibility"],
+        .backupRestoreRun: [.simplifiedChinese: "执行", .english: "Run"],
+        .backupRestoreCommandPreview: [.simplifiedChinese: "将执行的命令（密码写成 ***）", .english: "Command to run (password shown as ***)"],
+        .backupSandboxHint: [.simplifiedChinese: "起外部程序失败：沙箱下不允许直接启动 `pg_dump` 等工具。请改用非沙箱构建（`DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh`），或用命令行 `doyah backup`。", .english: "Failed to launch the external tool: the sandbox does not allow spawning pg_dump. Use the unsandboxed build (DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh) or the CLI (doyah backup)."],
         .connectionFormReadOnly: [.simplifiedChinese: "只读连接（客户端拒绝写语句）", .english: "Read-only connection (client refuses writes)"],
         .connectionFormReadOnlyHint: [.simplifiedChinese: "这是**本机保护**，不替代数据库权限；关闭 Safe Mode 也不会放开它", .english: "This is local protection, not a database privilege; turning Safe Mode off will not lift it"],
         .connectionFormStartupSQL: [.simplifiedChinese: "连接后自动执行（启动 SQL，分号分隔）", .english: "Run after connecting (startup SQL, semicolon separated)"],

@@ -27,6 +27,7 @@ enum AppCommandCatalog {
             item("browseRows", .commandBrowseRows, "browse rows 浏览 表", "browse rows", .paletteCategoryObject),
             item("tableDDL", .commandTableDDL, "ddl 查看 建表 结构", "view ddl", .paletteCategoryObject),
             // 全库对象搜索（FR-META-12）：与对象树工具条的放大镜打开同一个面板。
+            item("backupRestore", .backupRestoreTitle, "backup restore dump 备份 恢复 导出", "backup restore", .paletteCategoryServer),
             item("routineCandidates", .routineCandidatesTitle, "routine 例行 候选 记忆 重复", "routine candidates", .paletteCategoryAgent),
             item("objectSearch", .objectSearchTitle, "search 搜索 找 对象 表 视图 列 函数", "search objects find", .paletteCategoryObject),
             item("sessions", .commandSessions, "sessions 会话", "server sessions", .paletteCategoryServer),
