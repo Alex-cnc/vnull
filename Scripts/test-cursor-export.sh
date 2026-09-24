@@ -122,7 +122,12 @@ echo ""
 echo "== 6) 输出格式各来一次（json / tsv / insert 的可解析性）=="
 for fmt in json tsv insert; do
     TMP="$(mktemp -t doyah-fmt).$fmt"
-    "$CLI" export --query "SELECT id FROM $S.big ORDER BY id" --out "$TMP" --format "$fmt" --fetch-size 20000 > /tmp/cursor-fmt.log 2>&1
+    # `insert` 格式必须给 `--table`：FR-RES-12 之后**明确要求**目标表名，
+    # 否则生成的 INSERT 会引用 `table_name` 这种不存在的表 —— 宁可报错也不产出坏 SQL。
+    # 这条断言原来是漏的（脚本写在那个要求之前），2026-09-24 复跑时被抓出来。
+    EXTRA=()
+    if [ "$fmt" = "insert" ]; then EXTRA=(--table "$S.big"); fi
+    "$CLI" export --query "SELECT id FROM $S.big ORDER BY id" --out "$TMP" --format "$fmt" --fetch-size 20000 "${EXTRA[@]+"${EXTRA[@]}"}" > /tmp/cursor-fmt.log 2>&1
     if [ $? -eq 0 ] && [ -s "$TMP" ]; then
         check "$fmt 导出非空" 0
     else
