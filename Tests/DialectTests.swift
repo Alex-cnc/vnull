@@ -46,4 +46,15 @@ final class DialectTests: XCTestCase {
         XCTAssertEqual(gbaseVersion.minor, 6)
         XCTAssertEqual(gbaseVersion.patch, 2)
     }
+    /// 语句分隔符来自**方言**，不是界面写死的 —— 工具条右侧那串「PostgreSQL · 分隔符 ;」里，
+    /// 「PostgreSQL」随连接类型变，「分隔符 x」随方言变（FR-EDIT-08）。
+    ///
+    /// 目前两种方言恰好都是 `;`，所以今天看不出差别；这条测试钉的是**取值来源**：
+    /// 以后加方言（Oracle 的 `/`、MySQL 的自定义分隔符）时，界面会自动跟着变，
+    /// 而不会出现"界面写着 `;`、实际按别的分隔符切语句"这种对不上的情况。
+    func testStatementDelimiterComesFromDialect() {
+        XCTAssertEqual(SQLDialectFactory.make(for: .postgresql).statementDelimiter, ";")
+        XCTAssertEqual(SQLDialectFactory.make(for: .gbase8a).statementDelimiter, ";")
+    }
+
 }

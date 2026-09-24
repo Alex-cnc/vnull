@@ -492,7 +492,25 @@ struct QueryToolbar: View {
         // 工具条的高度不该由文案长度决定：宁可截断（完整值在 tooltip 与连接设置里）。
         .lineLimit(1)
         .truncationMode(.middle)
-        .help("· \(connection.endpointDescription)")
+        // 截断之后完整值只能从这里看 —— 所以 tooltip 给**整串**，不是只给地址。
+        .help(fullConnectionInfo(connection))
+    }
+
+    /// 工具条右侧那串连接信息的**完整文本**（tooltip 用）。
+    ///
+    /// 两段都随连接变：① 类型名来自 `DatabaseType.displayName`（PostgreSQL / GBase 8a…）；
+    /// ② 分隔符来自**方言**（`SQLDialect.statementDelimiter`），不是写死的 `;` ——
+    /// 目前两种方言恰好都是 `;`，但以后加方言（Oracle 的 `/`、MySQL 的自定义分隔符）这里会自动跟着变。
+    private func fullConnectionInfo(_ connection: ConnectionConfig) -> String {
+        var parts = [
+            connection.dbType.displayName,
+            L(.workspaceDelimiter, SQLDialectFactory.make(for: connection.dbType).statementDelimiter)
+        ]
+        if let info = appState.serverInfo(for: connection.id) {
+            parts.append("\(info.database) · \(info.user)")
+        }
+        parts.append(connection.endpointDescription)
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - 通用图标按钮样式
