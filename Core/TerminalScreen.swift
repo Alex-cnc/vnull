@@ -75,9 +75,14 @@ public struct TerminalCell: Equatable, Sendable {
 /// - CSI：光标移动（A B C D E F G H f）、擦除（J K X）、插入删除（@ P L M）、
 ///   滚动（S T）、SGR（m）、屏幕对齐（r，滚动区域）
 /// - OSC：忽略（窗口标题一类）
-/// - 私有模式：`?25`（光标显隐）、`?7`（自动换行）、`?47` / `?1049`（备用屏）、`?2004`（括号粘贴）
+/// - 私有模式：`?25`（光标显隐）、`?7`（自动换行）、`?47` / `?1049`（备用屏）、`?2004`（括号粘贴）、
+///   `?1`（DECCKM 应用光标键）、`?6`（DECOM 原址模式）、`?1000` / `?1002` / `?1003`（鼠标上报）、
+///   `?1006`（SGR 鼠标编码）、`?1004`（焦点上报）
+/// - 设备查询应答：DA1（`CSI c`）、DA2（`CSI > c`）、DSR 5 / 6（`CSI n`）、DECRQM（`CSI ? Ps $ p`）、
+///   XTVERSION（`CSI > q`）—— 应答写进 `pendingResponses`，由调用方送回 PTY
 ///
-/// 明确不做的：鼠标上报、字符集切换（只当两字节吞掉）、双向文本、图片协议。
+/// 明确不做的：字符集切换（只当两字节吞掉）、双向文本、图片协议（sixel / kitty）、
+/// 鼠标的双击 / 三击区分（只上报按下、松开、拖动、滚轮）。
 public final class TerminalScreen {
 
     // MARK: 配置
@@ -101,6 +106,36 @@ public final class TerminalScreen {
     /// 不跟踪它的话，粘一段代码进 vim 会被逐行自动缩进、粘多行 SQL 可能被逐行提交。
     public var isBracketedPasteEnabled: Bool = false
 
+    /// DECCKM（`?1`）：应用光标键 —— 方向键走 SS3（`ESC O A`）而不是 CSI（`ESC [ A`）。
+    /// vim / less 与部分 TUI 靠它区分键序；不跟踪的话方向键在这些程序里会"没反应"。
+    public private(set) var isApplicationCursorKeysEnabled = false
+    /// DECOM（`?6`）：原址模式 —— 光标定位与光标位置报告都相对**滚动区**。
+    public private(set) var isOriginModeEnabled = false
+    /// `?1004`：焦点变化时前台程序希望收到 `ESC [ I` / `ESC [ O`。
+    public private(set) var isFocusReportingEnabled = false
+    /// 鼠标追踪模式（`?1000` / `?1002` / `?1003`）。
+    public private(set) var mouseTrackingMode: TerminalInput.MouseTrackingMode = .none
+    /// `?1006`：鼠标上报用 SGR 编码（坐标不受 223 限制，且分得清哪个键松开）。
+    public private(set) var isSGRMouseEnabled = false
+
+    /// 前台程序是否接管了鼠标（视图据此决定"上报"还是"本地选中"）。
+    public var isMouseReportingActive: Bool { mouseTrackingMode != .none }
+
+    /// 需要回给 PTY 的字节（设备查询应答）。
+    ///
+    /// 为什么不直接在这里写 PTY：屏幕模型是**纯逻辑**（Core 里没有文件描述符，也不该有）；
+    /// 由调用方在 `feed` 之后 `drainResponses()` 送回，测试与命令行都能一眼看到发生了什么。
+    private var pendingResponses: [UInt8] = []
+
+    /// 取走待回字节（幂等：取过就空）。
+    public func drainResponses() -> [UInt8] {
+        defer { pendingResponses.removeAll() }
+        return pendingResponses
+    }
+
+    /// 供命令行 / 测试查看当前有哪些待回应答，而不清空它。
+    public var pendingResponseBytes: [UInt8] { pendingResponses }
+
     /// 当前 SGR 属性（新写入的字符用它）。
     private var attributes = TerminalCell()
 
@@ -118,7 +153,23 @@ public final class TerminalScreen {
     /// 视觉上就是"新旧内容叠在一起"。
     private var savedMainScreen: [[TerminalCell]]?
     private var savedMainCursor: (row: Int, column: Int)?
-    private var savedMainFlags: (cursorVisible: Bool, autoWrap: Bool, bracketedPaste: Bool)?
+    /// 备用屏保存的主屏模式位。
+    ///
+    /// 为什么连 DECCKM / DECOM / 鼠标模式一起存：TUI（vim / less）切进备用屏时会**改**这些位，
+    /// 退出时只恢复"上一次前台程序留下的状态"才是对的 —— 少存一个，退出 TUI 后方向键
+    /// 就会停在应用模式上（外面那个 shell 收到 SS3 序列，按上箭头变成乱码）。
+    private struct SavedModes {
+        var cursorVisible: Bool
+        var autoWrap: Bool
+        var bracketedPaste: Bool
+        var applicationCursorKeys: Bool
+        var originMode: Bool
+        var focusReporting: Bool
+        var mouseTracking: TerminalInput.MouseTrackingMode
+        var sgrMouse: Bool
+    }
+
+    private var savedMainFlags: SavedModes?
 
     /// 当前是否在备用屏上。
     public private(set) var isAlternateScreen = false
@@ -499,9 +550,15 @@ public final class TerminalScreen {
         case "d":
             cursorRow = clampRow((first ?? 1) - 1)
         case "H", "f":
-            let row = (csiParameters.indices.contains(0) ? csiParameters[0] : 1) - 1
+            var row = (csiParameters.indices.contains(0) ? csiParameters[0] : 1) - 1
             let column = (csiParameters.indices.contains(1) ? csiParameters[1] : 1) - 1
-            cursorRow = clampRow(row)
+            if isOriginModeEnabled {
+                // 原址模式（DECOM）：行号相对滚动区顶部，且不允许走出滚动区。
+                row += scrollTop
+                cursorRow = min(max(row, scrollTop), scrollBottom)
+            } else {
+                cursorRow = clampRow(row)
+            }
             cursorColumn = clampColumn(column)
         case "J": eraseInDisplay(mode: first ?? 0)
         case "K": eraseInLine(mode: first ?? 0)
@@ -529,7 +586,36 @@ public final class TerminalScreen {
         case "h": if csiPrivateMarker == "?" { setPrivateMode(enabled: true) }
         case "l": if csiPrivateMarker == "?" { setPrivateMode(enabled: false) }
         case "n":
-            break // 设备状态查询：不回话（我们不是真的终端设备，够用即可）
+            // DSR：`5` = 设备状态（回"一切正常"），`6` = 光标位置报告。
+            // 不回答 6 的后果很具体：vim / tmux 一类程序会一直等这行回复，
+            // 表现为「界面卡住不动」—— 看起来像我们的卡顿，其实是对方在等。
+            switch first ?? 0 {
+            case 5: respond(TerminalInput.statusReportOK())
+            case 6:
+                let row = isOriginModeEnabled ? cursorRow - scrollTop + 1 : cursorRow + 1
+                respond(TerminalInput.cursorPositionReport(row: row, column: cursorColumn + 1))
+            default: break
+            }
+        case "c":
+            // DA1（`CSI c`）/ DA2（`CSI > c`）：声明基础能力，不夸大。
+            if csiPrivateMarker == ">" {
+                respond(TerminalInput.secondaryDeviceAttributes())
+            } else {
+                respond(TerminalInput.primaryDeviceAttributes())
+            }
+        case "p" where csiIntermediate == "$":
+            // DECRQM：告诉对方我们认不认这个模式、现在是置位还是复位。
+            guard let parameter = first else { break }
+            respond(
+                TerminalInput.modeReport(
+                    parameter: parameter,
+                    isPrivate: csiPrivateMarker == "?",
+                    state: modeState(for: parameter, isPrivate: csiPrivateMarker == "?")
+                )
+            )
+        case "q" where csiPrivateMarker == ">":
+            // XTVERSION：回 DCS 串。程序据此区分终端实现（我们不冒充 xterm）。
+            respond(TerminalInput.terminalVersion(name: DoyahIdentity.terminalVersionName))
         default:
             break
         }
@@ -544,9 +630,50 @@ public final class TerminalScreen {
             case 47: setAlternateScreen(enabled, savesCursor: false)
             case 1049: setAlternateScreen(enabled, savesCursor: true)
             case 2004: isBracketedPasteEnabled = enabled
+            case 1: isApplicationCursorKeysEnabled = enabled
+            case 6: isOriginModeEnabled = enabled
+            case 1004: isFocusReportingEnabled = enabled
+            // 三个鼠标模式互斥：置位谁就切到谁；复位只在自己是当前模式时清掉
+            // （`?1003l` 不该把 `?1002` 一起关掉 —— 顺序不同结果不同的那种 bug 最难查）。
+            case 1000: applyMouseTracking(enabled: enabled, mode: .click)
+            case 1002: applyMouseTracking(enabled: enabled, mode: .buttonEvent)
+            case 1003: applyMouseTracking(enabled: enabled, mode: .anyEvent)
+            case 1006: isSGRMouseEnabled = enabled
             default: break
             }
         }
+    }
+
+    private func applyMouseTracking(enabled: Bool, mode: TerminalInput.MouseTrackingMode) {
+        if enabled {
+            mouseTrackingMode = mode
+        } else if mouseTrackingMode == mode {
+            mouseTrackingMode = .none
+        }
+    }
+
+    /// DECRQM 用的模式状态：只报我们**真的跟踪**的模式，其余一律 `0`（不认识）——
+    /// 谎报"已置位"会让程序以为某项能力开着。
+    private func modeState(for parameter: Int, isPrivate: Bool) -> TerminalInput.ModeState {
+        guard isPrivate else { return .notRecognized }
+        switch parameter {
+        case 1: return isApplicationCursorKeysEnabled ? .set : .reset
+        case 6: return isOriginModeEnabled ? .set : .reset
+        case 7: return isAutoWrapEnabled ? .set : .reset
+        case 25: return isCursorVisible ? .set : .reset
+        case 1000: return mouseTrackingMode == .click ? .set : .reset
+        case 1002: return mouseTrackingMode == .buttonEvent ? .set : .reset
+        case 1003: return mouseTrackingMode == .anyEvent ? .set : .reset
+        case 1004: return isFocusReportingEnabled ? .set : .reset
+        case 1006: return isSGRMouseEnabled ? .set : .reset
+        case 2004: return isBracketedPasteEnabled ? .set : .reset
+        case 47, 1049: return isAlternateScreen ? .set : .reset
+        default: return .notRecognized
+        }
+    }
+
+    private func respond(_ bytes: [UInt8]) {
+        pendingResponses.append(contentsOf: bytes)
     }
 
     /// 切到 / 切回备用屏。
@@ -556,7 +683,16 @@ public final class TerminalScreen {
             savedMainScreen = screen
             if savesCursor {
                 savedMainCursor = (cursorRow, cursorColumn)
-                savedMainFlags = (isCursorVisible, isAutoWrapEnabled, isBracketedPasteEnabled)
+                savedMainFlags = SavedModes(
+                    cursorVisible: isCursorVisible,
+                    autoWrap: isAutoWrapEnabled,
+                    bracketedPaste: isBracketedPasteEnabled,
+                    applicationCursorKeys: isApplicationCursorKeysEnabled,
+                    originMode: isOriginModeEnabled,
+                    focusReporting: isFocusReportingEnabled,
+                    mouseTracking: mouseTrackingMode,
+                    sgrMouse: isSGRMouseEnabled
+                )
             }
             screen = Array(repeating: blankRow(), count: rows)
             cursorRow = 0
@@ -576,6 +712,11 @@ public final class TerminalScreen {
                 isCursorVisible = flags.cursorVisible
                 isAutoWrapEnabled = flags.autoWrap
                 isBracketedPasteEnabled = flags.bracketedPaste
+                isApplicationCursorKeysEnabled = flags.applicationCursorKeys
+                isOriginModeEnabled = flags.originMode
+                isFocusReportingEnabled = flags.focusReporting
+                mouseTrackingMode = flags.mouseTracking
+                isSGRMouseEnabled = flags.sgrMouse
             }
             savedMainScreen = nil
             savedMainCursor = nil
@@ -679,6 +820,14 @@ public final class TerminalScreen {
         isCursorVisible = true
         isAutoWrapEnabled = true
         isBracketedPasteEnabled = false
+        // RIS（`ESC c`）是"全复位"：模式位一律回默认 —— 漏掉哪个，下一个前台程序
+        // 就会继承上一个留下的状态（例如方向键停在应用模式、鼠标还被接管着）。
+        isApplicationCursorKeysEnabled = false
+        isOriginModeEnabled = false
+        isFocusReportingEnabled = false
+        mouseTrackingMode = .none
+        isSGRMouseEnabled = false
+        pendingResponses.removeAll()
         savedCursor = nil
         savedMainScreen = nil
         savedMainCursor = nil

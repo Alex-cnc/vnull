@@ -146,6 +146,10 @@ final class TerminalModel: ObservableObject {
         session.onOutput = { [weak self] data in
             guard let self else { return }
             self.screen.feed([UInt8](data))
+            // 设备查询应答（DA1 / DSR / DECRQM / XTVERSION）要**回给前台程序**：
+            // 不回话的话，vim / tmux 一类程序会一直等这一行，表现为"界面卡住"。
+            let responses = self.screen.drainResponses()
+            if !responses.isEmpty { self.session.write(responses) }
             self.requestRedraw?()
         }
         session.onExit = { [weak self] code in
@@ -360,6 +364,32 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
+        observeWindowFocus()
+    }
+
+    /// 焦点上报（`?1004`）：前台程序要的话，窗口拿到 / 失去焦点时各发一次
+    /// `ESC [ I` / `ESC [ O`（xterm 的约定）。不报的话，TUI 分不清
+    /// "用户切走了窗口"与"用户没在打字"，光标闪烁与重绘策略会不对。
+    private func observeWindowFocus() {
+        for observer in focusObservers { NotificationCenter.default.removeObserver(observer) }
+        focusObservers = []
+        guard let window else { return }
+        let center = NotificationCenter.default
+        focusObservers.append(
+            center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                self?.reportFocus(gained: true)
+            }
+        )
+        focusObservers.append(
+            center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                self?.reportFocus(gained: false)
+            }
+        )
+    }
+
+    private func reportFocus(gained: Bool) {
+        guard model.screen.isFocusReportingEnabled else { return }
+        model.send(Array((gained ? "\u{1B}[I" : "\u{1B}[O").utf8))
     }
 
     // MARK: 尺寸 → 网格
@@ -573,9 +603,44 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
 
     /// 触控板给的是带小数的精确位移，先攒够一行再滚，免得疯狂抖动。
     private var scrollRemainder: CGFloat = 0
+    /// 窗口焦点通知的观察者（`?1004` 焦点上报用；换窗口时先摘掉旧的）。
+    private var focusObservers: [NSObjectProtocol] = []
+
+    /// 前台程序是否接管了鼠标，且这次事件**不是**"强制本地选中"。
+    ///
+    /// 惯例（VS Code / PuTTY 等）：按住 **⌥** 时把鼠标还给本地 —— 否则在 vim / tmux 里
+    /// 一个字都选不了。代价是这类事件里不报 Meta 修饰键，这一点写在 `help` 与文档里。
+    private func isReportingMouse(_ event: NSEvent) -> Bool {
+        model.screen.isMouseReportingActive && !event.modifierFlags.contains(.option)
+    }
+
+    private func mouseModifiers(for event: NSEvent) -> TerminalInput.MouseModifiers {
+        var modifiers: TerminalInput.MouseModifiers = []
+        if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
+        if event.modifierFlags.contains(.option) { modifiers.insert(.option) }
+        if event.modifierFlags.contains(.control) { modifiers.insert(.control) }
+        return modifiers
+    }
+
+    private func sendMouse(_ action: TerminalInput.MouseAction, button: TerminalInput.MouseButton, event: NSEvent) {
+        let position = cellPosition(for: event)
+        let report = TerminalInput.MouseEvent(
+            action: action,
+            button: button,
+            modifiers: mouseModifiers(for: event),
+            column: position.column + 1,
+            row: position.row + 1
+        )
+        guard TerminalInput.shouldReport(report, mode: model.screen.mouseTrackingMode) else { return }
+        model.send(TerminalInput.mouseReport(report, sgr: model.screen.isSGRMouseEnabled))
+    }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if isReportingMouse(event) {
+            sendMouse(.press, button: event.buttonNumber == 1 ? .right : .left, event: event)
+            return
+        }
         let position = cellPosition(for: event)
         if event.modifierFlags.contains(.shift), model.selection != nil {
             model.extendSelection(to: position)
@@ -585,15 +650,60 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if isReportingMouse(event) {
+            let button: TerminalInput.MouseButton = switch event.buttonNumber {
+            case 1: .right
+            case 2: .middle
+            default: .left
+            }
+            sendMouse(.motion, button: button, event: event)
+            return
+        }
         model.extendSelection(to: cellPosition(for: event))
     }
 
     override func mouseUp(with event: NSEvent) {
+        if isReportingMouse(event) {
+            sendMouse(.release, button: event.buttonNumber == 1 ? .right : .left, event: event)
+            return
+        }
         // 只是点了一下（没拖出范围）：清掉那一格高亮，不然屏幕上会留个孤零零的方块。
         if model.selection?.isEmpty == true { model.clearSelection() }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        guard isReportingMouse(event) else { return super.rightMouseDown(with: event) }
+        sendMouse(.press, button: .right, event: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        guard isReportingMouse(event) else { return super.rightMouseUp(with: event) }
+        sendMouse(.release, button: .right, event: event)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        guard isReportingMouse(event) else { return super.otherMouseDown(with: event) }
+        sendMouse(.press, button: .middle, event: event)
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        guard isReportingMouse(event) else { return super.otherMouseUp(with: event) }
+        sendMouse(.release, button: .middle, event: event)
+    }
+
     override func scrollWheel(with event: NSEvent) {
+        // 前台程序要鼠标时，滚轮也要报给它（否则 TUI 里滚不动）；
+        // 每越过一格就报一次，避免一次手势刷出几百条消息。
+        if isReportingMouse(event) {
+            scrollRemainder += event.scrollingDeltaY
+            let steps = Int(scrollRemainder / cellSize.height)
+            guard steps != 0 else { return }
+            scrollRemainder -= CGFloat(steps) * cellSize.height
+            for _ in 0..<abs(steps) {
+                sendMouse(steps > 0 ? .wheelUp : .wheelDown, button: .left, event: event)
+            }
+            return
+        }
         scrollRemainder += event.scrollingDeltaY
         let lines = Int(scrollRemainder / cellSize.height)
         guard lines != 0 else { return }
@@ -634,7 +744,10 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
         model.scrollToBottom()
 
         // 控制键 / 方向键 / 功能键：固定字节序列，不经过输入法。
-        if let bytes = Self.controlBytes(for: event) {
+        if let bytes = Self.controlBytes(
+            for: event,
+            applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled
+        ) {
             model.send(bytes)
             return
         }
@@ -645,18 +758,24 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     }
 
     /// 控制键 / 方向键 / 功能键 → 写进 PTY 的字节序列；不是这类键时返回 nil。
-    static func controlBytes(for event: NSEvent) -> [UInt8]? {
+    ///
+    /// - Parameter applicationCursorKeys: DECCKM（`?1`）。置位时方向键 / Home / End 走 SS3
+    ///   （`ESC O A`），否则 CSI（`ESC [ A`）—— vim / less 靠这个区分两种键序。
+    static func controlBytes(for event: NSEvent, applicationCursorKeys: Bool = false) -> [UInt8]? {
+        func cursorKey(_ key: TerminalInput.CursorKey) -> [UInt8] {
+            TerminalInput.cursorKey(key, applicationCursorKeys: applicationCursorKeys)
+        }
         switch event.keyCode {
         case 36, 76: return [0x0D]                 // Return / 小键盘 Enter
         case 51: return [0x7F]                     // Delete（退格）
         case 48: return [0x09]                     // Tab
         case 53: return [0x1B]                     // Esc
-        case 123: return Array("\u{1B}[D".utf8)    // ←
-        case 124: return Array("\u{1B}[C".utf8)    // →
-        case 125: return Array("\u{1B}[B".utf8)    // ↓
-        case 126: return Array("\u{1B}[A".utf8)    // ↑
-        case 115: return Array("\u{1B}[H".utf8)    // Home
-        case 119: return Array("\u{1B}[F".utf8)    // End
+        case 123: return cursorKey(.left)
+        case 124: return cursorKey(.right)
+        case 125: return cursorKey(.down)
+        case 126: return cursorKey(.up)
+        case 115: return cursorKey(.home)
+        case 119: return cursorKey(.end)
         case 116: return Array("\u{1B}[5~".utf8)   // Page Up
         case 121: return Array("\u{1B}[6~".utf8)   // Page Down
         case 117: return Array("\u{1B}[3~".utf8)   // 前向删除
@@ -704,17 +823,17 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
         case #selector(NSResponder.deleteForward(_:)):
             model.send(Array("\u{1B}[3~".utf8))
         case #selector(NSResponder.moveLeft(_:)):
-            model.send(Array("\u{1B}[D".utf8))
+            model.send(TerminalInput.cursorKey(.left, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.moveRight(_:)):
-            model.send(Array("\u{1B}[C".utf8))
+            model.send(TerminalInput.cursorKey(.right, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.moveUp(_:)):
-            model.send(Array("\u{1B}[A".utf8))
+            model.send(TerminalInput.cursorKey(.up, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.moveDown(_:)):
-            model.send(Array("\u{1B}[B".utf8))
+            model.send(TerminalInput.cursorKey(.down, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.scrollToBeginningOfDocument(_:)):
-            model.send(Array("\u{1B}[H".utf8))
+            model.send(TerminalInput.cursorKey(.home, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.scrollToEndOfDocument(_:)):
-            model.send(Array("\u{1B}[F".utf8))
+            model.send(TerminalInput.cursorKey(.end, applicationCursorKeys: model.screen.isApplicationCursorKeysEnabled))
         case #selector(NSResponder.pageUp(_:)):
             model.send(Array("\u{1B}[5~".utf8))
         case #selector(NSResponder.pageDown(_:)):

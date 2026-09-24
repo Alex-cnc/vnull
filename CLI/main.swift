@@ -132,6 +132,13 @@ struct DoyahCLI {
             exit(runTerminalPaletteCommand(arguments: Array(arguments.dropFirst())))
         }
 
+        // terminal-modes：终端输入编码与设备查询应答（FR-EDIT-29 的"输入 / 应答"证据出口）。
+        // 为什么要有它：鼠标上报（?1002/?1006）、DECCKM、DA1 / DSR / DECRQM / XTVERSION
+        // 全是"一串字节"的事，界面里看不出来 —— 给个能脚本化、能对着规范核对的出口。
+        if arguments.first == "terminal-modes" {
+            exit(runTerminalModesCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -824,6 +831,108 @@ struct DoyahCLI {
         case "light", "alwayslight": return .alwaysLight
         default: return .followSystem
         }
+    }
+
+    /// `terminal-modes [--json] [--feed <转义串>]`
+    ///
+    /// 不带参数：打印各模式的**编码对照表**（鼠标按下 / 松开 / 拖动 / 滚轮、两种编码；
+    /// DECCKM 两种键序；四类查询应答）。
+    /// 带 `--feed`：把这段字节喂进真实的屏幕模型，打印**模式位与回给 PTY 的字节** ——
+    /// 也就是说，验的是解析器而不是纯函数（两者都要对）。
+    private static func runTerminalModesCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        if let feed = value(for: "--feed") {
+            let screen = TerminalScreen(columns: 80, rows: 24)
+            screen.feed(text: feed)
+            let responses = screen.drainResponses()
+            if arguments.contains("--json") {
+                let payload: [String: Any] = [
+                    "applicationCursorKeys": screen.isApplicationCursorKeysEnabled,
+                    "originMode": screen.isOriginModeEnabled,
+                    "focusReporting": screen.isFocusReportingEnabled,
+                    "mouseTracking": screen.mouseTrackingMode.rawValue,
+                    "sgrMouse": screen.isSGRMouseEnabled,
+                    "bracketedPaste": screen.isBracketedPasteEnabled,
+                    "cursorRow": screen.cursorRow,
+                    "cursorColumn": screen.cursorColumn,
+                    "responses": visible(responses),
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                }
+                return 0
+            }
+            print("喂入：\(visible(Array(feed.utf8)))")
+            print("模式：DECCKM \(screen.isApplicationCursorKeysEnabled ? "开" : "关") · "
+                  + "DECOM \(screen.isOriginModeEnabled ? "开" : "关") · "
+                  + "焦点上报 \(screen.isFocusReportingEnabled ? "开" : "关") · "
+                  + "鼠标 \(screen.mouseTrackingMode.displayName) · "
+                  + "SGR 编码 \(screen.isSGRMouseEnabled ? "开" : "关")")
+            print("光标：行 \(screen.cursorRow + 1) 列 \(screen.cursorColumn + 1)")
+            print("回给 PTY：\(responses.isEmpty ? "（无）" : visible(responses))")
+            return 0
+        }
+
+        print("终端输入与设备应答（FR-EDIT-29）—— 括号里是规范出处")
+        print("")
+        print("鼠标上报（xterm ctlseqs：DECSET 1000 / 1002 / 1003 + 1006）")
+        let events: [(String, TerminalInput.MouseEvent)] = [
+            ("左键按下 (10,5)", .init(action: .press, button: .left, column: 10, row: 5)),
+            ("左键松开 (10,5)", .init(action: .release, button: .left, column: 10, row: 5)),
+            ("中键按下 (3,2)", .init(action: .press, button: .middle, column: 3, row: 2)),
+            ("右键按下 (1,1)", .init(action: .press, button: .right, column: 1, row: 1)),
+            ("按住左键拖动 (12,6)", .init(action: .motion, button: .left, column: 12, row: 6)),
+            ("⌃+滚轮上 (4,4)", .init(action: .wheelUp, button: .left, modifiers: .control, column: 4, row: 4)),
+            ("滚轮下 (4,4)", .init(action: .wheelDown, button: .left, column: 4, row: 4)),
+        ]
+        for (label, event) in events {
+            print("  \(label)：旧式 \(visible(TerminalInput.mouseReport(event, sgr: false)))"
+                  + " ｜ SGR \(visible(TerminalInput.mouseReport(event, sgr: true)))")
+        }
+        print("  上报判定：?1000 只报按下/松开/滚轮、?1002 拖动才报移动、?1003 任何移动都报")
+        for mode in TerminalInput.MouseTrackingMode.allCases {
+            let press = TerminalInput.MouseEvent(action: .press, button: .left, column: 1, row: 1)
+            let motion = TerminalInput.MouseEvent(action: .motion, button: .left, column: 1, row: 1)
+            print("    \(mode.displayName)：按下 \(TerminalInput.shouldReport(press, mode: mode) ? "报" : "不报")"
+                  + " · 移动 \(TerminalInput.shouldReport(motion, mode: mode) ? "报" : "不报")")
+        }
+        print("")
+        print("光标键（xterm ctlseqs：DECCKM ?1）")
+        for key in TerminalInput.CursorKey.allCases {
+            print("  \(key.rawValue)：普通 \(visible(TerminalInput.cursorKey(key, applicationCursorKeys: false)))"
+                  + " ｜ 应用模式 \(visible(TerminalInput.cursorKey(key, applicationCursorKeys: true)))")
+        }
+        print("")
+        print("设备查询应答（xterm ctlseqs：DA1 / DA2 / DSR / DECRQM / XTVERSION）")
+        print("  DA1（CSI c）        → \(visible(TerminalInput.primaryDeviceAttributes()))")
+        print("  DA2（CSI > c）      → \(visible(TerminalInput.secondaryDeviceAttributes()))")
+        print("  DSR 5（CSI 5 n）    → \(visible(TerminalInput.statusReportOK()))")
+        print("  DSR 6（CSI 6 n）    → \(visible(TerminalInput.cursorPositionReport(row: 7, column: 3)))")
+        print("  DECRQM ?1000 已置位 → \(visible(TerminalInput.modeReport(parameter: 1000, isPrivate: true, state: .set)))")
+        print("  DECRQM ?9999 不认识 → \(visible(TerminalInput.modeReport(parameter: 9999, isPrivate: true, state: .notRecognized)))")
+        print("  XTVERSION（CSI > q）→ \(visible(TerminalInput.terminalVersion(name: DoyahIdentity.terminalVersionName)))")
+        return 0
+    }
+
+    /// 把字节渲染成可读形式（ESC → `ESC`、控制字符 → `\xNN`），便于脚本 grep 与人工核对。
+    private static func visible(_ bytes: [UInt8]) -> String {
+        var text = ""
+        for byte in bytes {
+            switch byte {
+            case 0x1B: text += "ESC"
+            case 0x09: text += "\\t"
+            case 0x0D: text += "\\r"
+            case 0x0A: text += "\\n"
+            case 0x20...0x7E: text.append(Character(UnicodeScalar(byte)))
+            default: text += String(format: "\\x%02X", byte)
+            }
+        }
+        return text
     }
 
     /// `terminal-palette [--json]`：打印终端色板（FR-EDIT-29 的配色证据出口）。

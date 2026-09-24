@@ -31,6 +31,16 @@ public enum DoyahIdentity {
         Bundle.main.bundleIdentifier ?? bundleIdentifier
     }
 
+    /// 终端里对外报出的版本名（XTVERSION 应答，`ESC P > | 名字 ESC \`）。
+    ///
+    /// **不冒充 xterm**：报自己的名字与版本，程序据此知道对面不是 xterm，
+    /// 从而走保守分支（冒充的话它会按 xterm 的能力表来用我们没实现的东西）。
+    public static var terminalVersionName: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        if let version, !version.isEmpty { return "DoyahStudio \(version)" }
+        return "DoyahStudio"
+    }
+
     // MARK: - 历史身份（仅供一次性迁移）
 
     /// 改名前的包标识（= 旧钥匙串 service 名、旧沙箱容器名）。
