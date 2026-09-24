@@ -85,6 +85,9 @@ Bilingual support is built in from the start rather than retrofitted:
   user-facing text from appearing in `Core` outside that table.
 - Menus, diagnostics, terminal messages and the workspace editor follow the same table; the repository's
   top-level README is bilingual too ([中文](README.md) / English).
+- **The three engineering documents and design notes are Chinese-only for now.** The priority is
+  internationalizing the *product*; document translations will come when there are real international
+  collaborators (translations of living documents go stale, and a stale translation misleads more than none).
 
 ## Build and run
 
