@@ -62,6 +62,12 @@ public protocol SQLDialect: Sendable {
     /// 换方言就是另一套目录。没有这一层时，非 PG 连接上会拿一条 PG 口径的 SQL 去跑，
     /// 用户看到的是一句莫名其妙的 SQL 报错 —— 而"这个方言不支持"本该是一句人话。
     func objectSearchQuery(schema: String?, limit: Int) -> String?
+
+    /// 数据库统计指标查询（FR-DIAG-04）；nil = 该方言不支持。
+    ///
+    /// 这些指标吃的是 **PostgreSQL 的统计视图**（`pg_stat_user_tables` / `pg_stat_database` / `pg_stat_activity`），
+    /// 换方言就是另一套（或根本没有），所以走同一个"能力开口"模式。
+    func databaseStatsQuery(_ metric: DatabaseStats.Metric, limit: Int) -> String?
     /// 表结构查询（FR-DDL-03）：列名 / 类型 / 可空 / **默认值** / **是否主键**；nil = 该方言不支持。
     ///
     /// 与 `listColumnsQuery` 的区别：那个只给对象树用的列名与类型，这个要支撑"改表结构"，
@@ -109,6 +115,7 @@ public extension SQLDialect {
     func tableConstraintsQuery(table: String, schema: String?) -> String? { nil }
     func lockWaitingQuery() -> String? { nil }
     func objectSearchQuery(schema: String?, limit: Int) -> String? { nil }
+    func databaseStatsQuery(_ metric: DatabaseStats.Metric, limit: Int) -> String? { nil }
 }
 
 public struct PostgresDialect: SQLDialect {
@@ -216,6 +223,43 @@ public struct PostgresDialect: SQLDialect {
     /// 全库对象搜索（FR-META-12）：PG 口径的系统目录查询，由 `ObjectSearch` 提供，方言层只做转发。
     public func objectSearchQuery(schema: String?, limit: Int) -> String? {
         ObjectSearch.query(schema: schema, limit: limit)
+    }
+
+    /// 数据库统计指标（FR-DIAG-04）：四类指标各自一条查询，全部用**PG 12 起就有的视图**，
+    /// 刻意不用 `pg_stat_io`（那是 16+）—— 需求点名的"按版本兼容"落在这里。
+    public func databaseStatsQuery(_ metric: DatabaseStats.Metric, limit: Int) -> String? {
+        let bounded = max(1, limit)
+        switch metric {
+        case .tableSizes:
+            return """
+            SELECT schemaname || '.' || relname AS name,
+                   pg_total_relation_size(relid) AS bytes
+            FROM pg_catalog.pg_statio_user_tables
+            ORDER BY bytes DESC
+            LIMIT \(bounded)
+            """
+        case .indexHitRate:
+            return """
+            SELECT schemaname || '.' || relname AS name,
+                   seq_scan, idx_scan
+            FROM pg_catalog.pg_stat_user_tables
+            ORDER BY (seq_scan + idx_scan) DESC
+            LIMIT \(bounded)
+            """
+        case .connections:
+            return """
+            SELECT coalesce(state, 'unknown') AS state, count(*) AS count
+            FROM pg_catalog.pg_stat_activity
+            WHERE backend_type = 'client backend'
+            GROUP BY state
+            ORDER BY count DESC
+            """
+        case .cacheHitRate:
+            return """
+            SELECT sum(blks_hit) AS hits, sum(blks_read) AS reads
+            FROM pg_catalog.pg_stat_database
+            """
+        }
     }
 
     public func objectPrivilegeQuery(role: String) -> String? {

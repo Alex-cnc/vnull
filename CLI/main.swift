@@ -329,6 +329,13 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // stats：数据库统计指标（FR-DIAG-04）。四类指标各一条只读查询。
+        if arguments.first == "stats" {
+            let code = await runStatsCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
         // slow-queries：慢查询排行（FR-DIAG-03）。扩展没装时**给出怎么装**，而不是抛原始错误。
         if arguments.first == "slow-queries" {
             let code = await runSlowQueriesCommand(
@@ -1294,6 +1301,80 @@ struct DoyahCLI {
     ///
     /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
     /// 而不是靠人在界面里看一眼。
+    /// `stats [--limit N] [--json]` —— 表大小 / 索引命中率 / 连接数 / 缓存命中率（FR-DIAG-04）。
+    private static func runStatsCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+        let limit = Int(value(for: "--limit") ?? "") ?? 20
+        let dialect = PostgresDialect()
+
+        // 单条查询失败**不该让整个面板空掉**：四类指标各自独立，能显示几类就显示几类。
+        func run(_ metric: DatabaseStats.Metric) async -> QueryResult? {
+            guard let sql = dialect.databaseStatsQuery(metric, limit: limit) else { return nil }
+            var result: QueryResult?
+            do {
+                for try await event in service.execute(sql, options: .default) {
+                    if case .resultSet(let value) = event { result = value }
+                }
+            } catch {
+                print("（\(metric.displayName) 取不到：\(error.localizedDescription)）")
+                return nil
+            }
+            return result
+        }
+
+        var sizes: [DatabaseStats.TableSize] = []
+        var scans: [DatabaseStats.TableScans] = []
+        var connections = DatabaseStats.ConnectionSummary(byState: [:])
+        var cacheHit: DatabaseStats.CacheHit?
+
+        if let result = await run(.tableSizes) { sizes = DatabaseStats.tableSizes(from: result, limit: limit) }
+        if let result = await run(.indexHitRate) { scans = DatabaseStats.tableScans(from: result, limit: limit) }
+        if let result = await run(.connections) { connections = DatabaseStats.connections(from: result) }
+        if let result = await run(.cacheHitRate) { cacheHit = DatabaseStats.cacheHit(from: result) }
+
+        if arguments.contains("--json") {
+            let payload: [String: Any] = [
+                "tableSizes": sizes.map { ["name": $0.name, "bytes": $0.bytes, "display": $0.displaySize] },
+                "indexHitRate": scans.map { scan -> [String: Any] in
+                    [
+                        "name": scan.name,
+                        "seqScan": scan.sequential,
+                        "idxScan": scan.index,
+                        "ratio": scan.indexHitRatio.map { $0 } as Any
+                    ]
+                },
+                "connections": connections.byState,
+                "cacheHit": cacheHit.map { ["hits": $0.hits, "reads": $0.reads, "ratio": $0.ratio as Any] } as Any
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                print(text)
+                return 0
+            }
+        }
+
+        print("表大小（前 \(sizes.count) 张）：")
+        for size in sizes { print("  \(size.displaySize)\t\(size.name)") }
+        print("索引命中率：")
+        for scan in scans { print("  \(scan.displayRatio)\t序扫 \(scan.sequential) / 索引扫 \(scan.index)\t\(scan.name)") }
+        print("连接数（合计 \(connections.total)）：")
+        for item in connections.ordered { print("  \(item.state)\t\(item.count)") }
+        if let cacheHit {
+            print("缓存命中率：\(cacheHit.displayRatio)（命中 \(cacheHit.hits) / 读 \(cacheHit.reads)）")
+        } else {
+            print("缓存命中率：无访问数据")
+        }
+        return 0
+    }
+
     /// `schema-snapshot [--schema S] [--out <文件>] [--json]`
     private static func runSchemaSnapshotCommand(
         arguments: [String],
