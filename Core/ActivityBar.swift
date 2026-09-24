@@ -7,8 +7,11 @@ import Foundation
 /// 动作（设置 / 账户）没有选中态，只是按钮。混成一个枚举，
 /// 迟早会出现"设置被选中了、右侧面板变成设置页"这种结构性问题。
 public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
-    case database
+    // **顺序 = 栏上的上下位置**（2026-09-25 需求提出者：「活动栏排序调整一下：工作区在最上面」）。
+    // `allCases` 的顺序就是显示顺序，所以"谁在上面"只由这里的声明顺序决定 ——
+    // 别在视图里再排一次（两处顺序迟早不一致）。
     case workspace
+    case database
 
     public var id: String { rawValue }
 
@@ -47,10 +50,13 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// 菜单快捷键：⌘1 / ⌘2（与 VS Code 的"按序号切视图"同一习惯）。
+    ///
+    /// 序号**跟着栏上的顺序**走：栏上第一项就是 ⌘1。写死成"数据库 = ⌘1"会让
+    /// "按序号切视图"这条习惯失灵（用户按 ⌘1 期待的是最上面那个）。
     public var shortcutIndex: Int {
         switch self {
-        case .database: return 1
-        case .workspace: return 2
+        case .workspace: return 1
+        case .database: return 2
         }
     }
 }

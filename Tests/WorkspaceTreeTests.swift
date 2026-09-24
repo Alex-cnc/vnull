@@ -12,7 +12,9 @@ final class ActivityBarTests: XCTestCase {
 
     func testTwoViewItemsWithStableIdentifiers() {
         XCTAssertEqual(ActivityBarItem.allCases.count, 2)
-        XCTAssertEqual(ActivityBarItem.allCases.map(\.rawValue), ["database", "workspace"])
+        // 顺序 = 栏上的上下位置：工作区在最上面（2026-09-25 需求提出者要求）。
+        XCTAssertEqual(ActivityBarItem.allCases.map(\.rawValue), ["workspace", "database"])
+        XCTAssertEqual(ActivityBarItem.allCases.first, .workspace)
         XCTAssertEqual(Set(ActivityBarItem.allCases.map(\.id)).count, 2)
     }
 
@@ -26,9 +28,13 @@ final class ActivityBarTests: XCTestCase {
         }
     }
 
-    /// 切换项的快捷键序号必须是 ⌘1 / ⌘2 —— 「按序号切视图」是通用习惯。
-    func testShortcutIndexesAreSequential() {
+    /// 切换项的快捷键序号必须是 ⌘1 / ⌘2，**且与栏上顺序一致** ——
+    /// 「按序号切视图」是通用习惯，按 ⌘1 应该切到最上面那一项。
+    func testShortcutIndexesFollowTheOnScreenOrder() {
         XCTAssertEqual(ActivityBarItem.allCases.map(\.shortcutIndex), [1, 2])
+        XCTAssertEqual(ActivityBarItem.allCases.first?.shortcutIndex, 1)
+        XCTAssertEqual(ActivityBarItem.workspace.shortcutIndex, 1)
+        XCTAssertEqual(ActivityBarItem.database.shortcutIndex, 2)
     }
 
     func testResolveFallsBackToDatabase() {
