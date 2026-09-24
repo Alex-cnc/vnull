@@ -1,0 +1,258 @@
+[
+  {
+    "appearance" : "followSystem",
+    "fontSize" : 12,
+    "fontSizeClamped" : false,
+    "kind" : "resolution",
+    "resolvedIsDark" : true,
+    "systemIsDark" : true
+  },
+  {
+    "ansi" : [
+      {
+        "backgroundSlot" : true,
+        "contrast" : "1.36",
+        "hex" : "#2B303C",
+        "index" : 0,
+        "name" : "black"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.23",
+        "hex" : "#F0716F",
+        "index" : 1,
+        "name" : "red"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "8.73",
+        "hex" : "#5FC98C",
+        "index" : 2,
+        "name" : "green"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "10.16",
+        "hex" : "#E3BF63",
+        "index" : 3,
+        "name" : "yellow"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.81",
+        "hex" : "#6E8BFF",
+        "index" : 4,
+        "name" : "blue"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.73",
+        "hex" : "#D06FBF",
+        "index" : 5,
+        "name" : "magenta"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "7.98",
+        "hex" : "#4FBDBD",
+        "index" : 6,
+        "name" : "cyan"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "10.68",
+        "hex" : "#C2C8D4",
+        "index" : 7,
+        "name" : "white"
+      },
+      {
+        "backgroundSlot" : true,
+        "contrast" : "2.92",
+        "hex" : "#5A6272",
+        "index" : 8,
+        "name" : "bright black"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "8.05",
+        "hex" : "#FF8D8A",
+        "index" : 9,
+        "name" : "bright red"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "11.31",
+        "hex" : "#86E0A8",
+        "index" : 10,
+        "name" : "bright green"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "12.91",
+        "hex" : "#F3D98C",
+        "index" : 11,
+        "name" : "bright yellow"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "8.89",
+        "hex" : "#9DB4FF",
+        "index" : 12,
+        "name" : "bright blue"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "8.16",
+        "hex" : "#E795CB",
+        "index" : 13,
+        "name" : "bright magenta"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "11.25",
+        "hex" : "#7FDCDC",
+        "index" : 14,
+        "name" : "bright cyan"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "16.12",
+        "hex" : "#F0F3F8",
+        "index" : 15,
+        "name" : "bright white"
+      }
+    ],
+    "background" : "#14171E",
+    "cursor" : "#6E8BFF",
+    "foreground" : "#D6DBE4",
+    "foregroundContrast" : "12.90",
+    "isDark" : true,
+    "kind" : "palette",
+    "name" : "深海·夜",
+    "selection" : "#24304A"
+  },
+  {
+    "ansi" : [
+      {
+        "backgroundSlot" : false,
+        "contrast" : "10.04",
+        "hex" : "#3B404C",
+        "index" : 0,
+        "name" : "black"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.98",
+        "hex" : "#B23327",
+        "index" : 1,
+        "name" : "red"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.30",
+        "hex" : "#146B47",
+        "index" : 2,
+        "name" : "green"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.38",
+        "hex" : "#7E5500",
+        "index" : 3,
+        "name" : "yellow"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.03",
+        "hex" : "#2F55D4",
+        "index" : 4,
+        "name" : "blue"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.52",
+        "hex" : "#9C2C86",
+        "index" : 5,
+        "name" : "magenta"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.70",
+        "hex" : "#0A6370",
+        "index" : 6,
+        "name" : "cyan"
+      },
+      {
+        "backgroundSlot" : true,
+        "contrast" : "1.17",
+        "hex" : "#E7E9EF",
+        "index" : 7,
+        "name" : "white"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.91",
+        "hex" : "#5C6270",
+        "index" : 8,
+        "name" : "bright black"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.97",
+        "hex" : "#C01A19",
+        "index" : 9,
+        "name" : "bright red"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.01",
+        "hex" : "#00703A",
+        "index" : 10,
+        "name" : "bright green"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.12",
+        "hex" : "#926200",
+        "index" : 11,
+        "name" : "bright yellow"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "5.83",
+        "hex" : "#0053EF",
+        "index" : 12,
+        "name" : "bright blue"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "6.51",
+        "hex" : "#A9098F",
+        "index" : 13,
+        "name" : "bright magenta"
+      },
+      {
+        "backgroundSlot" : false,
+        "contrast" : "4.60",
+        "hex" : "#0E7F8A",
+        "index" : 14,
+        "name" : "bright cyan"
+      },
+      {
+        "backgroundSlot" : true,
+        "contrast" : "1.03",
+        "hex" : "#FFFFFF",
+        "index" : 15,
+        "name" : "bright white"
+      }
+    ],
+    "background" : "#FBFBFD",
+    "cursor" : "#2F55D4",
+    "foreground" : "#23252C",
+    "foregroundContrast" : "14.80",
+    "isDark" : false,
+    "kind" : "palette",
+    "name" : "深海·昼",
+    "selection" : "#D8E3FF"
+  }
+]

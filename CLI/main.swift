@@ -855,6 +855,9 @@ struct DoyahCLI {
         if arguments.contains("--json") {
             var payload: [[String: Any]] = []
             payload.append([
+                // `kind` 让机器消费者一眼分清"解析元数据"与"色板实体"，
+                // 而不是靠"有没有某个键"去猜（Gate 与 Linux 侧都用它筛选）。
+                "kind": "resolution",
                 "appearance": appearance.rawValue,
                 "systemIsDark": systemIsDark,
                 "resolvedIsDark": appearance.resolvesToDark(systemIsDark: systemIsDark),
@@ -863,19 +866,20 @@ struct DoyahCLI {
             ])
             for palette in palettes {
                 payload.append([
+                    "kind": "palette",
                     "name": palette.name,
                     "isDark": palette.isDark,
                     "background": palette.background.hexString,
                     "foreground": palette.foreground.hexString,
                     "cursor": palette.cursor.hexString,
                     "selection": palette.selectionBackground.hexString,
-                    "foregroundContrast": round(TerminalPalette.contrastRatio(palette.foreground, palette.background) * 100) / 100,
+                    "foregroundContrast": String(format: "%.2f", TerminalPalette.contrastRatio(palette.foreground, palette.background)),
                     "ansi": palette.ansi.enumerated().map { index, color in
                         [
                             "index": index,
                             "name": names[index],
                             "hex": color.hexString,
-                            "contrast": round(TerminalPalette.contrastRatio(color, palette.background) * 100) / 100,
+                            "contrast": String(format: "%.2f", TerminalPalette.contrastRatio(color, palette.background)),
                             "backgroundSlot": TerminalPalette.isBackgroundSlot(index: index, isDark: palette.isDark)
                         ] as [String: Any]
                     }

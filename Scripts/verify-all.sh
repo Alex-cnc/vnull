@@ -34,6 +34,8 @@ python3 Scripts/check-core-portability.py
 
 echo "==> 3/9 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
+# 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
+python3 Scripts/check-terminal-palette.py
 
 echo "==> 4/9 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
