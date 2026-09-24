@@ -247,3 +247,30 @@ final class MultiCursorTests: XCTestCase {
         XCTAssertEqual(result.text, "订单 order_id;客户 order_id;")
     }
 }
+
+/// 多光标下**回车**的语义（FR-EDIT-27）：每个光标插一个换行、整批一次生效。
+///
+/// 这条用例来自需求提出者的实测反馈「一个回车换 2 行」—— 真相是有第二个光标在同时插入，
+/// 而它当时**没有被画出来**（`SQLTextView.drawInsertionPoint` 已修）。语义本身是对的，
+/// 所以这里把"每个光标一个换行"钉住，免得以后为了"看起来像单个光标"而改坏它。
+final class MultiCursorNewlineTests: XCTestCase {
+
+    func testNewlineIsInsertedAtEveryCaret() {
+        let text = "select 1\nselect 2"
+        // 两行行尾各一个光标。
+        let first = NSRange(location: 8, length: 0)
+        let second = NSRange(location: 17, length: 0)
+        let cursor = MultiCursor(selections: [first, second], textLength: text.utf16.count)
+        let applied = cursor.applying("\n", to: text)
+        XCTAssertEqual(applied.text, "select 1\n\nselect 2\n")
+        XCTAssertEqual(applied.cursors.selections.count, 2, "两个光标都保留")
+        XCTAssertEqual(applied.cursors.selections.map(\.location), [9, 19], "各自移到新换行之后")
+    }
+
+    /// 单个光标时与 `NSTextView` 默认行为一致（我们只在多光标时接管）。
+    func testSingleCaretNewlineMatchesPlainInsertion() {
+        let text = "select 1"
+        let cursor = MultiCursor(selections: [NSRange(location: 8, length: 0)], textLength: text.utf16.count)
+        XCTAssertEqual(cursor.applying("\n", to: text).text, "select 1\n")
+    }
+}

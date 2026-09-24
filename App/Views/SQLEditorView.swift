@@ -439,6 +439,13 @@ final class SQLTextView: NSTextView {
             complete(nil)
             return
         }
+        // Esc：**收敛多光标**。这是"我怎么会一次插两行"的出口 ——
+        // 需求提出者实测踩到过：有个多余光标在同时打字，而它没被画出来（见 `drawInsertionPoint`）。
+        if event.keyCode == 53, selectedRanges.count > 1 {
+            setRangeValues([selectedRange()])
+            needsDisplay = true
+            return
+        }
         if event.modifierFlags.contains([.command, .option]) {
             switch event.charactersIgnoringModifiers {
             case "d":
@@ -458,6 +465,49 @@ final class SQLTextView: NSTextView {
     }
 
     // MARK: - 多光标与列编辑（FR-EDIT-27）
+
+    /// 把**次光标**也画出来。
+    ///
+    /// 为什么必须画：`NSTextView` 只画主光标，而零长度选区**连高亮都没有** ——
+    /// 于是"其实有两个光标在同时打字"在界面上完全看不出来，用户只会觉得
+    /// 「我按一下回车怎么换了两行」「我打一个字怎么出来两个」（实测反馈）。
+    /// 这里的画法很朴素：在次光标位置补一个 2pt 宽的小竖条，颜色用主光标同色。
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        super.drawInsertionPoint(in: rect, color: color, turnedOn: flag)
+
+        let ranges = rangeValues
+        guard ranges.count > 1 else { return }
+        color.setFill()
+        for range in ranges.dropFirst() {
+            // 有选区的那个已经由系统高亮显示，只需要补零长度光标的竖条。
+            guard range.length == 0, let caret = caretRect(atCharacterIndex: range.location) else { continue }
+            caret.fill()
+        }
+    }
+
+    /// 某个文本偏移处的光标矩形（零长度：取该处字形位置的竖条）。
+    private func caretRect(atCharacterIndex index: Int) -> NSRect? {
+        guard let layoutManager, let textContainer else { return nil }
+        let text = string as NSString
+        let clamped = min(max(0, index), text.length)
+        let probeIndex = clamped < text.length ? clamped : max(0, text.length - 1)
+        let glyphIndex = layoutManager.glyphIndexForCharacter(at: probeIndex)
+        let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+        let location = layoutManager.location(forGlyphAt: glyphIndex)
+        let origin = textContainerOrigin
+
+        // 行尾（index == length）时，用最后一个字形的推进宽度把竖条挪到行尾之后。
+        var x = lineRect.minX + location.x
+        if clamped >= text.length, text.length > 0 {
+            x = lineRect.maxX
+        }
+        return NSRect(
+            x: origin.x + x,
+            y: origin.y + lineRect.minY,
+            width: 2,
+            height: lineRect.height
+        )
+    }
 
     /// ⌥⌘D：选中下一处与当前选区相同的内容。
     ///
@@ -507,6 +557,20 @@ final class SQLTextView: NSTextView {
         }
         let cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
         applyMultiCursor { cursor.applying(text, to: $0) }
+    }
+
+    /// 回车：多光标时**自己应用**（与打字 / 退格同一套 Core 引擎）。
+    ///
+    /// 为什么必须显式拦：交给 AppKit 的话行为不保证（它对"多个零长度选区"的处理是实现细节），
+    /// 而且容易出现"插入了一次但撤销要按两下"。走 Core 引擎则每个光标插一个换行、整批一次撤销 ——
+    /// 与打字、退格完全一致。
+    override func insertNewline(_ sender: Any?) {
+        guard selectedRanges.count > 1 else {
+            super.insertNewline(sender)
+            return
+        }
+        let cursor = MultiCursor(selections: rangeValues, textLength: string.utf16.count)
+        applyMultiCursor { cursor.applying("\n", to: $0) }
     }
 
     /// 多选区退格：每个光标删一个完整字符（emoji 的代理对一起删）。
