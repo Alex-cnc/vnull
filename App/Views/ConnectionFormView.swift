@@ -5,6 +5,8 @@ struct ConnectionFormView: View {
     @Environment(\.dismiss) private var dismiss
 
     let configuration: ConnectionConfig?
+    /// 现有连接（用于"已有分组"提示）—— 由调用方传入，表单不去认识 AppState。
+    private let existingConnections: [ConnectionConfig]
     let onSave: (ConnectionConfig, String) -> Void
 
     @State private var name: String
@@ -18,17 +20,22 @@ struct ConnectionFormView: View {
     /// 只读连接与启动 SQL（FR-CONN-17）。
     @State private var isReadOnly: Bool
     @State private var startupSQL: String
+    /// 分组 / 文件夹（FR-CONN-15）。
+    @State private var group: String
     @State private var password: String
     @State private var sslMode: SSLMode
     @State private var timeout: Int
     @State private var bannerMessage: String?
+    private var existingGroups: [String] { ConnectionGrouping.groupNames(existingConnections) }
     @State private var isTesting: Bool = false
 
     init(
         configuration: ConnectionConfig?,
+        existingConnections: [ConnectionConfig] = [],
         onSave: @escaping (ConnectionConfig, String) -> Void
     ) {
         self.configuration = configuration
+        self.existingConnections = existingConnections
         self.onSave = onSave
 
         _name = State(initialValue: configuration?.name ?? "")
@@ -44,7 +51,8 @@ struct ConnectionFormView: View {
         _environment = State(initialValue: configuration?.environment)
         _colorTag = State(initialValue: configuration?.colorTag)
         _isReadOnly = State(initialValue: configuration?.isReadOnly ?? false)
-        _startupSQL = State(initialValue: configuration?.startupSQL ?? "")    }
+        _startupSQL = State(initialValue: configuration?.startupSQL ?? "")
+        _group = State(initialValue: configuration?.group ?? "")    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -142,6 +150,17 @@ struct ConnectionFormView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // 分组（FR-CONN-15）：填了就在侧边栏按组折叠展示；留空 = 未分组。
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField(L(.connectionFormGroup), text: $group)
+                    if !existingGroups.isEmpty {
+                        Text(L(.connectionFormGroupExisting, existingGroups.joined(separator: " / ")))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 // 启动 SQL：连接建立后逐条执行（如 SET search_path / statement_timeout）。
                 VStack(alignment: .leading, spacing: 2) {
                     TextField(L(.connectionFormStartupSQL), text: $startupSQL, axis: .vertical)
@@ -231,7 +250,8 @@ struct ConnectionFormView: View {
             isReadOnly: isReadOnly,
             startupSQL: startupSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil
-                : startupSQL
+                : startupSQL,
+            group: group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : group
         )
     }
 }

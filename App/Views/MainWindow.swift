@@ -67,7 +67,10 @@ struct MainWindow: View {
             }
         }
         .sheet(item: $formMode) { mode in
-            ConnectionFormView(configuration: mode.configuration) { configuration, password in
+            ConnectionFormView(
+                configuration: mode.configuration,
+                existingConnections: appState.connections
+            ) { configuration, password in
                 Task {
                     if mode.isNew {
                         await appState.addConnection(configuration, password: password)

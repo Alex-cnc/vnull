@@ -9,6 +9,52 @@ struct ConnectionListView: View {
     /// 待确认删除的连接（FR-CONN-05 / R-09：删除必须二次确认）。
     @State private var pendingDeletion: ConnectionConfig?
 
+    /// 被折叠的分组（FR-CONN-15）。**默认全部展开** —— 折叠是"用户主动收起"的结果，
+    /// 一进来就把组都收起来会让人以为连接没了。
+    @State private var collapsedGroups: Set<String> = []
+
+    /// 一个分组段：有组名时可折叠，未分组那段不给折叠 —— 它是兜底容器，
+    /// 折起来等于把没归类的连接藏了。
+    @ViewBuilder
+    private func sectionView(_ section: ConnectionGrouping.Section) -> some View {
+        let title = section.group ?? ConnectionGrouping.ungroupedTitle
+        if section.isUngrouped {
+            Text(title)
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+            rows(section)
+        } else {
+            DisclosureGroup(isExpanded: Binding(
+                get: { !collapsedGroups.contains(section.id) },
+                set: { expanded in
+                    if expanded { collapsedGroups.remove(section.id) } else { collapsedGroups.insert(section.id) }
+                }
+            )) {
+                rows(section)
+            } label: {
+                Text("\(title)（\(section.connections.count)）")
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rows(_ section: ConnectionGrouping.Section) -> some View {
+        ForEach(section.connections) { configuration in
+            ConnectionRow(configuration: configuration)
+                .tag(configuration.id)
+                .contextMenu {
+                    Button(L(.commonEdit)) {
+                        onEdit(configuration)
+                    }
+                    Button(L(.commonDelete), role: .destructive) {
+                        pendingDeletion = configuration
+                    }
+                }
+        }
+    }
+
     var body: some View {
         List(selection: $appState.selectedConnectionID) {
             Section(L(.connectionListTitle)) {
@@ -18,17 +64,11 @@ struct ConnectionListView: View {
                         .foregroundStyle(Theme.text(.secondary))
                 }
 
-                ForEach(appState.connections) { configuration in
-                    ConnectionRow(configuration: configuration)
-                        .tag(configuration.id)
-                        .contextMenu {
-                            Button(L(.commonEdit)) {
-                                onEdit(configuration)
-                            }
-                            Button(L(.commonDelete), role: .destructive) {
-                                pendingDeletion = configuration
-                            }
-                        }
+                // 按分组渲染（FR-CONN-15）：顺序由 `ConnectionGrouping` 一次定死
+                // （分组本地化自然序、未分组永远最后、组内保持传入顺序），视图只负责画与折叠。
+                // 顺序若在视图里再算一遍，两处迟早不一致。
+                ForEach(ConnectionGrouping.sections(appState.connections)) { section in
+                    sectionView(section)
                 }
             }
 

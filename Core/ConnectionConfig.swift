@@ -28,6 +28,13 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
     /// 连接建立后自动执行的 SQL（FR-CONN-17），例如 `SET search_path` / `statement_timeout`。
     public var startupSQL: String?
 
+    /// 自定义分组 / 文件夹（FR-CONN-15）：按「项目 / 环境」组织大量连接。
+    ///
+    /// 为什么是**可选字符串**而不是分组对象：需求要的是"能归入自定义分组、侧边栏按组折叠"，
+    /// 不是一套分组管理模型。字符串让用户随手打一个组名就能用；空 / 只有空白的组名视为**未分组**
+    /// （否则会出现一个名字是空格的诡异分组）。
+    public var group: String?
+
     public init(
         id: UUID = UUID(),
         name: String = "",
@@ -42,7 +49,8 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         environment: ConnectionEnvironment? = nil,
         colorTag: CategoricalTone? = nil,
         isReadOnly: Bool = false,
-        startupSQL: String? = nil
+        startupSQL: String? = nil,
+        group: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -58,6 +66,14 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         self.colorTag = colorTag
         self.isReadOnly = isReadOnly
         self.startupSQL = startupSQL
+        self.group = group
+    }
+
+    /// 归一化后的组名：空 / 纯空白 → `nil`（未分组）。
+    public var normalizedGroup: String? {
+        guard let group else { return nil }
+        let trimmed = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// 启动 SQL 拆成**逐条**语句（空串 / 纯注释不算）。

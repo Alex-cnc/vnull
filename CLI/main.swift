@@ -1242,6 +1242,21 @@ struct DoyahCLI {
                 return statements.isEmpty ? 1 : 0
             }
 
+            // `--by-group`：按分组打印。顺序由 `ConnectionGrouping` 定（与侧边栏同一份聚合），
+            // 所以这里能断言"未分组永远最后"这类语义 —— 而不是靠界面肉眼看。
+            if arguments.contains("--by-group") {
+                let sections = ConnectionGrouping.sections(configurations)
+                print("分组：\(sections.count) 组 / \(configurations.count) 条连接")
+                for section in sections {
+                    let title = section.group ?? ConnectionGrouping.ungroupedTitle
+                    print("\(title)（\(section.connections.count)）")
+                    for connection in section.connections {
+                        print("    \(connection.name)\t\(connection.endpointDescription)")
+                    }
+                }
+                return sections.isEmpty ? 1 : 0
+            }
+
             print("连接配置：\(configurations.count) 条（文件 \(await store.fileLocation().path)）")
             if summary.didMigrate {
                 print("（本次读入时迁移了 \(summary.migrated.count) 条）")
@@ -1251,7 +1266,8 @@ struct DoyahCLI {
                 let color = configuration.colorTag?.rawValue ?? "—"
                 let readOnly = configuration.isReadOnly ? "这是只读连接" : "可写"
                 let startup = configuration.startupStatements.count
-                print("  \(configuration.name)\t\(configuration.endpointDescription)\t环境=\(environment)\t颜色=\(color)\t\(readOnly)\t启动 SQL \(startup) 条")
+                let group = configuration.normalizedGroup ?? "—"
+                print("  \(configuration.name)\t\(configuration.endpointDescription)\t环境=\(environment)\t颜色=\(color)\t组=\(group)\t\(readOnly)\t启动 SQL \(startup) 条")
             }
             return 0
         } catch {

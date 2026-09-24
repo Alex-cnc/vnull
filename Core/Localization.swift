@@ -864,6 +864,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionFormReadOnly
     case connectionFormReadOnlyHint
     case connectionFormStartupSQL
+    case connectionFormGroup
+    case connectionFormGroupExisting
     case connectionFormStartupSQLHint
     case safetyConfirmRun
     case safetyConfirmCancel
@@ -1662,6 +1664,8 @@ public enum LocalizedStrings {
         .agentRiskElevated: [.simplifiedChinese: "较高", .english: "Elevated"],
         .agentRiskDestructive: [.simplifiedChinese: "高危", .english: "Destructive"],
         .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
+        .connectionFormGroup: [.simplifiedChinese: "分组 / 文件夹（可留空）", .english: "Group / folder (optional)"],
+        .connectionFormGroupExisting: [.simplifiedChinese: "已有分组：%@", .english: "Existing groups: %@"],
         .connectionFormReadOnly: [.simplifiedChinese: "只读连接（客户端拒绝写语句）", .english: "Read-only connection (client refuses writes)"],
         .connectionFormReadOnlyHint: [.simplifiedChinese: "这是**本机保护**，不替代数据库权限；关闭 Safe Mode 也不会放开它", .english: "This is local protection, not a database privilege; turning Safe Mode off will not lift it"],
         .connectionFormStartupSQL: [.simplifiedChinese: "连接后自动执行（启动 SQL，分号分隔）", .english: "Run after connecting (startup SQL, semicolon separated)"],
