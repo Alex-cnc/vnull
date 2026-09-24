@@ -120,6 +120,11 @@ struct DoyahCLI {
 
         // memory：查询记忆（FR-AI-13）—— 从归档 .sql 建索引、按前缀给补全候选。
         // 不需要数据库连接：**事实源是本地归档文件**，索引是纯派生缓存。
+        // specs：任务定义的版本化 / diff / 回滚 / 重跑语义（FR-AI-11）。不需要数据库连接。
+        if arguments.first == "specs" {
+            exit(runSpecsCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -750,6 +755,148 @@ struct DoyahCLI {
     /// `memory --dir <归档目录> [--prefix "SELECT * FROM o"] [--connection 名] [--json]`
     ///
     /// 不带 `--prefix` 时列出记忆概览（骨架 / 次数 / 跨天 / 连接）。
+    /// `specs`：任务定义的版本化、diff、回滚与重跑语义（FR-AI-11）。
+    ///
+    /// 保存走 `DataTaskStore.save` —— 版本化挂在那里（唯一收口点），所以这条命令
+    /// 与界面改定义走的是**同一条历史**。
+    private static func runSpecsCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        let directory = URL(fileURLWithPath: value(for: "--dir") ?? FileManager.default.currentDirectoryPath)
+        let versions = SpecVersionStore(directoryURL: directory)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        // `--rerun-mode <模式> [--task-file <json>]`：打印幂等语义与判定（不写任何东西）
+        if let rawMode = value(for: "--rerun-mode") {
+            guard let mode = RerunMode(rawValue: rawMode) else {
+                print("未知的重跑语义：\(rawMode)（可用：\(RerunMode.allCases.map(\.rawValue).joined(separator: " / "))）")
+                return 64
+            }
+            print(RerunPolicy.describe(mode))
+            guard let file = value(for: "--task-file"),
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: file)),
+                  let definition = try? decoder.decode(DataTaskDefinition.self, from: data) else {
+                print("（给了 --task-file 才能判定与任务写入模式是否一致）")
+                return 0
+            }
+            let verdict = RerunPolicy.evaluate(mode: mode, definition: definition)
+            for blocker in verdict.blockers { print("❌ " + blocker) }
+            for warning in verdict.warnings { print("⚠️ " + warning) }
+            return verdict.isAllowed ? 0 : 3
+        }
+
+        // `--save <json>`：保存定义（自动记版本）
+        if let file = value(for: "--save") {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: file)),
+                  let definition = try? decoder.decode(DataTaskDefinition.self, from: data) else {
+                print("读取任务定义失败：\(file)（需要 DataTaskDefinition 的 JSON）")
+                return 66
+            }
+            let store = DataTaskStore(directoryURL: directory)
+            let semaphore = DispatchSemaphore(value: 0)
+            var code: Int32 = 0
+            Task {
+                do {
+                    try await store.save(definition)
+                    let all = versions.versions(taskID: definition.id)
+                    print("已保存「\(definition.name)」：当前共 \(all.count) 个版本"
+                          + (all.last.map { "（最新 v\($0.number)）" } ?? ""))
+                    code = 0
+                } catch {
+                    print("保存失败：\(error.localizedDescription)")
+                    code = 1
+                }
+                semaphore.signal()
+            }
+            semaphore.wait()
+            return code
+        }
+
+        guard let taskIDString = value(for: "--task"), let taskID = UUID(uuidString: taskIDString) else {
+            print("用法：specs --dir <目录> --task <任务 UUID> [--history | --diff <a> <b> | --rollback <n>]")
+            print("      specs --dir <目录> --save <定义.json>")
+            print("      specs --rerun-mode <overwrite|append|resume> [--task-file <定义.json>]")
+            return 64
+        }
+
+        // `--history`
+        if arguments.contains("--history") {
+            let history = versions.versions(taskID: taskID)
+            if arguments.contains("--json") {
+                let payload = history.map { version -> [String: Any] in
+                    ["number": version.number, "name": version.definition.name,
+                     "specs": version.specs, "note": version.note ?? "",
+                     "savedAt": ISO8601DateFormatter().string(from: version.savedAt)]
+                }
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return history.isEmpty ? 1 : 0
+                }
+            }
+            print("共 \(history.count) 个版本：")
+            for version in history {
+                print("  v\(version.number)\t\(version.definition.name)\t\(version.specs.prefix(40))"
+                      + (version.note.map { "\t[\($0)]" } ?? ""))
+            }
+            return history.isEmpty ? 1 : 0
+        }
+
+        // `--diff <a> <b>`
+        if let first = value(for: "--diff") {
+            guard let index = arguments.firstIndex(of: "--diff"), index + 2 < arguments.count,
+                  let a = Int(first), let b = Int(arguments[index + 2]) else {
+                print("--diff 需要两个版本号：--diff <a> <b>")
+                return 64
+            }
+            guard let left = versions.version(taskID: taskID, number: a),
+                  let right = versions.version(taskID: taskID, number: b) else {
+                print("找不到版本（v\(a) / v\(b)）")
+                return 1
+            }
+            let changes = SpecDiff.changes(between: left.definition, and: right.definition)
+            if changes.isEmpty {
+                print("v\(a) 与 v\(b) 没有差异")
+                return 1
+            }
+            print("v\(a) → v\(b) 共 \(changes.count) 处改动：")
+            for change in changes { print("  " + change.description) }
+            return 0
+        }
+
+        // `--rollback <n>`：把旧版本**再存一次**（历史留痕，不是删掉后面的版本）
+        if let rawNumber = value(for: "--rollback"), let number = Int(rawNumber) {
+            guard let version = versions.version(taskID: taskID, number: number) else {
+                print("找不到版本 v\(number)")
+                return 1
+            }
+            let store = DataTaskStore(directoryURL: directory)
+            let target = version.definition
+            var code: Int32 = 0
+            let semaphore = DispatchSemaphore(value: 0)
+            Task {
+                do {
+                    try await store.save(target)
+                    print("已回滚到 v\(number)（内容以**新版本**记入历史，旧版本仍可查）")
+                    code = 0
+                } catch {
+                    print("回滚失败：\(error.localizedDescription)")
+                    code = 1
+                }
+                semaphore.signal()
+            }
+            semaphore.wait()
+            return code
+        }
+
+        print("请指定 --history / --diff / --rollback 之一")
+        return 64
+    }
+
     private static func runMemoryCommand(arguments: [String]) -> Int32 {
         func value(for flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {

@@ -674,6 +674,10 @@ public actor DataTaskStore {
     }
 
     /// 新增或替换（按 `id` 匹配）一个任务。
+    ///
+    /// 保存是**版本化的唯一收口点**（FR-AI-11）：放在这里，界面 / 命令行 / 数据任务调度
+    /// 无论从哪条路径改定义，历史都会自动留下；散在各处写"记一条版本"必漏。
+    /// 内容没变时不记新版本（`SpecVersionStore.record` 自己判定），免得历史被噪音淹掉。
     @discardableResult
     public func save(_ task: DataTaskDefinition) throws -> DataTaskDefinition {
         var stored = task
@@ -685,8 +689,18 @@ public actor DataTaskStore {
             all.append(stored)
         }
         try write(all)
+        // 版本记录失败**不该让保存失败**（与归档同一条纪律：历史是附加价值，
+        // 不是用户这次操作的必要条件），但要看得到。
+        do {
+            try SpecVersionStore(directoryURL: tasksURL.deletingLastPathComponent()).record(definition: stored)
+        } catch {
+            lastVersioningError = error.localizedDescription
+        }
         return stored
     }
+
+    /// 最近一次版本记录失败的原因（`nil` = 正常）。界面可以据此提示"历史可能不完整"。
+    public private(set) var lastVersioningError: String?
 
     public func delete(id: UUID) throws {
         var all = try tasks()
