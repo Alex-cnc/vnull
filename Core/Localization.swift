@@ -1178,6 +1178,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionDeleteConfirmMessage
     case resultExport
     case exportCSV
+    case exportXLSX
+    case exportBinaryOneShot
     case exportJSON
     case exportTSV
     case exportMarkdown
@@ -2243,6 +2245,8 @@ public enum LocalizedStrings {
         .connectionDeleteConfirmMessage: [.simplifiedChinese: "将删除连接「%@」以及保存在钥匙串中的密码，该操作不可撤销。", .english: "This permanently deletes “%@” and its Keychain password."],
         .resultExport: [.simplifiedChinese: "导出结果", .english: "Export Result"],
         .exportCSV: [.simplifiedChinese: "导出为 CSV…", .english: "Export as CSV…"],
+        .exportXLSX: [.simplifiedChinese: "导出为 Excel（.xlsx）…", .english: "Export as Excel (.xlsx)…"],
+        .exportBinaryOneShot: [.simplifiedChinese: "%：xlsx 是二进制工作簿，需要整份写完才能落盘，因此按一次性取回导出", .english: "%: an xlsx workbook must be written in one piece (it is a ZIP), so this export reads the full result set"],
         .exportJSON: [.simplifiedChinese: "导出为 JSON…", .english: "Export as JSON…"],
         .exportTSV: [.simplifiedChinese: "导出为 TSV…", .english: "Export as TSV…"],
         .exportMarkdown: [.simplifiedChinese: "导出为 Markdown 表格…", .english: "Export as Markdown Table…"],

@@ -10,6 +10,8 @@ public enum ResultExportFormat: String, CaseIterable, Sendable {
     case markdown
     /// 逐行 `INSERT INTO ... VALUES (...);`，可直接回放到库里。
     case sqlInsert
+    /// Excel 工作簿（FR-RES-14）。**二进制格式**：文本入口不适用，见 `ResultExporter.data(...)`。
+    case xlsx
 
     /// 保存面板使用的扩展名。
     public var fileExtension: String {
@@ -19,7 +21,17 @@ public enum ResultExportFormat: String, CaseIterable, Sendable {
         case .tsv: return "tsv"
         case .markdown: return "md"
         case .sqlInsert: return "sql"
+        case .xlsx: return "xlsx"
         }
+    }
+
+    /// 是否是二进制格式（不能用文本入口写）。
+    ///
+    /// 存在的理由：`.xlsx` 加进枚举后，`text(for:format:)` 的 switch 必须给出一个值，
+    /// 而"给 xlsx 返回一段文本"必然是错的 —— 与其让它悄悄返回空串，不如把这个事实做成
+    /// 可查询的属性，让调用方在**编译期之外的入口处**也分得清（CLI / App 的写入路径都按它分支）。
+    public var isBinary: Bool {
+        self == .xlsx
     }
 
     /// 默认文件名（不含扩展名）。
@@ -35,6 +47,7 @@ public enum ResultExportFormat: String, CaseIterable, Sendable {
         case .tsv: return "public.tab-separated-values-text"
         case .markdown: return "net.daringfireball.markdown"
         case .sqlInsert: return "public.plain-text"
+        case .xlsx: return "org.openxmlformats.spreadsheetml.sheet"
         }
     }
 
@@ -283,7 +296,55 @@ public enum ResultExporter {
         case .markdown: return markdown(for: result)
         case .sqlInsert:
             return insertStatements(for: result, tableName: tableName, schema: schema, dialect: dialect)
+        case .xlsx:
+            // 二进制格式没有"文本形态"：这里**刻意**返回空串并在文档里写明，
+            // 调用方要用 `data(for:format:)`（`isBinary` 可以让它们提前分支）。
+            return ""
         }
+    }
+
+    /// 导出字节。文本格式给出 UTF-8 字节，`.xlsx` 给出工作簿（FR-RES-14）。
+    public static func data(
+        for result: QueryResult,
+        format: ResultExportFormat,
+        tableName: String = "table_name",
+        schema: String? = nil,
+        dialect: (any SQLDialect)? = nil
+    ) -> Data {
+        if format == .xlsx { return xlsx(for: result) }
+        return Data(text(for: result, format: format, tableName: tableName, schema: schema, dialect: dialect).utf8)
+    }
+
+    /// 生成 Excel 工作簿（表头 + 数据行）。
+    ///
+    /// **数值列怎么定**：按列类型名判断（int / numeric / float / double 等），
+    /// 而不是"看着像数字就当数字" —— 后者会把 `007`、手机号、日期串都变成数字，
+    /// 用户看到的就不再是他查出来的东西。
+    public static func xlsx(for result: QueryResult, sheetName: String = "查询结果") -> Data {
+        let numeric = Set(
+            result.columns.enumerated()
+                .filter { isNumericTypeName($0.element.typeName) }
+                .map(\.offset)
+        )
+        return XLSXWriter.workbook(
+            sheetName: sheetName,
+            columns: result.columns.map(\.name),
+            rows: result.rows,
+            numericColumns: numeric
+        )
+    }
+
+    /// 类型名是否属于"真数字"（保守白名单：宁可少判，也不要把编号 / 日期的前导零弄丢）。
+    public static func isNumericTypeName(_ raw: String) -> Bool {
+        let name = raw.lowercased().trimmingCharacters(in: .whitespaces)
+        // 带精度/长度的写法（`numeric(10,2)`、`character varying(20)`）先切掉括号部分。
+        let base = name.split(separator: "(").first.map(String.init) ?? name
+        let numericTypes: Set<String> = [
+            "smallint", "integer", "int", "int2", "int4", "int8", "bigint",
+            "smallserial", "serial", "bigserial", "serial2", "serial4", "serial8",
+            "numeric", "decimal", "real", "float4", "float8", "double precision", "float"
+        ]
+        return numericTypes.contains(base)
     }
 
     /// 结果是否有可导出内容：有列（含 0 行）或明确的影响行数。

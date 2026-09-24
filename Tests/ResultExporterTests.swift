@@ -183,8 +183,14 @@ final class ResultExporterTests: XCTestCase {
         XCTAssertEqual(ResultExportFormat.markdown.fileExtension, "md")
         XCTAssertEqual(ResultExportFormat.tsv.fileExtension, "tsv")
         XCTAssertEqual(ResultExportFormat.sqlInsert.fileExtension, "sql")
+        XCTAssertEqual(ResultExportFormat.xlsx.fileExtension, "xlsx")
         XCTAssertTrue(ResultExportFormat.sqlInsert.requiresTableName)
         XCTAssertFalse(ResultExportFormat.csv.requiresTableName)
-        XCTAssertEqual(ResultExportFormat.allCases.count, 5)
+        XCTAssertFalse(ResultExportFormat.xlsx.requiresTableName)
+
+        // 不写死"一共几个"（加了格式就要改一次的断言没什么信息量），
+        // 改成钉住**真正要守的性质**：扩展名互不重复、二进制格式只有 xlsx。
+        XCTAssertEqual(Set(ResultExportFormat.allCases.map(\.fileExtension)).count, ResultExportFormat.allCases.count)
+        XCTAssertEqual(ResultExportFormat.allCases.filter(\.isBinary), [.xlsx])
     }
 }

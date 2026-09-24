@@ -213,6 +213,7 @@ struct ResultTableView: View {
                 Menu {
                     Button(L(.exportCSV)) { onExport(.csv) }
                     Button(L(.exportJSON)) { onExport(.json) }
+                    Button(L(.exportXLSX)) { onExport(.xlsx) }
                     Divider()
                     Button(L(.exportTSV)) { onExport(.tsv) }
                     Button(L(.exportMarkdown)) { onExport(.markdown) }

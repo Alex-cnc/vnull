@@ -2,6 +2,8 @@ import Foundation
 
 /// 流式导出的错误（FR-RES-13）。
 public enum ResultStreamError: Error, Equatable, LocalizedError {
+    /// 二进制格式（xlsx）不能流式写。
+    case binaryFormatNeedsFullResult
     case notStarted
     case alreadyStarted
     case alreadyFinished
@@ -14,6 +16,7 @@ public enum ResultStreamError: Error, Equatable, LocalizedError {
         case .alreadyStarted: return "流式导出已经开始，不能重复 begin()。"
         case .alreadyFinished: return "流式导出已经结束。"
         case .aborted: return "流式导出已中止。"
+        case .binaryFormatNeedsFullResult: return "该格式（xlsx）需要一次性写完整份工作簿，不能用流式导出。"
         case .invalidFlushLimit(let value): return "刷新阈值必须为正数，收到 \(value)。"
         }
     }
@@ -185,6 +188,10 @@ public final class ResultStreamWriter {
         case .sqlInsert:
             // INSERT 没有独立的文件头，逐行成句。
             break
+        case .xlsx:
+            // xlsx 是 ZIP：中央目录要等所有行写完才能落，天生不适合边写边落盘。
+            // 这里**明确拒绝**而不是写半个文件 —— 半个 xlsx 打不开，而错误信息能说清原因。
+            throw ResultStreamError.binaryFormatNeedsFullResult
         }
     }
 
@@ -336,6 +343,10 @@ public final class ResultStreamWriter {
                 table: insertTable,
                 columnList: insertColumnList
             ) + "\n"
+        case .xlsx:
+            // 走不到这里：`begin()` 已经拒绝了二进制格式。保留分支是为了让 switch 穷尽，
+            // 而不是留一个"静默返回空串"的口子。
+            return ""
         case .json:
             let prefix = wroteAnyRow ? ",\n    " : "\n    "
             wroteAnyRow = true

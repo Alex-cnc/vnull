@@ -1316,6 +1316,25 @@ final class AppState: ObservableObject {
             return false
         }
 
+        // xlsx 是二进制工作簿（ZIP 的中央目录要等所有行写完才能落）——**天生不能流式**。
+        // 这里提前分支并如实交代，而不是让流式写入器在 begin() 里抛错（那样用户只看到"导出失败"）。
+        if format.isBinary {
+            reportTabStatus(L(.exportBinaryOneShot, url.lastPathComponent), for: tabID)
+            let payload = ResultExporter.data(
+                for: result,
+                format: format,
+                tableName: tab.fileURL == nil ? "table_name" : baseName
+            )
+            do {
+                try payload.write(to: url)
+                reportTabStatus(L(.exportSucceeded, result.rowCount, url.lastPathComponent), for: tabID)
+                return true
+            } catch {
+                errorMessage = L(.exportFailed, ErrorPresenter.message(for: error))
+                return false
+            }
+        }
+
         if result.rowCount > Self.streamingExportRowThreshold {
             if let reason = streamingExportRefusal(for: tab) {
                 // 如实说明：这次仍然会把整份结果取回内存。写到**页签**的日志里 ——
@@ -1334,7 +1353,7 @@ final class AppState: ObservableObject {
 
         // INSERT 语句需要表名与方言：表名取页签标题（文件名为准，导出后由用户确认），
         // 方言按该页签绑定的连接决定（未绑定连接时退回 SQL 标准双引号）。
-        let text = ResultExporter.text(
+        let payload = ResultExporter.data(
             for: result,
             format: format,
             tableName: tab.fileURL == nil ? "table_name" : baseName,
@@ -1343,7 +1362,9 @@ final class AppState: ObservableObject {
                 .map { SQLDialectFactory.make(for: $0.dbType) }
         )
         do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
+            // 用 `data(...)` 而不是 `text(...)` + UTF-8：文本格式两者等价（同一个编码），
+            // 而二进制格式（xlsx）只有前者能写对。
+            try payload.write(to: url)
             // 与流式路径同一处交代（页签日志）：小结果集也要看得见"导到哪个文件、多少行"。
             reportTabStatus(L(.exportSucceeded, result.rowCount, url.lastPathComponent), for: tabID)
             return true

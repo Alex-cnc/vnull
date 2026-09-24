@@ -3006,8 +3006,9 @@ struct DoyahCLI {
         case "tsv": format = .tsv
         case "markdown", "md": format = .markdown
         case "insert", "sql": format = .sqlInsert
+        case "xlsx", "excel": format = .xlsx
         default:
-            print("不支持的格式（csv / json / tsv / markdown / insert）")
+            print("不支持的格式（csv / json / tsv / markdown / insert / xlsx）")
             return 64
         }
         guard fetchSize > 0 else {
@@ -3035,6 +3036,42 @@ struct DoyahCLI {
         let url = URL(fileURLWithPath: outputPath)
         let fetcher = CursorFetcher(plan: plan, execute: { try await run($0) })
         var writer: ResultStreamWriter?
+
+        // xlsx 是二进制工作簿：ZIP 的中央目录要等所有行写完才能落，**天生不能流式**。
+        // 取数仍走服务端游标逐页（不 `SELECT *` 一次拉回），只是把行攒起来一次成型 ——
+        // 内存占用与结果集本身同量级，这一点在这里说清楚，不假装它也是流式。
+        if format.isBinary {
+            do {
+                try await fetcher.open()
+                var rows: [[String?]] = []
+                var columns: [ColumnMeta] = []
+                while let page = try await fetcher.nextPage() {
+                    if columns.isEmpty { columns = page.columns }
+                    rows.append(contentsOf: page.rows)
+                }
+                await fetcher.close()
+                let result = QueryResult(
+                    columns: columns,
+                    rows: rows,
+                    affectedRows: nil,
+                    executionTime: 0,
+                    isTruncated: false,
+                    truncationLimit: nil
+                )
+                let payload = ResultExporter.data(for: result, format: format)
+                try payload.write(to: url)
+                if !quiet {
+                    print("导出完成：\(rows.count) 行 / \(payload.count) 字节")
+                    print("文件：\(url.path)")
+                    print("说明：xlsx 是二进制工作簿，需要整份写完才能落盘，因此**按一次性取回导出**（取数仍逐页）。")
+                }
+                return 0
+            } catch {
+                await fetcher.close()
+                print("导出失败（\(url.lastPathComponent)）：\(error.localizedDescription)")
+                return 67
+            }
+        }
 
         do {
             try await fetcher.open()
