@@ -873,6 +873,28 @@ public enum LKey: String, CaseIterable, Sendable {
     case backupRestoreRun
     case backupRestoreCommandPreview
     case backupSandboxHint
+    // 恢复到指定库（FR-IO-05 的界面入口）
+    case backupRestoreTargetDatabase
+    case backupRestoreTargetDatabaseHint
+    case backupRestoreSection
+    case backupRestoreSectionAll
+    case backupRestoreSectionPreData
+    case backupRestoreSectionData
+    case backupRestoreSectionPostData
+    case backupRestoreClean
+    case backupRestoreJobsLabel
+    case backupRestoreJobsLabelOff
+    case backupRestoreRunRestore
+    case backupRestoreSectionStarting
+    case backupRestoreSectionsDone
+    case backupRestoreSectionFailed
+    case backupRestoreStopped
+    case backupRestoreResumeLead
+    case backupRestoreModeSectioned
+    case backupRestoreFailedUnknownSection
+    case backupRestoreLogCommand
+    case backupRestoreLogReason
+    case backupRestoreIncomplete
     case startupSQLRefused
     case connectionFormReadOnly
     case connectionFormReadOnlyHint
@@ -1110,6 +1132,41 @@ public enum LKey: String, CaseIterable, Sendable {
     case exportSucceeded
     case exportFailed
     case exportNoData
+    // 超大结果集：流式（游标逐页）导出（FR-RES-13）
+    case exportStreamProgress
+    case exportStreamSucceeded
+    case exportStreamNoRows
+    case exportStreamNotPossible
+    case exportStreamReasonMultiStatement
+    case exportStreamReasonNotQuery
+    case exportStreamReasonManualTransaction
+    // 结果集内联编辑（FR-DATA-04）
+    case inlineEditNoSourceTable
+    case inlineEditActive
+    case inlineEditAppendRow
+    case inlineEditDiscard
+    case inlineEditPreview
+    case inlineEditMarkDelete
+    case inlineEditUnmarkDelete
+    case inlineEditDeletedTag
+    case inlineEditPendingCell
+    case inlineEditPreviewTitle
+    case inlineEditPreviewHint
+    case inlineEditRefused
+    case inlineEditCommit
+    case inlineEditSucceeded
+    case inlineEditRolledBack
+    case inlineEditPlanFailed
+    case inlineEditManualTransaction
+    case inlineEditUnsupportedDialect
+    case inlineEditDiscardedOnViewChange
+    case inlineEditStatementCount
+    case inlineEditDiscarded
+    case inlineEditCellHint
+    case inlineEditInsertTitle
+    case inlineEditInsertHint
+    case inlineEditInsertConfirm
+    case inlineEditInsertEmpty
     case historyTitle
     case historyEmpty
     case historyClear
@@ -1890,6 +1947,27 @@ public enum LocalizedStrings {
         .backupRestoreRun: [.simplifiedChinese: "执行", .english: "Run"],
         .backupRestoreCommandPreview: [.simplifiedChinese: "将执行的命令（密码写成 ***）", .english: "Command to run (password shown as ***)"],
         .backupSandboxHint: [.simplifiedChinese: "起外部程序失败：沙箱下不允许直接启动 `pg_dump` 等工具。请改用非沙箱构建（`DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh`），或用命令行 `doyah backup`。", .english: "Failed to launch the external tool: the sandbox does not allow spawning pg_dump. Use the unsandboxed build (DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh) or the CLI (doyah backup)."],
+        .backupRestoreTargetDatabase: [.simplifiedChinese: "目标库（恢复到哪一个库）", .english: "Target database (where to restore)"],
+        .backupRestoreTargetDatabaseHint: [.simplifiedChinese: "留空表示用当前连接的库；恢复**必须**知道目标库，不知道就不会执行。", .english: "Leave empty to use the connected database; a restore always needs an explicit target, so nothing runs without one."],
+        .backupRestoreSection: [.simplifiedChinese: "分段（失败可从没做完的那一段续跑）", .english: "Sections (a failure can resume at the unfinished one)"],
+        .backupRestoreSectionAll: [.simplifiedChinese: "一次完成（不分段）", .english: "All at once (no sections)"],
+        .backupRestoreSectionPreData: [.simplifiedChinese: "仅结构（pre-data）", .english: "Structure only (pre-data)"],
+        .backupRestoreSectionData: [.simplifiedChinese: "仅数据（data）", .english: "Data only (data)"],
+        .backupRestoreSectionPostData: [.simplifiedChinese: "仅索引与约束（post-data）", .english: "Indexes and constraints only (post-data)"],
+        .backupRestoreClean: [.simplifiedChinese: "先清理同名对象（--clean）", .english: "Drop same-named objects first (--clean)"],
+        .backupRestoreJobsLabel: [.simplifiedChinese: "并行数（--jobs）：%d", .english: "Parallel jobs (--jobs): %d"],
+        .backupRestoreJobsLabelOff: [.simplifiedChinese: "并行数（--jobs）：不并行", .english: "Parallel jobs (--jobs): none"],
+        .backupRestoreRunRestore: [.simplifiedChinese: "开始恢复", .english: "Start restore"],
+        .backupRestoreSectionStarting: [.simplifiedChinese: "==> 正在恢复：%@", .english: "==> Restoring: %@"],
+        .backupRestoreSectionsDone: [.simplifiedChinese: "三段全部完成（结构 → 数据 → 索引与约束）。", .english: "All three sections finished (structure → data → indexes and constraints)."],
+        .backupRestoreSectionFailed: [.simplifiedChinese: "第 %@ 段失败（退出码 %d）。", .english: "The %@ section failed (exit code %d)."],
+        .backupRestoreStopped: [.simplifiedChinese: "已停在 %@ 段：后续段**没有**执行。", .english: "Stopped at the %@ section; later sections did **not** run."],
+        .backupRestoreResumeLead: [.simplifiedChinese: "恢复失败不必从头再来 —— 按下面的建议从没做完的那一段接着做：", .english: "A failed restore does not start over — resume at the unfinished section as suggested below:"],
+        .backupRestoreModeSectioned: [.simplifiedChinese: "逐段（结构 → 数据 → 索引与约束，失败可续跑）", .english: "Section by section (structure → data → indexes, resumable)"],
+        .backupRestoreFailedUnknownSection: [.simplifiedChinese: "恢复失败，但这次没有分段，无法确定停在哪一段。", .english: "The restore failed and this run was not sectioned, so the stopping point is unknown."],
+        .backupRestoreLogCommand: [.simplifiedChinese: "命令：%@", .english: "Command: %@"],
+        .backupRestoreLogReason: [.simplifiedChinese: "原因：%@", .english: "Reason: %@"],
+        .backupRestoreIncomplete: [.simplifiedChinese: "（还缺归档路径 / 目标库，先补齐）", .english: "(archive path / target database still missing — fill them in first)"],
         .connectionFormReadOnly: [.simplifiedChinese: "只读连接（客户端拒绝写语句）", .english: "Read-only connection (client refuses writes)"],
         .connectionFormReadOnlyHint: [.simplifiedChinese: "这是**本机保护**，不替代数据库权限；关闭 Safe Mode 也不会放开它", .english: "This is local protection, not a database privilege; turning Safe Mode off will not lift it"],
         .connectionFormStartupSQL: [.simplifiedChinese: "连接后自动执行（启动 SQL，分号分隔）", .english: "Run after connecting (startup SQL, semicolon separated)"],
@@ -2019,6 +2097,39 @@ public enum LocalizedStrings {
         .exportSucceeded: [.simplifiedChinese: "已导出 %d 行到 %@", .english: "Exported %d rows to %@"],
         .exportFailed: [.simplifiedChinese: "导出失败：%@", .english: "Export failed: %@"],
         .exportNoData: [.simplifiedChinese: "当前结果没有可导出的数据", .english: "The current result has no data to export"],
+        .exportStreamProgress: [.simplifiedChinese: "正在流式导出…已取 %d 行（%d 页）", .english: "Streaming export… %d row(s) fetched in %d page(s)"],
+        .exportStreamSucceeded: [.simplifiedChinese: "已流式导出 %d 行（%d 页）到 %@", .english: "Streamed %d row(s) in %d page(s) to %@"],
+        .exportStreamNoRows: [.simplifiedChinese: "流式导出没有取到任何行（查询可能已经失效或不返回结果集）。", .english: "The streaming export fetched no rows (the query may be stale or return no result set)."],
+        .exportStreamNotPossible: [.simplifiedChinese: "这次导出走的是一次性方式，没有流式（原因：%1$@）。大结果集下内存会随行数增长。", .english: "This export used the one-shot path instead of streaming (reason: %1$@). Memory grows with the row count on large results."],
+        .exportStreamReasonMultiStatement: [.simplifiedChinese: "页签里的 SQL 不止一条语句，服务端游标只能用于单条查询", .english: "the tab holds more than one statement, and a server cursor works on a single query only"],
+        .exportStreamReasonNotQuery: [.simplifiedChinese: "语句不是查询（游标只能用于 SELECT / WITH 这类查询）", .english: "the statement is not a query (a cursor only works for SELECT / WITH and the like)"],
+        .exportStreamReasonManualTransaction: [.simplifiedChinese: "当前连接处在手工事务里，而游标导出会自己开一个事务", .english: "the connection is inside a manual transaction, and a cursor export opens its own transaction"],
+        .inlineEditNoSourceTable: [.simplifiedChinese: "这个结果来自手写 SQL，无法确定来源表；改 / 删 / 加行都需要知道是哪张表。请用对象树里的「浏览数据」打开表，或在 SQL 里显式写出表名后重跑。", .english: "This result came from hand-written SQL, so its source table is unknown; editing, deleting and inserting all need to know the table. Open the table via Browse rows in the object tree, or re-run a query that names the table explicitly."],
+        .inlineEditActive: [.simplifiedChinese: "编辑中：%d 处改动未提交", .english: "Editing: %d uncommitted change(s)"],
+        .inlineEditAppendRow: [.simplifiedChinese: "追加一行…", .english: "Append row…"],
+        .inlineEditDiscard: [.simplifiedChinese: "放弃改动", .english: "Discard changes"],
+        .inlineEditPreview: [.simplifiedChinese: "预览并执行…", .english: "Preview and run…"],
+        .inlineEditMarkDelete: [.simplifiedChinese: "标记删除此行", .english: "Mark this row for deletion"],
+        .inlineEditUnmarkDelete: [.simplifiedChinese: "取消删除标记", .english: "Unmark deletion"],
+        .inlineEditDeletedTag: [.simplifiedChinese: "待删除", .english: "to delete"],
+        .inlineEditPendingCell: [.simplifiedChinese: "待提交（还没有写库）", .english: "Pending (not written yet)"],
+        .inlineEditPreviewTitle: [.simplifiedChinese: "将要执行的改动（预览）", .english: "Changes that will run (preview)"],
+        .inlineEditPreviewHint: [.simplifiedChinese: "下面是**真正会执行**的那几条语句，包在单个事务里；任何一条失败就整批回滚，预览本身不改任何数据。", .english: "These are the exact statements that will run, wrapped in one transaction; any failure rolls the whole batch back, and the preview itself changes nothing."],
+        .inlineEditRefused: [.simplifiedChinese: "这批改动无法执行，理由如下：", .english: "This batch cannot run, for these reasons:"],
+        .inlineEditCommit: [.simplifiedChinese: "执行", .english: "Run"],
+        .inlineEditSucceeded: [.simplifiedChinese: "已提交 %d 条语句（单个事务）。结果表里仍是旧值，重跑查询即可看到最新数据。", .english: "Committed %d statement(s) in one transaction. The grid still shows the old values; re-run the query to see the new data."],
+        .inlineEditRolledBack: [.simplifiedChinese: "有语句失败，整批已回滚，数据库没有被改动：%@", .english: "A statement failed, so the whole batch was rolled back and nothing was changed: %@"],
+        .inlineEditPlanFailed: [.simplifiedChinese: "无法生成改动计划：%@", .english: "Could not build the change plan: %@"],
+        .inlineEditManualTransaction: [.simplifiedChinese: "当前连接处在手工事务里，内联编辑需要自己的事务（否则会把你的手工事务一起提交）。请先提交或回滚手工事务。", .english: "This connection is inside a manual transaction, and an inline edit needs its own transaction (otherwise it would commit yours too). Commit or roll back the manual transaction first."],
+        .inlineEditInsertTitle: [.simplifiedChinese: "追加一行", .english: "Append a row"],
+        .inlineEditUnsupportedDialect: [.simplifiedChinese: "当前方言不支持读取表结构，无法安全生成 DML（主键判定拿不到）。", .english: "This dialect cannot read the table structure, so DML cannot be generated safely (primary keys are unknown)."],
+        .inlineEditDiscardedOnViewChange: [.simplifiedChinese: "结果表的显示内容变了（翻页 / 排序 / 筛选）：行号的含义跟着变了，未提交的改动已放弃，以免把改动标到别的行上。", .english: "The grid now shows different rows (paging, sorting or filtering), so row numbers no longer mean the same rows; the uncommitted changes were discarded rather than shown against the wrong rows."],
+        .inlineEditStatementCount: [.simplifiedChinese: "将执行 %d 条语句：", .english: "Will run %d statement(s):"],
+        .inlineEditDiscarded: [.simplifiedChinese: "已退出编辑：未提交的改动已放弃，数据库没有被改动。", .english: "Left edit mode: the uncommitted changes were discarded and nothing was written."],
+        .inlineEditCellHint: [.simplifiedChinese: "双击单元格改值；写 NULL（不分大小写）表示空值，清空文本写的是空串。右键可标记删除行。", .english: "Double-click a cell to edit it; NULL (any case) writes a null, while clearing the text writes an empty string. Right-click marks a row for deletion."],
+        .inlineEditInsertHint: [.simplifiedChinese: "留空 = 不写这一列（交给数据库默认值）；写 NULL = 空值；写 '' = 空串。", .english: "Leave a field empty to omit the column (database default); write NULL for a null; write '' for an empty string."],
+        .inlineEditInsertConfirm: [.simplifiedChinese: "加入待提交", .english: "Add to pending changes"],
+        .inlineEditInsertEmpty: [.simplifiedChinese: "一行都没有填：追加行至少要写一列。", .english: "Nothing was filled in: an appended row needs at least one column."],
         .historyTitle: [.simplifiedChinese: "查询历史", .english: "Query History"],
         .historyEmpty: [.simplifiedChinese: "本次运行还没有执行过查询", .english: "No queries executed in this session"],
         .historyClear: [.simplifiedChinese: "清空历史", .english: "Clear History"],

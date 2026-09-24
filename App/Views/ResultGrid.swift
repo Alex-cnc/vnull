@@ -2,6 +2,29 @@ import SwiftUI
 import AppKit
 import DoyahCore
 
+/// 结果表在内联编辑态下要**多画**的东西（FR-DATA-04）。
+///
+/// 刻意只是"渲染信息"：它不持有改动本身（改动的攒法与去留由 `InlineEditDraft` 决定），
+/// 也不改 `QueryResult` —— 未提交的改动在界面上必须**看得出来是未提交的**，
+/// 而不是悄悄替换掉真值（那会让人以为已经写进库了）。
+
+struct ResultGridEditing: Equatable {
+    /// 是否处于编辑态（决定单元格能不能就地编辑、右键菜单给不给删行）。
+    var isActive = false
+    /// 改动过的单元格：显示行号 → 列号集合（渲染成强调色 + "待提交"提示）。
+    var touched: [Int: Set<Int>] = [:]
+    /// 显示覆盖值：显示行号 → 列号 → 文本（`nil` 表示 NULL —— 与"没有覆盖"是两回事）。
+    var overlay: [Int: [Int: String?]] = [:]
+    /// 被标记删除的行（画删除线）。
+    var deletedRows: Set<Int> = []
+
+    /// 这一格显示成什么（没有覆盖时返回 nil，调用方用原值）。
+    func overrideValue(row: Int, column: Int) -> String?? {
+        guard let cells = overlay[row], cells.keys.contains(column) else { return nil }
+        return cells[column] ?? nil
+    }
+}
+
 /// 结果表格：NSTableView 桥接实现。
 ///
 /// 相比 SwiftUI `Grid`，这里能得到列宽调整、列排序、多选、⌘C 复制，
@@ -13,6 +36,7 @@ import DoyahCore
 ///   · 数值列**右对齐 + 等宽数字**（判定在 `Core/ColumnAlignment`，那一层能单测）；
 ///   · 斑马纹、分隔线、选中态**自己画**，不用 AppKit 的系统样式 ——
 ///     系统样式在深浅两种外观下都不受我们的令牌控制，混着用会出现"这块跟别处不是一个色"。
+
 struct ResultGrid: NSViewRepresentable {
     let result: QueryResult
     /// 要显示的行。为 nil 时显示结果集的全部行。
@@ -37,6 +61,12 @@ struct ResultGrid: NSViewRepresentable {
     /// 为什么传**列名与值**而不是行列下标：跳转只需要「这一列的值」这个事实，
     /// 而下标在分页 / 排序 / 筛选之后有「显示下标 vs 原始下标」两套语义 —— 传下标迟早错位。
     var onJumpToReferencedRow: ((String, String?) -> Void)?
+    /// 内联编辑（FR-DATA-04）的**渲染信息**：只影响这一层怎么画，不改 `rows` 本身。
+    var editing: ResultGridEditing = ResultGridEditing()
+    /// 某一格编辑结束：`(显示行号, 列号, 新文本)`。是否采纳由上层决定（这里是"另一个按钮"）。
+    var onCommitCellEdit: ((Int, Int, String) -> Void)?
+    /// 右键「标记删除此行 / 取消删除标记」：`(显示行号, 该行当前是否已标记删除)`。
+    var onToggleRowDeletion: ((Int, Bool) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -92,7 +122,26 @@ struct ResultGrid: NSViewRepresentable {
         )
         jumpItem.target = tableView
         menu.addItem(jumpItem)
+
+        // 内联编辑（FR-DATA-04）：行级动作只有"标记删除 / 取消标记"两条 —— 改值走双击单元格
+        // （就地编辑），加行走结果区的工具条（那里才有"一行不止一个字段"的输入空间）。
+        // 两条菜单项的可用性由 `menuNeedsUpdate` 按"是不是在编辑态、这一行删没删"决定。
+        menu.addItem(NSMenuItem.separator())
+        for (action, titleKey) in [
+            (#selector(CopyableTableView.markRowForDeletion(_:)), LKey.inlineEditMarkDelete),
+            (#selector(CopyableTableView.unmarkRowForDeletion(_:)), LKey.inlineEditUnmarkDelete)
+        ] {
+            let item = NSMenuItem(title: L(titleKey), action: action, keyEquivalent: "")
+            item.target = tableView
+            menu.addItem(item)
+        }
+        // 这两条的可用性全由我们控制：交给 AppKit 自动校验的话，它会按 action 的
+        // 响应链去问，而我们判的是"编辑态 + 这一行删没删"——它问不出来。
+        menu.autoenablesItems = false
+        menu.delegate = context.coordinator
         tableView.menu = menu
+        tableView.target = context.coordinator
+        tableView.doubleAction = #selector(Coordinator.beginCellEdit(_:))
 
         let scrollView = NSScrollView()
         scrollView.documentView = tableView
@@ -109,6 +158,9 @@ struct ResultGrid: NSViewRepresentable {
             onToggleSort: onToggleSort,
             onSelectionChange: onSelectionChange,
             onJumpToReferencedRow: onJumpToReferencedRow,
+            editing: editing,
+            onCommitCellEdit: onCommitCellEdit,
+            onToggleRowDeletion: onToggleRowDeletion,
             tableView: tableView
         )
         return scrollView
@@ -123,11 +175,14 @@ struct ResultGrid: NSViewRepresentable {
             onToggleSort: onToggleSort,
             onSelectionChange: onSelectionChange,
             onJumpToReferencedRow: onJumpToReferencedRow,
+            editing: editing,
+            onCommitCellEdit: onCommitCellEdit,
+            onToggleRowDeletion: onToggleRowDeletion,
             tableView: tableView
         )
     }
 
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, ResultGridCopying {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSMenuDelegate, ResultGridCopying {
 
         private var result: QueryResult?
         /// 当前显示的行（可能是筛选 / 排序 / 分页后的子集）。
@@ -143,6 +198,14 @@ struct ResultGrid: NSViewRepresentable {
         private var onSelectionChange: ((Set<Int>) -> Void)?
         /// 外键跳转回调（同上）。
         private var onJumpToReferencedRow: ((String, String?) -> Void)?
+        /// 内联编辑的渲染信息与回调（FR-DATA-04，同上每次刷新）。
+        private var editing = ResultGridEditing()
+        private var onCommitCellEdit: ((Int, Int, String) -> Void)?
+        private var onToggleRowDeletion: ((Int, Bool) -> Void)?
+        /// 上一次的编辑态渲染签名：编辑态 / 待提交覆盖值变了要重画，但**不必**作废选中态。
+        private var lastEditingSignature = ""
+        /// 表格本体（右键菜单的可用性要知道用户点在哪一行）。
+        private weak var boundTableView: NSTableView?
         /// 正在**程序化**作废选中态：此时的 `tableViewSelectionDidChange` 不发回调。
         ///
         /// 因为这条路径是 `updateNSView` 里触发的，同步回调等于把"改状态"插进 SwiftUI
@@ -169,6 +232,9 @@ struct ResultGrid: NSViewRepresentable {
             onToggleSort: ((Int, Bool) -> Void)?,
             onSelectionChange: ((Set<Int>) -> Void)?,
             onJumpToReferencedRow: ((String, String?) -> Void)?,
+            editing: ResultGridEditing,
+            onCommitCellEdit: ((Int, Int, String) -> Void)?,
+            onToggleRowDeletion: ((Int, Bool) -> Void)?,
             tableView: NSTableView
         ) {
             self.result = result
@@ -176,6 +242,10 @@ struct ResultGrid: NSViewRepresentable {
             self.onToggleSort = onToggleSort
             self.onSelectionChange = onSelectionChange
             self.onJumpToReferencedRow = onJumpToReferencedRow
+            self.editing = editing
+            self.onCommitCellEdit = onCommitCellEdit
+            self.onToggleRowDeletion = onToggleRowDeletion
+            self.boundTableView = tableView
             syncSortDescriptors(sortDescriptors, tableView: tableView)
 
             // 换结果集：选中态作废（旧的行号对新数据没有意义）。
@@ -209,7 +279,32 @@ struct ResultGrid: NSViewRepresentable {
                 // 用户再点"同一个行号"不会产生选中变化事件，靠选中回调驱动的侧栏就永远醒不过来。
                 resetSelection(tableView)
                 tableView.reloadData()
+                lastEditingSignature = Self.editingSignature(editing)
+                return
             }
+
+            // 编辑态的渲染变化（改了一格 / 标记删除）要重画，但**不作废选中态**：
+            // 显示的行一个都没变，只是因为"这一格待提交"要换一种画法。
+            let editingSignature = Self.editingSignature(editing)
+            if editingSignature != lastEditingSignature {
+                lastEditingSignature = editingSignature
+                tableView.reloadData()
+            }
+        }
+
+        /// 编辑态渲染的签名：编辑开关 + 待提交覆盖值 + 删除标记。
+        private static func editingSignature(_ editing: ResultGridEditing) -> String {
+            guard editing.isActive || !editing.touched.isEmpty
+                || !editing.overlay.isEmpty || !editing.deletedRows.isEmpty else { return "" }
+            let cells = editing.touched.keys.sorted().map { row in
+                "\(row):\(editing.touched[row]!.sorted().map(String.init).joined(separator: ","))"
+            }.joined(separator: ";")
+            let overlays = editing.overlay.keys.sorted().map { row in
+                let cells = editing.overlay[row]!
+                return "\(row):" + cells.keys.sorted().map { "\($0)=\(cells[$0].map { $0 ?? "NULL" } ?? "NULL")" }
+                    .joined(separator: ",")
+            }.joined(separator: ";")
+            return "\(editing.isActive)|\(cells)|\(overlays)|\(editing.deletedRows.sorted())"
         }
 
         /// 作废选中态（换结果集 / 换显示内容）。见 `isResettingSelection` 的说明。
@@ -279,7 +374,13 @@ struct ResultGrid: NSViewRepresentable {
                 return nil
             }
 
-            let value = rows[row][columnIndex]
+            // 待提交的改动**优先显示**（用户要看的就是自己刚写的值），但它不是真值 ——
+            // 所以下面用强调色 + "待提交"提示把它和已写库的值区分开。
+            let original = rows[row][columnIndex]
+            let overridden = editing.overrideValue(row: row, column: columnIndex)
+            let value: String? = overridden != nil ? overridden! : original
+            let isTouched = editing.touched[row]?.contains(columnIndex) ?? false
+            let isDeletedRow = editing.deletedRows.contains(row)
             let isNumeric = columnIsNumeric.indices.contains(columnIndex) && columnIsNumeric[columnIndex]
             let isSelected = tableView.selectedRowIndexes.contains(row)
             let identifier = NSUserInterfaceItemIdentifier("result-cell")
@@ -294,11 +395,12 @@ struct ResultGrid: NSViewRepresentable {
             } else {
                 cell = NSTableCellView()
                 cell.identifier = identifier
-                let textField = NSTextField(labelWithString: "")
+                let textField = ResultCellTextField(labelWithString: "")
                 textField.lineBreakMode = .byTruncatingTail
                 textField.translatesAutoresizingMaskIntoConstraints = false
                 textField.alignment = isNumeric ? .right : .left
                 textField.font = Self.font(isNumeric: isNumeric)
+                textField.delegate = self
                 cell.addSubview(textField)
                 cell.textField = textField
                 NSLayoutConstraint.activate([
@@ -308,12 +410,108 @@ struct ResultGrid: NSViewRepresentable {
                 ])
             }
 
-            cell.textField?.stringValue = value ?? "NULL"
-            cell.textField?.textColor = value == nil
-                ? Theme.nsColor(TextTone.tertiary)
-                : (isSelected ? Theme.nsColor(TextTone.primary) : Theme.nsColor(TextTone.secondary))
-            cell.toolTip = value
+            if let field = cell.textField as? ResultCellTextField {
+                // 行号 / 列号与"原值"存在控件上：编辑结束时只拿得到一个 `NSTextField`，
+                // 那一刻表格的 `clickedRow` 可能已经指向别处（用户点了另一格）。
+                field.cellRow = row
+                field.cellColumn = columnIndex
+                field.originalText = value
+                field.isEditable = editing.isActive
+                field.isSelectable = true
+                field.delegate = self
+            }
+
+            if isDeletedRow {
+                // 待删除的行画删除线 + 危险色：这一行已经"不打算要了"，
+                // 但**还没有**提交（提交前它必须看得出是待删除状态）。
+                cell.textField?.attributedStringValue = NSAttributedString(
+                    string: value ?? "NULL",
+                    attributes: [
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                        .font: Self.font(isNumeric: isNumeric),
+                        .foregroundColor: Theme.nsColor(StatusTone.danger)
+                    ]
+                )
+            } else {
+                cell.textField?.stringValue = value ?? "NULL"
+                cell.textField?.textColor = isTouched
+                    ? Theme.accentNSColor
+                    : (value == nil
+                        ? Theme.nsColor(TextTone.tertiary)
+                        : (isSelected ? Theme.nsColor(TextTone.primary) : Theme.nsColor(TextTone.secondary)))
+            }
+
+            if isDeletedRow {
+                cell.toolTip = L(.inlineEditDeletedTag)
+            } else if isTouched {
+                cell.toolTip = L(.inlineEditPendingCell)
+            } else {
+                cell.toolTip = value
+            }
             return cell
+        }
+
+        // MARK: 就地编辑（FR-DATA-04）
+
+        /// 双击某一格 → 让它就地可编辑。
+        ///
+        /// 用 `clickedRow` / `clickedColumn`（用户双击的那一格），不用选中态 ——
+        /// 多选时"选中的第一行"和"双击的那一行"完全可能不是同一行。
+        @objc func beginCellEdit(_ sender: Any?) {
+            guard editing.isActive, let tableView = sender as? NSTableView else { return }
+            let row = tableView.clickedRow
+            let column = tableView.clickedColumn
+            guard row >= 0, column >= 0, rows.indices.contains(row) else { return }
+            tableView.editColumn(column, row: row, with: nil, select: true)
+        }
+
+        /// 只有编辑态才允许就地编辑（非编辑态双击应当什么都不发生，而不是误改）。
+        func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
+            editing.isActive
+        }
+
+        /// 编辑结束 → 把新文本交给上层攒进草稿。
+        ///
+        /// 三条早退：不在编辑态（面板刚关掉）、不是我们的格子、以及**按了 Esc**（取消，不记改动）。
+        /// 文本与原值一样时也不记 —— 否则"点一下再点走"就会凭空多出一处待提交改动。
+        func controlTextDidEndEditing(_ notification: Notification) {
+            guard editing.isActive,
+                  let field = notification.object as? ResultCellTextField,
+                  field.cellRow >= 0, field.cellColumn >= 0 else { return }
+            if let movement = notification.userInfo?["NSTextMovement"] as? Int,
+               movement == NSTextMovement.cancel.rawValue {
+                return
+            }
+            let text = field.stringValue
+            guard text != field.originalText else { return }
+            onCommitCellEdit?(field.cellRow, field.cellColumn, text)
+        }
+
+        // MARK: 右键菜单的可用性（编辑态才有"标记 / 取消删除"）
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            guard let tableView = boundTableView else { return }
+            let row = tableView.clickedRow
+            let inRange = row >= 0 && rows.indices.contains(row)
+            let isDeleted = inRange && editing.deletedRows.contains(row)
+            for item in menu.items {
+                if item.action == #selector(CopyableTableView.markRowForDeletion(_:)) {
+                    item.isHidden = !editing.isActive
+                    item.isEnabled = editing.isActive && inRange && !isDeleted
+                } else if item.action == #selector(CopyableTableView.unmarkRowForDeletion(_:)) {
+                    item.isHidden = !editing.isActive
+                    item.isEnabled = editing.isActive && inRange && isDeleted
+                }
+            }
+        }
+
+        /// 右键「标记删除 / 取消删除」：**由这一行当前删没删决定动作**（菜单项标题已经写明了），
+        /// 用 `clickedRow`（用户右键点的那一行），不用选中态。
+        func toggleRowDeletion(from tableView: NSTableView) {
+            guard editing.isActive else { return }
+            let row = tableView.clickedRow
+            guard row >= 0, rows.indices.contains(row) else { return }
+            onToggleRowDeletion?(row, editing.deletedRows.contains(row))
         }
 
         private static func font(isNumeric: Bool) -> NSFont {
@@ -486,6 +684,20 @@ private final class ResultHeaderCell: NSTableHeaderCell {
     }
 }
 
+// MARK: - 一格（带行 / 列记忆）
+
+/// 结果表里的一格。
+///
+/// 为什么要把行列号存在**控件**上：就地编辑结束时（`controlTextDidEndEditing`）只拿得到一个
+/// `NSTextField`，而那一刻表格的 `clickedRow` 可能已经指向别的行（用户直接点了别处）——
+/// 靠"当时的表格状态"反查会把改动记到另一格上。
+private final class ResultCellTextField: NSTextField {
+    var cellRow = -1
+    var cellColumn = -1
+    /// 进入编辑时这一格显示的文本：用来判断"到底改没改"。
+    var originalText: String?
+}
+
 // MARK: - 复制支持
 
 private protocol ResultGridCopying: AnyObject {
@@ -493,6 +705,8 @@ private protocol ResultGridCopying: AnyObject {
     func copySelection(from tableView: NSTableView, as format: ResultClipboard.Format)
     /// 右键「跳到被引用行…」（FR-DATA-06）。
     func jumpToReferencedRow(from tableView: NSTableView)
+    /// 右键「标记删除此行 / 取消删除标记」（FR-DATA-04）。
+    func toggleRowDeletion(from tableView: NSTableView)
 }
 
 /// 让 ⌘C 与右键菜单能复制选中的单元格（TSV 格式）。
@@ -515,5 +729,15 @@ private final class CopyableTableView: NSTableView {
     /// 用户右键点的那一格才是他想要的那一格，选中态可能停在别处。
     @objc func jumpToReferencedRow(_ sender: Any?) {
         (dataSource as? ResultGridCopying)?.jumpToReferencedRow(from: self)
+    }
+
+    /// 标记删除 / 取消删除：两个菜单项走同一个动作，实际是哪一种由协调器按
+    /// "这一行当前删没删"决定（菜单项本身只负责把点击递过来）。
+    @objc func markRowForDeletion(_ sender: Any?) {
+        (dataSource as? ResultGridCopying)?.toggleRowDeletion(from: self)
+    }
+
+    @objc func unmarkRowForDeletion(_ sender: Any?) {
+        (dataSource as? ResultGridCopying)?.toggleRowDeletion(from: self)
     }
 }

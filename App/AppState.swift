@@ -377,13 +377,31 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 把面板要给用户看的话写进备份日志。
+    ///
+    /// `backupRestoreLog` 是 `private(set)`：面板「点了执行但缺目标库」这类前置拒绝
+    /// 也必须**说在同一个地方**（用户看的就是这块日志），所以开一个写入口，
+    /// 而不是把面板自己的提示摆到别处。
+    func noteBackupLog(_ lines: [String]) {
+        backupRestoreLog = lines
+    }
+
+    /// 把一句人话写进**页签的**状态（下方面板 Output 页签会显示它）。
+    ///
+    /// 为什么不用 `AppState.statusMessage`（全局那个）：目前**没有任何视图读它** ——
+    /// 写进去等于没写。页签的 `statusMessage` 有 `didSet`，会追加进 Output 日志，
+    /// 那才是用户看得见的交代（导出的进度与去向就写在那里）。
+    func reportTabStatus(_ message: String, for tabID: UUID) {
+        _ = updateTab(tabID) { $0.statusMessage = message }
+    }
+
     /// 执行备份 / 恢复。
     ///
     /// **沙箱下起子进程可能被拒** —— 那种失败要给可读指引，而不是把原始错误丢给用户：
     /// 这条纪律与"外部程序调用"一致（用户必须知道为什么点了没反应、以及替代路径是什么）。
     @discardableResult
     func runBackupPlan(_ plan: BackupPlan, password: String?) async -> Int32 {
-        backupRestoreLog = ["命令：" + plan.displayCommand(password: password)]
+        backupRestoreLog = [L(.backupRestoreLogCommand, plan.displayCommand(password: password))]
         isBackupRunning = true
         defer { isBackupRunning = false }
         do {
@@ -399,7 +417,7 @@ final class AppState: ObservableObject {
             return 0
         } catch {
             backupRestoreLog.append(L(.backupSandboxHint))
-            backupRestoreLog.append("原因：\(error.localizedDescription)")
+            backupRestoreLog.append(L(.backupRestoreLogReason, error.localizedDescription))
             return 68
         }
     }
@@ -1167,7 +1185,22 @@ final class AppState: ObservableObject {
 
     // MARK: - 结果导出（FR-RES-06）
 
+    /// 结果行数超过这个值才走流式（游标逐页）导出。
+    ///
+    /// 为什么要有阈值而不是"一律流式"：小结果集走游标要额外发 `BEGIN` / `DECLARE` / `CLOSE` / `COMMIT`
+    /// 四条语句，**日常导出反而变慢**；而流式的收益（峰值内存与行数无关）只在结果很大时才成立。
+    /// 5000 行是"人的日常"与"大结果集"之间的一条线：结果表自己的分页默认档也在同一量级。
+    static let streamingExportRowThreshold = 5_000
+    /// 游标每页取多少行（与 CLI 的默认档一致）。
+    static let streamingExportPageSize = CursorPaging.defaultPageSize
+
     /// 导出当前页签的当前结果集。没有可导出内容时返回 false，由调用方提示。
+    ///
+    /// 两条路径（FR-RES-13）：
+    /// * **大结果集（> `streamingExportRowThreshold`）且 SQL 是单条查询**：服务端游标逐页取、
+    ///   逐页写盘（`ResultStreamWriter`），峰值内存与总行数无关；
+    /// * 其余（小结果集 / 不是单条查询 / 处在手工事务里）：沿用一次性导出。
+    ///   走不了流式时**明说原因**（`exportStreamNotPossible`），不假装流式。
     @discardableResult
     func exportResult(
         for tabID: UUID,
@@ -1197,6 +1230,22 @@ final class AppState: ObservableObject {
             return false
         }
 
+        if result.rowCount > Self.streamingExportRowThreshold {
+            if let reason = streamingExportRefusal(for: tab) {
+                // 如实说明：这次仍然会把整份结果取回内存。写到**页签**的日志里 ——
+                // 全局 `statusMessage` 没有视图在读，写进去等于没说。
+                reportTabStatus(L(.exportStreamNotPossible, reason), for: tabID)
+            } else {
+                return await exportResultStreaming(
+                    tab: tab,
+                    fallbackColumns: result.columns,
+                    format: format,
+                    url: url,
+                    baseName: baseName
+                )
+            }
+        }
+
         // INSERT 语句需要表名与方言：表名取页签标题（文件名为准，导出后由用户确认），
         // 方言按该页签绑定的连接决定（未绑定连接时退回 SQL 标准双引号）。
         let text = ResultExporter.text(
@@ -1209,11 +1258,324 @@ final class AppState: ObservableObject {
         )
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
-            statusMessage = L(.exportSucceeded, result.rowCount, url.lastPathComponent)
+            // 与流式路径同一处交代（页签日志）：小结果集也要看得见"导到哪个文件、多少行"。
+            reportTabStatus(L(.exportSucceeded, result.rowCount, url.lastPathComponent), for: tabID)
             return true
         } catch {
             errorMessage = L(.exportFailed, ErrorPresenter.message(for: error))
             return false
+        }
+    }
+
+    /// 为什么这次**不能**走流式；能走时返回 nil。
+    ///
+    /// 只判两类硬约束（都是"流式在语义上就不成立"，不是性能取舍）：
+    /// ① 页签里的 SQL 不是**单条查询**（游标只能 `DECLARE ... CURSOR FOR <一条查询>`）；
+    /// ② 当前连接正处在**手工事务**里 —— 游标导出会自己 `BEGIN` / `COMMIT`，
+    ///    那会把用户的手工事务一起提交掉（`CursorPaging` 的类型注释里写明了这条责任）。
+    private func streamingExportRefusal(for tab: QueryTab) -> String? {
+        if let key = transactionKey(for: tab),
+           let session = transactionSessions[key],
+           session.phase.isOpen {
+            return L(.exportStreamReasonManualTransaction)
+        }
+        let databaseType = connections.first { $0.id == tab.connectionID }?.dbType ?? .postgresql
+        let statements = StatementSplitter(databaseType: databaseType).split(tab.sql)
+        if statements.count != 1 { return L(.exportStreamReasonMultiStatement) }
+        if case .failure = CursorPaging.plan(query: tab.sql, pageSize: Self.streamingExportPageSize) {
+            return L(.exportStreamReasonNotQuery)
+        }
+        return nil
+    }
+
+    /// 流式导出：服务端游标逐页取 → `ResultStreamWriter` 逐页写盘。
+    ///
+    /// 与 CLI 的 `exportQueryToFile` 是同一条口径（同一对 Core 类型），差别只在进度写进页签日志。
+    /// 取数方式是**重跑页签里的 SQL** —— 所以界面上的结果集与导出的内容在"行的顺序不保证一致"
+    /// 这一点上必须诚实：没有 `ORDER BY` 的查询本来就不保证顺序，这里不额外排序
+    /// （排序需要全量数据，正好会毁掉流式的意义）。
+    private func exportResultStreaming(
+        tab: QueryTab,
+        fallbackColumns: [ColumnMeta],
+        format: ResultExportFormat,
+        url: URL,
+        baseName: String
+    ) async -> Bool {
+        guard let configuration = connection(for: tab) else {
+            errorMessage = L(.exportFailed, AppError.notConnected.localizedDescription)
+            return false
+        }
+        let plan: CursorPagingPlan
+        switch CursorPaging.plan(query: tab.sql, pageSize: Self.streamingExportPageSize) {
+        case .success(let value): plan = value
+        case .failure(let error):
+            errorMessage = L(.exportFailed, error.localizedDescription)
+            return false
+        }
+
+        let database = tab.database?.isEmpty == false
+            ? tab.database!
+            : queryDatabase(for: configuration)
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+
+        do {
+            let service = try await ensureService(for: configuration, database: database)
+
+            // `BEGIN` / `DECLARE` / `CLOSE` / `COMMIT` 都**没有结果集**，所以不能走
+            // `runSingleQuery`（它把"没有结果集"当错误）—— 与 CLI 一样只取最后一个结果集，没有就空着。
+            func run(_ sql: String) async throws -> QueryResult {
+                var last: QueryResult?
+                for try await event in service.execute(sql, options: .default) {
+                    if case .resultSet(let result) = event { last = result }
+                }
+                return last ?? QueryResult()
+            }
+
+            let fetcher = CursorFetcher(plan: plan, execute: { try await run($0) })
+            var streamWriter: ResultStreamWriter?
+            do {
+                try await fetcher.open()
+                guard let first = try await fetcher.nextPage() else {
+                    await fetcher.close()
+                    errorMessage = L(.exportStreamNoRows)
+                    return false
+                }
+
+                // 列定义取自**第一页**（流式路径的真正来源），拿不到时退回当前结果集的列。
+                let writer = ResultStreamWriter(
+                    targetURL: url,
+                    format: format,
+                    columns: first.columns.isEmpty ? fallbackColumns : first.columns,
+                    tableName: tab.fileURL == nil ? "table_name" : baseName,
+                    dialect: dialect
+                )
+                streamWriter = writer
+
+                try writer.begin()
+                try writer.write(first.rows)
+                reportTabStatus(
+                    L(.exportStreamProgress, await fetcher.rowCount, await fetcher.pageCount),
+                    for: tab.id
+                )
+                while let page = try await fetcher.nextPage() {
+                    try writer.write(page.rows)
+                    reportTabStatus(
+                        L(.exportStreamProgress, await fetcher.rowCount, await fetcher.pageCount),
+                        for: tab.id
+                    )
+                }
+                let report = try writer.finish()
+                reportTabStatus(
+                    L(
+                        .exportStreamSucceeded,
+                        report.rowCount,
+                        await fetcher.pageCount,
+                        url.lastPathComponent
+                    ),
+                    for: tab.id
+                )
+                return true
+            } catch {
+                streamWriter?.abort()
+                await fetcher.close()
+                errorMessage = L(.exportFailed, ErrorPresenter.message(for: error))
+                return false
+            }
+        } catch {
+            errorMessage = L(.exportFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    // MARK: - 结果集内联编辑（FR-DATA-04）
+
+    /// 生成内联编辑将要执行的 DML 计划（**不执行任何东西**）。
+    ///
+    /// 分工写清楚：语句怎么拼、要不要拒绝，全部由 Core 的 `InlineEdit.plan` 决定
+    /// （预览与执行因此是**同一份**语句）；这里只负责三件界面层的事 ——
+    /// ① 来源表从哪来（只认 `QueryTab.sourceTable`，没有就**不猜表名**）；
+    /// ② 主键 / 可空这些列元信息从**表结构**读（不靠结果集猜）；
+    /// ③ 用页签所在连接的方言。
+    func inlineEditPlan(
+        for tabID: UUID,
+        rows: [[String?]],
+        changes: [InlineEdit.Change]
+    ) async throws -> InlineEdit.Plan {
+        guard let tab = tabs.first(where: { $0.id == tabID }), let result = tab.result else {
+            throw AppError.queryFailed(L(.stateQueryNoResultSet))
+        }
+        // 手写 SQL 的结果没有来源表：直说，不去猜一个表名。
+        guard let source = tab.sourceTable else {
+            throw AppError.invalidConfiguration(L(.inlineEditNoSourceTable))
+        }
+        guard let configuration = connection(for: tab) else {
+            throw AppError.notConnected
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.tableStructureQuery(table: source.name, schema: source.schema) else {
+            throw AppError.notImplemented(L(.inlineEditUnsupportedDialect))
+        }
+
+        let database = tab.database?.isEmpty == false
+            ? tab.database!
+            : queryDatabase(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+        let definitions = MetadataService.columnDefinitions(from: try await runSingleQuery(query, on: service))
+        let columns = definitions.map {
+            InlineEdit.Column(
+                name: $0.name,
+                typeName: $0.typeName,
+                isPrimaryKey: $0.isPrimaryKey,
+                isNullable: $0.isNullable
+            )
+        }
+
+        // `rows` 由界面传进来的是**当前显示的那些行**（分页 / 排序 / 筛选之后），
+        // 它们与 `result.columns` 逐列对齐 —— 所以 `columnNames` 必须取同一份列顺序，
+        // 否则按主键定位的 WHERE 会读到别的列（这类错位在预览里几乎看不出来）。
+        return InlineEdit.plan(
+            table: source.name,
+            schema: source.schema,
+            columnNames: result.columns.map(\.name),
+            columns: columns,
+            rows: rows,
+            changes: changes,
+            dialect: dialect
+        )
+    }
+
+    /// 执行一份**已经预览过**的计划：单个事务，任何一条失败即整批回滚。
+    ///
+    /// 事务语义由 Core 的 `InlineEdit` 刻画（一批变更一个事务、失败整批回滚），
+    /// 这里不发明新的语义 —— 只是把 `beginTransaction` / `commit` / `rollback` 照做。
+    @discardableResult
+    func applyInlineEdit(_ plan: InlineEdit.Plan, for tabID: UUID) async -> Bool {
+        guard plan.isApplicable else {
+            errorMessage = L(.inlineEditPlanFailed, plan.refusals.first ?? "")
+            return false
+        }
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let configuration = connection(for: tab) else {
+            errorMessage = L(.inlineEditPlanFailed, AppError.notConnected.localizedDescription)
+            return false
+        }
+        // 手工事务里**不做**内联编辑：这里要自己 `BEGIN`，会把用户的事务一起提交掉。
+        if let key = transactionKey(for: tab),
+           let session = transactionSessions[key],
+           session.phase.isOpen {
+            errorMessage = L(.inlineEditManualTransaction)
+            return false
+        }
+
+        let database = tab.database?.isEmpty == false
+            ? tab.database!
+            : queryDatabase(for: configuration)
+        do {
+            let service = try await ensureService(for: configuration, database: database)
+            try await service.beginTransaction()
+            do {
+                for statement in plan.statements {
+                    for try await _ in service.execute(statement, options: .default) {}
+                }
+                try await service.commit()
+            } catch {
+                try? await service.rollback()
+                errorMessage = L(.inlineEditRolledBack, ErrorPresenter.message(for: error))
+                return false
+            }
+            reportTabStatus(L(.inlineEditSucceeded, plan.statements.count), for: tabID)
+            return true
+        } catch {
+            errorMessage = L(.inlineEditPlanFailed, ErrorPresenter.message(for: error))
+            return false
+        }
+    }
+
+    // MARK: - 逐段恢复到指定库（FR-IO-05）
+
+    /// 逐段恢复到**指定的目标库**：结构（pre-data）→ 数据（data）→ 索引与约束（post-data）。
+    ///
+    /// 为什么由这里循环而不是让界面循环：段的顺序是**依赖顺序**，而"停在哪一段"必须变成
+    /// 一条能直接粘的续跑命令 —— 那条命令由 Core 的 `RestoreResume.hint` 生成（已有单测与
+    /// 真机脚本钉着），界面只负责把它显示出来，不另拼一份。
+    ///
+    /// 遇错即停（`exitOnError`）是硬要求：不停下来，就不知道该从哪一段接着做。
+    @discardableResult
+    func runRestoreSections(_ plan: BackupPlan, password: String?) async -> Int32 {
+        guard let archive = plan.filePath, !archive.isEmpty,
+              let database = plan.target.database, !database.isEmpty else {
+            backupRestoreLog = [L(.backupRestoreTargetDatabaseHint)]
+            return 64
+        }
+
+        backupRestoreLog = []
+        isBackupRunning = true
+        defer { isBackupRunning = false }
+
+        for section in RestoreSection.allCases {
+            var sectionPlan = plan
+            sectionPlan.section = section.rawValue
+            sectionPlan.exitOnError = true
+            let name = restoreSectionName(section)
+
+            backupRestoreLog.append(L(.backupRestoreSectionStarting, name))
+            backupRestoreLog.append(L(.backupRestoreLogCommand, sectionPlan.displayCommand(password: password)))
+            do {
+                let result = try await BackupExecutor().execute(sectionPlan, password: password) { [weak self] line in
+                    Task { @MainActor in self?.backupRestoreLog.append("  " + line) }
+                }
+                if result.isFailure {
+                    backupRestoreLog.append(L(.backupRestoreSectionFailed, name, Int(result.exitCode)))
+                    if let summary = result.failureSummary { backupRestoreLog.append(summary) }
+                    appendRestoreResumeHint(archive: archive, database: database, failed: section, jobs: plan.jobs, clean: plan.clean)
+                    return result.exitCode
+                }
+            } catch {
+                // 沙箱下起 `pg_restore` 会被拒：沿用既有指引口径，不放宽沙箱。
+                backupRestoreLog.append(L(.backupSandboxHint))
+                backupRestoreLog.append(L(.backupRestoreLogReason, error.localizedDescription))
+                appendRestoreResumeHint(archive: archive, database: database, failed: section, jobs: plan.jobs, clean: plan.clean)
+                return 68
+            }
+        }
+
+        backupRestoreLog.append(L(.backupRestoreSectionsDone))
+        return 0
+    }
+
+    /// 失败后把"接下来做什么"写进日志：停在哪一段 + 可粘贴的续跑命令（Core 生成）。
+    ///
+    /// 面板在**一次性 / 单段**恢复失败时也调它（`failed` 为 nil 表示"这次没分段，不知道停在哪"）——
+    /// 续跑建议只有一处产出，界面各入口共用，免得三条路径各写一种说法。
+    func appendRestoreResumeHint(
+        archive: String,
+        database: String,
+        failed: RestoreSection?,
+        jobs: Int?,
+        clean: Bool
+    ) {
+        if let failed {
+            backupRestoreLog.append(L(.backupRestoreStopped, restoreSectionName(failed)))
+        } else {
+            backupRestoreLog.append(L(.backupRestoreFailedUnknownSection))
+        }
+        backupRestoreLog.append(L(.backupRestoreResumeLead))
+        backupRestoreLog.append(RestoreResume.hint(
+            archivePath: archive,
+            database: database,
+            failed: failed,
+            jobs: jobs,
+            clean: clean
+        ))
+    }
+
+    /// 段的**界面文案**：`RestoreSection.displayName` 是 Core 层的中文短名（CLI 也在用），
+    /// 界面按当前语言取自己那份，避免英文界面里冒出中文。
+    private func restoreSectionName(_ section: RestoreSection) -> String {
+        switch section {
+        case .preData: return L(.backupRestoreSectionPreData)
+        case .data: return L(.backupRestoreSectionData)
+        case .postData: return L(.backupRestoreSectionPostData)
         }
     }
 

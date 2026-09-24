@@ -312,7 +312,12 @@ struct QueryEditorView: View {
                 },
                 onJumpToReferencedRow: { column, value in
                     appState.jumpToReferencedRow(column: column, value: value)
-                }
+                },
+                // 内联编辑（FR-DATA-04）要知道"改的是哪个页签、哪张表"：
+                // 页签给出连接与目标库；来源表**只认 `sourceTable`** ——
+                // 手写 SQL 的结果没有它，那时界面直说"不知道是哪张表"，绝不猜表名。
+                tabID: tab.id,
+                sourceTable: tab.sourceTable
             )
         }
     }
