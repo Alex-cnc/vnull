@@ -348,6 +348,20 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // schema-snapshot：把一个库的结构导出成 JSON（FR-DDL-04 的一半）。
+        // 为什么做成"导出再比"而不是一次连两个库：两个库常常不在同一次调用里
+        // （不同连接 / 不同机器 / 不同时间），快照落文件才能随时比、也能进版本库。
+        if arguments.first == "schema-snapshot" {
+            let code = await runSchemaSnapshotCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
+        // schema-diff：比较两个快照并生成同步脚本。**不需要数据库连接**，走离线文件。
+        if arguments.first == "schema-diff" {
+            exit(runSchemaDiffCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         // row-edit：结果集内联编辑（FR-DATA-04）。默认**只预览 DML**，`--apply` 才真写库。
         if arguments.first == "row-edit" {
             let code = await runRowEditCommand(arguments: Array(arguments.dropFirst()), service: service)
@@ -1280,6 +1294,123 @@ struct DoyahCLI {
     ///
     /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
     /// 而不是靠人在界面里看一眼。
+    /// `schema-snapshot [--schema S] [--out <文件>] [--json]`
+    private static func runSchemaSnapshotCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        let dialect = PostgresDialect()
+        let database = ProcessInfo.processInfo.environment["PGDATABASE"] ?? "postgres"
+        let schema = value(for: "--schema") ?? "public"
+
+        do {
+            var tables: [TableSnapshot] = []
+            var listResult: QueryResult?
+            for try await event in service.execute(
+                dialect.listTablesQuery(database: database, schema: schema),
+                options: .default
+            ) {
+                if case .resultSet(let result) = event { listResult = result }
+            }
+            let names = (listResult?.rows ?? []).compactMap { row -> String? in
+                row.indices.contains(0) ? row[0] : nil
+            }
+            for name in names.sorted() {
+                guard let structureQuery = dialect.tableStructureQuery(table: name, schema: schema) else { continue }
+                var structure: QueryResult?
+                for try await event in service.execute(structureQuery, options: .default) {
+                    if case .resultSet(let result) = event { structure = result }
+                }
+                let columns = MetadataService.columnDefinitions(from: structure ?? QueryResult(columns: [], rows: []))
+                tables.append(TableSnapshot(schema: schema, name: name, columns: columns))
+            }
+
+            let snapshot = SchemaSnapshot(label: "\(database).\(schema)", tables: tables)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(snapshot)
+            if let out = value(for: "--out") {
+                try data.write(to: URL(fileURLWithPath: out))
+                print("已导出 \(tables.count) 张表的结构 → \(out)")
+                return 0
+            }
+            print(String(data: data, encoding: .utf8) ?? "")
+            return 0
+        } catch {
+            print("导出结构失败：\(error.localizedDescription)")
+            return 66
+        }
+    }
+
+    /// `schema-diff --left <快照.json> --right <快照.json> [--allow-drop] [--json]`
+    ///
+    /// `left` 是**期望**结构，`right` 是**要改**的目标库；脚本把 right 改成 left 的形状。
+    private static func runSchemaDiffCommand(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+        guard let leftPath = value(for: "--left"), let rightPath = value(for: "--right") else {
+            print("用法：schema-diff --left <期望.json> --right <目标.json> [--allow-drop] [--json]")
+            return 64
+        }
+        let decoder = JSONDecoder()
+        guard let left = try? decoder.decode(SchemaSnapshot.self, from: Data(contentsOf: URL(fileURLWithPath: leftPath))),
+              let right = try? decoder.decode(SchemaSnapshot.self, from: Data(contentsOf: URL(fileURLWithPath: rightPath))) else {
+            print("读取快照失败（需要 schema-snapshot 导出的 JSON）")
+            return 66
+        }
+
+        let plan = SchemaDiffer.plan(
+            left: left,
+            right: right,
+            allowDrop: arguments.contains("--allow-drop"),
+            dialect: PostgresDialect()
+        )
+
+        if arguments.contains("--json") {
+            let payload: [String: Any] = [
+                "identical": plan.isIdentical,
+                "diffs": plan.diffs.map { ["table": $0.table.qualifiedName, "kind": $0.summary] },
+                "statements": plan.statements,
+                "skippedDestructive": plan.skippedDestructive
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                print(text)
+                return plan.isIdentical ? 0 : 2
+            }
+        }
+
+        if plan.isIdentical {
+            print("两个结构一致，无需同步")
+            return 0
+        }
+
+        print("差异 \(plan.diffs.count) 处：")
+        for diff in plan.diffs {
+            print("  \(diff.table.qualifiedName)：\(diff.summary)")
+            for change in diff.columnChanges {
+                print("      · \(SchemaDiffer.describe(change))\(change.isDestructive ? "（破坏性）" : "")")
+            }
+        }
+        for skipped in plan.skippedDestructive {
+            print("  ⚠️ 跳过：\(skipped)")
+        }
+        print("同步语句 \(plan.statements.count) 条：")
+        for statement in plan.statements { print("  " + statement) }
+        return 2   // 有差异（便于脚本判定）
+    }
+
     /// `row-edit --table T [--schema S] [--pk col=value …] [--set col=value …] [--insert col=value,…] [--delete] [--json] [--apply]`
     ///
     /// 默认**只打印将要执行的 DML**（与界面里的"提交前预览"同一份语句）；`--apply` 才在**单个事务**里执行，

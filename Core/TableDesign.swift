@@ -5,7 +5,7 @@ import Foundation
 /// 比 `ColumnMeta` 多出 `defaultValue` 与 `isPrimaryKey` —— 后两者是「新建表」的刚需，
 /// 而 `ColumnMeta` 只描述**已存在**的表（列名 + 类型 + 可空），所以另起一个输入模型，
 /// 不去污染元数据那个类型。
-public struct TableColumnDefinition: Equatable, Sendable, Identifiable {
+public struct TableColumnDefinition: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public var name: String
     public var typeName: String
@@ -100,10 +100,34 @@ public enum TableDesign {
     /// 服务端回给的是 `character varying(50)`，而人可能填 `varchar(50)`；不归一化就会把
     /// "没改过的列"也算成改类型，凭空生成 ALTER。
     static func normalizedType(_ typeName: String) -> String {
-        typeName
+        var text = typeName
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-            .replacingOccurrences(of: "  ", with: " ")
+        while text.contains("  ") { text = text.replacingOccurrences(of: "  ", with: " ") }
+
+        // 别名归一：先把参数部分摘出来，只对类型名做替换，避免把 `varchar(50)` 里的数字搅进来。
+        var base = text
+        var suffix = ""
+        if let paren = text.firstIndex(of: "(") {
+            base = String(text[text.startIndex..<paren]).trimmingCharacters(in: .whitespaces)
+            suffix = String(text[paren...]).replacingOccurrences(of: " ", with: "")
+        }
+        let aliases: [String: String] = [
+            "varchar": "character varying",
+            "char": "character",
+            "int": "integer",
+            "int4": "integer",
+            "int8": "bigint",
+            "int2": "smallint",
+            "bool": "boolean",
+            "float8": "double precision",
+            "float4": "real",
+            "timestamptz": "timestamp with time zone",
+            "timestamp with time zone": "timestamp with time zone",
+            "decimal": "numeric"
+        ]
+        let canonical = aliases[base] ?? base
+        return canonical + suffix
     }
 
     /// 由「原始结构」与「编辑后的结构」算出要执行的列级变更。
@@ -165,9 +189,11 @@ public enum TableDesign {
     public static func contentKey(_ column: TableColumnDefinition) -> String {
         [
             column.name,
-            column.typeName,
+            // 类型要用**归一化后**的写法：否则 `varchar(50)` 与 `character varying(50)` 会被当成两种类型，
+            // 凭空生成一条 ALTER（同一列在服务端与手写两边写法不同是常态）。
+            normalizedType(column.typeName),
             column.isNullable ? "null" : "notnull",
-            column.defaultValue,
+            column.defaultValue.trimmingCharacters(in: .whitespaces),
             column.isPrimaryKey ? "pk" : ""
         ].joined(separator: "|")
     }
