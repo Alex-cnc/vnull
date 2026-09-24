@@ -1289,6 +1289,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case importParseFailed
     case importReadFailed
     case importEncodingFallback
+    case importSheet
+    case importSheetPending
     case importSourceSummary
     case importWarnings
     case importColumnMapping
@@ -2526,6 +2528,8 @@ public enum LocalizedStrings {
         .importParseFailed: [.simplifiedChinese: "解析失败：%@", .english: "Parse failed: %@"],
         .importReadFailed: [.simplifiedChinese: "读取文件失败：%@", .english: "Failed to read file: %@"],
         .importEncodingFallback: [.simplifiedChinese: "文本编码：%@（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）", .english: "Text encoding: %@ (no UTF-8 BOM found; read as the Chinese Windows code page)"],
+        .importSheet: [.simplifiedChinese: "工作表", .english: "Sheet"],
+        .importSheetPending: [.simplifiedChinese: "选文件后自动列出工作表", .english: "Sheets are listed once a file is chosen"],
         .importSourceSummary: [.simplifiedChinese: "文件：%@（%d 行数据 · %d 列）", .english: "File: %@ (%d rows · %d columns)"],
         .importWarnings: [.simplifiedChinese: "解析告警（前 %d 条）", .english: "Parse warnings (first %d)"],
         .importColumnMapping: [.simplifiedChinese: "列映射（文件 → 目标列）", .english: "Column mapping (file → target)"],

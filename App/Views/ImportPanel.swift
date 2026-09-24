@@ -24,6 +24,8 @@ struct ImportPanel: View {
         case csv
         case tsv
         case json
+        /// Excel 工作簿（FR-IO-06）：二进制 ZIP + OOXML，走 `XLSXReader`（按工作表选）。
+        case xlsx
     }
 
     /// 后台解析的结论：**不跨线程抛 `Error`**（`Result` 带 `Error` 在并发里不好送），
@@ -48,6 +50,9 @@ struct ImportPanel: View {
     @State private var isParsing = false
     /// 这次解析实际用的文本编码（默认 UTF-8；GB18030 时在文件行下面提示）。
     @State private var sourceEncoding: ResultExportEncoding = .utf8
+    /// 选中的 xlsx 里有哪几张工作表（选了文件就列出来，让用户挑，而不是默认第一张）。
+    @State private var sheetNames: [String] = []
+    @State private var sheetIndex: Int = 0
     @State private var mode: ImportWriteMode = .batchInsert
     @State private var copyReason: String?
     @State private var pendingConfirmation: ExecutionSafety.Decision?
@@ -154,13 +159,37 @@ struct ImportPanel: View {
                     Text("CSV").tag(Format.csv)
                     Text("TSV").tag(Format.tsv)
                     Text("JSON").tag(Format.json)
+                    Text("Excel（.xlsx）").tag(Format.xlsx)
                 }
                 .labelsHidden()
                 .frame(width: 160)
+                .onChange(of: format) { _, newValue in handleFormatChange(newValue) }
                 Toggle(L(.importHasHeader), isOn: $hasHeader)
                     .font(Theme.font(.caption))
                     .disabled(format == .json)
                 Spacer()
+            }
+
+            if format == .xlsx {
+                HStack(spacing: Spacing.l) {
+                    Text(L(.importSheet))
+                        .font(Theme.font(.body))
+                        .frame(width: 90, alignment: .leading)
+                    Picker("", selection: $sheetIndex) {
+                        ForEach(Array(sheetNames.enumerated()), id: \.offset) { index, name in
+                            Text("\(index + 1). \(name)").tag(index)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 260)
+                    .disabled(sheetNames.isEmpty)
+                    if sheetNames.isEmpty {
+                        Text(L(.importSheetPending))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.tertiary))
+                    }
+                    Spacer()
+                }
             }
 
             HStack(spacing: Spacing.s) {
@@ -448,11 +477,20 @@ struct ImportPanel: View {
     }
 
     /// 改动文件 / 格式 / 表头后，上一次的解析结论作废（否则会拿旧映射去写新数据）。
+    /// 切格式时：切到 Excel 就补拉工作表列表；切走就把列表清掉（免得留着上一次的残留）。
+    private func handleFormatChange(_ newValue: Format) {
+        invalidate()
+        guard newValue == .xlsx, !filePath.isEmpty else { return }
+        Task { await loadSheetNames(path: filePath) }
+    }
+
     private func invalidate() {
         parsed = nil
         plan = nil
         parseError = nil
         hasParsedOnce = false
+        sheetNames = []
+        sheetIndex = 0
     }
 
     private func chooseFile() {
@@ -463,6 +501,19 @@ struct ImportPanel: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         filePath = url.path
         invalidate()
+        Task { await loadSheetNames(path: url.path) }
+    }
+
+    /// 列出 xlsx 的工作表（只在选了文件 / 切到 Excel 时做一次，读的是 ZIP 中央目录，很轻）。
+    private func loadSheetNames(path: String) async {
+        let names = await Task.detached(priority: .userInitiated) { () -> [String] in
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let sheets = try? XLSXReader.sheets(data) else { return [] }
+            return sheets.map(\.name)
+        }.value
+        guard !names.isEmpty else { return }
+        sheetNames = names
+        sheetIndex = 0
     }
 
     /// 解析 + 生成列映射。两步都不在主线程上做重活（解析在后台，表结构走既有异步元数据查询）。
@@ -477,7 +528,20 @@ struct ImportPanel: View {
         let path = filePath
         let format = self.format
         let hasHeader = self.hasHeader
+        let sheetIndex = self.sheetIndex
         let outcome = await Task.detached(priority: .userInitiated) { () -> ParseOutcome in
+            // Excel 工作簿是二进制（ZIP + OOXML）：不走文本编码，也不解析文本。
+            if format == .xlsx {
+                do {
+                    let data = try Data(contentsOf: URL(fileURLWithPath: path))
+                    return .parsed(
+                        try XLSXReader.importResult(data, sheet: sheetIndex, hasHeader: hasHeader),
+                        .utf8
+                    )
+                } catch {
+                    return .parseFailed(error.localizedDescription)
+                }
+            }
             // 编码不猜死 UTF-8（FR-IO-07）：中文 Windows 上从 Excel / WPS 另存的 CSV
             // 是 GBK / GB18030，只按 UTF-8 读会直接报"读不了"。
             let decoded: TextFileDecoder.Decoded
@@ -501,6 +565,10 @@ struct ImportPanel: View {
                         text,
                         options: DelimitedTextReader.Options(delimiter: "\t", hasHeader: hasHeader)
                     ), decoded.encoding)
+                case .xlsx:
+                    // 走不到这里：上面已经按二进制路径提前返回。留着是为了让 switch 穷尽 ——
+                    // 而不是留一个"静默当成 CSV 解析"的口子。
+                    return .parseFailed("xlsx 应走二进制读取路径")
                 }
             } catch {
                 return .parseFailed(error.localizedDescription)

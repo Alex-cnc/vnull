@@ -2313,7 +2313,7 @@ struct DoyahCLI {
         return matches.isEmpty ? 1 : 0
     }
 
-    /// `import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]`
+    /// `import --table <表> --file <文件> [--format csv|tsv|json|xlsx] [--delimiter ,] [--sheet N] [--no-header] [--batch N] [--write]`
     ///
     /// 默认**不写库**：先打印列映射、未匹配的列、非法值样例与将执行的语句 ——
     /// 导入是"一次性把大批数据写进去"的动作，先让人看一眼值得。
@@ -2327,26 +2327,12 @@ struct DoyahCLI {
         }
 
         guard let table = value(for: "--table") else {
-            print("用法：import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--copy] [--write]")
+            print("用法：import --table <表> --file <文件> [--format csv|tsv|json|xlsx] [--delimiter ,] [--sheet N] [--no-header] [--batch N] [--copy] [--write]")
             return 64
         }
         guard let path = value(for: "--file") else {
             print("缺少 --file <文件>")
             return 64
-        }
-
-        // 编码不猜死 UTF-8（FR-IO-07）：中文 Windows 上 Excel / WPS 另存的 CSV 是 GBK / GB18030，
-        // 这里按「BOM → 严格 UTF-8 → GB18030」解码，并把实际用的编码**打印出来**。
-        let text: String
-        do {
-            let decoded = try TextFileDecoder.decode(contentsOf: URL(fileURLWithPath: path))
-            text = decoded.text
-            if decoded.isFallback {
-                print("文本编码：\(decoded.encoding.displayName)（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）")
-            }
-        } catch {
-            print("读取文件失败：\(error.localizedDescription)")
-            return 65
         }
 
         let format = (value(for: "--format") ?? "csv").lowercased()
@@ -2356,19 +2342,56 @@ struct DoyahCLI {
         let dialect = PostgresDialect()
         let schema = value(for: "--schema")
 
+        // xlsx 是二进制工作簿（ZIP + OOXML），**不走文本编码那条路**（FR-IO-06）。
         let parsed: DelimitedTextReader.Result
-        do {
-            if format == "json" {
-                parsed = try DelimitedTextReader.readJSON(text)
-            } else {
-                parsed = DelimitedTextReader.read(
-                    text,
-                    options: DelimitedTextReader.Options(delimiter: delimiter, hasHeader: hasHeader)
-                )
+        if format == "xlsx" || format == "excel" {
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: path))
+                let sheets = try XLSXReader.sheets(data)
+                let requested = Int(value(for: "--sheet") ?? "1") ?? 1
+                guard requested >= 1, requested <= sheets.count else {
+                    let names = sheets.map(\.name).joined(separator: "、")
+                    print("工作表序号超出范围：这个文件有 \(sheets.count) 张表（\(names)）")
+                    return 64
+                }
+                let sheet = sheets[requested - 1]
+                parsed = XLSXReader.importResult(from: sheet, hasHeader: hasHeader)
+                print("Excel 工作表：\(sheet.name)（第 \(requested) / \(sheets.count) 张，共 \(sheet.rows.count) 行）")
+                if !sheet.warnings.isEmpty {
+                    print("解析告警：")
+                    for warning in sheet.warnings.prefix(5) { print("  · \(warning)") }
+                }
+            } catch {
+                print("读取 Excel 失败：\(error.localizedDescription)")
+                return 65
             }
-        } catch {
-            print("解析失败：\(error.localizedDescription)")
-            return 65
+        } else {
+            // 编码不猜死 UTF-8（FR-IO-07）：中文 Windows 上 Excel / WPS 另存的 CSV 是 GBK / GB18030，
+            // 这里按「BOM → 严格 UTF-8 → GB18030」解码，并把实际用的编码**打印出来**。
+            let text: String
+            do {
+                let decoded = try TextFileDecoder.decode(contentsOf: URL(fileURLWithPath: path))
+                text = decoded.text
+                if decoded.isFallback {
+                    print("文本编码：\(decoded.encoding.displayName)（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）")
+                }
+            } catch {
+                print("读取文件失败：\(error.localizedDescription)")
+                return 65
+            }
+            do {
+                if format == "json" {
+                    parsed = try DelimitedTextReader.readJSON(text)
+                } else {
+                    parsed = DelimitedTextReader.read(
+                        text,
+                        options: DelimitedTextReader.Options(delimiter: delimiter, hasHeader: hasHeader)
+                    )
+                }
+            } catch {
+                print("解析失败：\(error.localizedDescription)")
+                return 65
+            }
         }
 
         // 目标列：读表结构（与 synth 同一口径）。
