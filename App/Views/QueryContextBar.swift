@@ -71,12 +71,37 @@ struct QueryContextBar: View {
             }
 
             Spacer()
+
+            // 连接信息**只在悬停时出现**（2026-09-24 需求提出者：「这个 tooltip 放到上面数据库连接的
+            // 那个工具条最右侧更合理」）。它原来在查询工具条右侧当正文显示 —— 那会把工具条撑高、
+            // 也不符合"工具条只放动作"的口径；放到这里既不占版面，又和上面两个下拉框在同一行。
+            Image(systemName: "info.circle")
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .padding(.leading, Spacing.xs)
+                .contentShape(Rectangle())
+                .help(connectionInfoText)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .task(id: appState.selectedConnectionID) {
             await appState.loadDatabases()
         }
+    }
+
+    /// 悬停提示的文本：类型 · 分隔符 · 库 · 用户 · 地址（组成在 Core 里，有单测）。
+    private var connectionInfoText: String {
+        guard let configuration = appState.selectedConnection else {
+            return L(.workspaceUnboundHint)
+        }
+        let info = appState.serverInfo(for: configuration.id)
+        return ConnectionInfoText.summary(
+            databaseType: configuration.dbType,
+            database: info?.database,
+            username: info?.user,
+            endpoint: configuration.endpointDescription,
+            language: LocalizationManager.shared.language
+        )
     }
 
     private var serverSelection: Binding<ConnectionConfig.ID> {
