@@ -136,6 +136,11 @@ struct MainWindow: View {
             DatabaseStatsPanel()
                 .environmentObject(appState)
         }
+        // 诊断这条查询（FR-AI-03）：先取证（真库跑 EXPLAIN / 锁查询），再解读模型回答。
+        .sheet(isPresented: $appState.isDiagnosisPresented) {
+            DiagnosisPanel()
+                .environmentObject(appState)
+        }
         // Schema 对比与同步（FR-DDL-04）：两侧结构差异 + 同步脚本。
         .sheet(isPresented: $appState.isSchemaDiffPresented) {
             SchemaDiffPanel()

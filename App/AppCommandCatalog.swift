@@ -43,6 +43,8 @@ enum AppCommandCatalog {
             item("locks", .commandLocks, "locks 锁 阻塞", "locks blocking", .paletteCategoryServer),
             item("switchConnection", .commandSwitchConnection, "connection conn 切换 连接", "switch connection", .paletteCategoryServer),
             item("agentSQL", .commandAgentSQL, "agent nl2sql 智能体 自然语言 生成 sql", "agent nl2sql", .paletteCategoryAgent),
+            // 诊断这条查询（FR-AI-03）：取**当前页签**的 SQL，面板里先取证再看建议。
+            item("diagnoseQuery", .diagnosisTitle, "diagnose explain plan slow lock 诊断 执行计划 慢查询 锁 阻塞", "diagnose explain plan lock", .paletteCategoryAgent),
             item("syntheticData", .commandSyntheticData, "synthetic data 合成 测试数据", "synthetic data", .paletteCategoryAgent),
             item("egressLog", .commandEgressLog, "egress log 外发 日志", "egress log", .paletteCategoryAgent),
             item("help", .commandHelp, "help 帮助 快捷键", "help shortcuts", .paletteCategoryHelp),

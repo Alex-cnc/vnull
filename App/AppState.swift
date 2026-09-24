@@ -323,6 +323,16 @@ final class AppState: ObservableObject {
     /// 「数据库统计」面板（FR-DIAG-04）。
     @Published var isDatabaseStatsPresented = false
 
+    // 对话式诊断（FR-AI-03）：面板状态与取证结果。
+    // 与 Core 的分工：这里只负责"把证据取回来、把回答交出去解读"，判据全在 Core。
+    @Published var isDiagnosisPresented = false
+    @Published var diagnosisQuestion = ""
+    @Published var diagnosisEvidence: [DiagnosisEvidence] = []
+    @Published var diagnosisReply = ""
+    @Published var diagnosisReport: DiagnosisAdviceReport?
+    @Published var diagnosisIsGathering = false
+    @Published var diagnosisMessage: String?
+
     /// 「Schema 对比与同步」面板（FR-DDL-04）。
     @Published var isSchemaDiffPresented = false
     /// ER 图面板（FR-DDL-05）：由外键元数据画的图。
@@ -3793,6 +3803,7 @@ final class AppState: ObservableObject {
         case "backupRestore": isBackupRestorePresented = true
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
+        case "diagnoseQuery": openDiagnosis()
         case "schemaDiff": isSchemaDiffPresented = true
         case "erDiagram": isERDiagramPresented = true
         case "serverObjects":
@@ -5753,6 +5764,118 @@ final class AppState: ObservableObject {
         sshTunnels[configuration.id] = tunnel
         statusMessage = L(.sshTunnelReady, String(localPort))
         return (SSHTunnelEndpoint.loopbackHost, localPort)
+    }
+
+    // MARK: - 对话式诊断（FR-AI-03）
+
+    /// 打开诊断面板：SQL 取**当前页签**的（用户正看着的那条）。
+    func openDiagnosis() {
+        diagnosisQuestion = L(.diagnosisQuestionField)
+        diagnosisEvidence = []
+        diagnosisReport = nil
+        diagnosisMessage = nil
+        isDiagnosisPresented = true
+    }
+
+    /// 当前页签的 SQL（诊断的默认对象）。
+    var diagnosisTargetSQL: String {
+        selectedTab?.sql ?? ""
+    }
+
+    /// 取证：对真实库跑执行计划 / 锁 / 统计，取不到的那几条**如实记下原因**。
+    ///
+    /// 为什么这段在 App 而判据在 Core：`ensureService` 只有 App 有（连接与页签都在这儿），
+    /// 而"取哪几种证据、怎么标注"是规则 —— 规则在 Core，取数在这儿。
+    func gatherDiagnosisEvidence(sql: String) async {
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            diagnosisMessage = L(.diagnosisEmpty)
+            return
+        }
+        guard let tab = selectedTab, let configuration = connection(for: tab) else {
+            diagnosisMessage = L(.stateNotConnected)
+            return
+        }
+        diagnosisIsGathering = true
+        diagnosisMessage = nil
+        defer { diagnosisIsGathering = false }
+
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        var collected: [DiagnosisEvidence] = []
+        do {
+            let service = try await ensureService(for: configuration, database: tab.database)
+            let plan = DiagnosisContextBuilder.evidencePlan(for: trimmed, dialect: dialect)
+            for (index, item) in plan.enumerated() {
+                let id = DiagnosisContextBuilder.evidenceID(index: index)
+                if item.kind == .statement {
+                    collected.append(
+                        DiagnosisContextBuilder.makeEvidence(id: id, kind: .statement, sql: item.sql, rows: [])
+                    )
+                    continue
+                }
+                do {
+                    let rows = try await runDiagnosisQuery(item.sql, on: service)
+                    collected.append(
+                        DiagnosisContextBuilder.makeEvidence(id: id, kind: item.kind, sql: item.sql, rows: rows)
+                    )
+                } catch {
+                    // 取不到就是取不到：把服务端说的话带上（"扩展没装"和"权限不够"要分得开）。
+                    collected.append(
+                        DiagnosisContextBuilder.makeEvidence(
+                            id: id, kind: item.kind, sql: item.sql, rows: nil,
+                            failureReason: error.localizedDescription
+                        )
+                    )
+                }
+            }
+            diagnosisEvidence = collected
+        } catch {
+            diagnosisMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    private func runDiagnosisQuery(_ sql: String, on service: any DatabaseService) async throws -> [[String?]] {
+        var rows: [[String?]] = []
+        for try await event in service.execute(sql, options: .default) {
+            if case .resultSet(let result) = event {
+                rows.append(contentsOf: result.rows)
+            }
+        }
+        return rows
+    }
+
+    /// 当前的诊断上下文（提示词与解读共用同一份，**不许各拼一份**）。
+    var diagnosisContext: DiagnosisContext {
+        DiagnosisContext(
+            question: diagnosisQuestion,
+            target: selectedConnection.map { "\($0.username)@\($0.endpointDescription)" } ?? "",
+            evidence: diagnosisEvidence
+        )
+    }
+
+    /// 解读模型回答：采纳有依据的、拒绝没依据的（判据在 Core）。
+    func parseDiagnosisReply() {
+        let configuration = selectedConnection
+        diagnosisReport = DiagnosisAdvice.parse(
+            reply: diagnosisReply,
+            context: diagnosisContext,
+            databaseType: configuration?.dbType ?? .postgresql,
+            policy: ExecutionSafetyPolicy.policy(
+                for: selectedConnection.map { ConnectionAppearance(environment: $0.environment, colorTag: $0.colorTag) } ?? ConnectionAppearance(),
+                isEnabled: isSafeModeEnabled,
+                confirmAllWrites: false,
+                isReadOnly: configuration?.isReadOnly ?? false
+            )
+        )
+    }
+
+    /// 把建议的 SQL 放进编辑器（**不执行**：执行仍然走用户自己那一步与那道审批闸门）。
+    func putDiagnosisSQLInEditor(_ sql: String) {
+        guard let tab = selectedTab else { return }
+        if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
+            tabs[index].sql = sql
+            statusMessage = L(.diagnosisInserted)
+        }
     }
 
     private func invalidateService(for connectionID: UUID) {

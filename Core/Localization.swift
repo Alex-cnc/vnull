@@ -179,6 +179,30 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case diagnosisTitle
+    case menuDiagnoseQuery
+    case diagnosisQuestionField
+    case diagnosisGather
+    case diagnosisGathering
+    case diagnosisEvidenceSection
+    case diagnosisPromptSection
+    case diagnosisPromptHint
+    case diagnosisReplySection
+    case diagnosisReplyPlaceholder
+    case diagnosisParse
+    case diagnosisAdviceSection
+    case diagnosisRejectionsSection
+    case diagnosisNoEndpoint
+    case diagnosisInsertSQL
+    case diagnosisEmpty
+    case diagnosisRunHint
+    case diagnosisDecisionAllow
+    case diagnosisDecisionConfirm
+    case diagnosisDecisionRefused
+    case diagnosisRejectedMissing
+    case diagnosisRejectedUnknown
+    case diagnosisRejectedUnparsable
+    case diagnosisInserted
     case mcpRefusedReadOnly
     case mcpNeedsApproval
     case mcpInitialized
@@ -1720,6 +1744,30 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .diagnosisTitle: [.simplifiedChinese: "诊断这条查询", .english: "Diagnose this query"],
+        .menuDiagnoseQuery: [.simplifiedChinese: "诊断这条查询…", .english: "Diagnose this query…"],
+        .diagnosisQuestionField: [.simplifiedChinese: "问题", .english: "Question"],
+        .diagnosisGather: [.simplifiedChinese: "取证", .english: "Gather evidence"],
+        .diagnosisGathering: [.simplifiedChinese: "正在取证…", .english: "Gathering evidence…"],
+        .diagnosisEvidenceSection: [.simplifiedChinese: "证据（结论必须引用编号）", .english: "Evidence (conclusions must cite these ids)"],
+        .diagnosisPromptSection: [.simplifiedChinese: "给模型的资料（复制出去问任意模型）", .english: "Material for the model (copy it into any model)"],
+        .diagnosisPromptHint: [.simplifiedChinese: "本机没有配置模型端点，所以这里不自动发问：把这段资料粘到你在用的模型里，再把它的回答粘回下面。", .english: "No model endpoint is configured, so nothing is sent automatically: paste this material into the model you use, then paste its reply below."],
+        .diagnosisReplySection: [.simplifiedChinese: "模型回答", .english: "Model reply"],
+        .diagnosisReplyPlaceholder: [.simplifiedChinese: "把模型的回答原样粘进来（结论行要带 [依据: e1,e2]）", .english: "Paste the model reply as-is (each conclusion line must carry [evidence: e1,e2])"],
+        .diagnosisParse: [.simplifiedChinese: "解读回答", .english: "Read the reply"],
+        .diagnosisAdviceSection: [.simplifiedChinese: "采纳的建议", .english: "Accepted advice"],
+        .diagnosisRejectionsSection: [.simplifiedChinese: "被拒绝的结论（没有依据 / 引用不存在）", .english: "Rejected conclusions (no evidence or unknown citation)"],
+        .diagnosisNoEndpoint: [.simplifiedChinese: "没有配置模型端点：这一步只做本地解读，不会把任何数据发出去。", .english: "No model endpoint is configured: this step only reads the reply locally and sends nothing out."],
+        .diagnosisInsertSQL: [.simplifiedChinese: "放进编辑器", .english: "Put in editor"],
+        .diagnosisEmpty: [.simplifiedChinese: "还没有证据：先点上面的「取证」。", .english: "No evidence yet: press Gather evidence above."],
+        .diagnosisRunHint: [.simplifiedChinese: "取证会真的在库里跑 EXPLAIN 与锁查询（只读，不改数据）。", .english: "Gathering really runs EXPLAIN and the lock query on the database (read-only, no changes)."],
+        .diagnosisDecisionAllow: [.simplifiedChinese: "可直接执行", .english: "can run directly"],
+        .diagnosisDecisionConfirm: [.simplifiedChinese: "需确认", .english: "needs confirmation"],
+        .diagnosisDecisionRefused: [.simplifiedChinese: "被拒绝", .english: "refused"],
+        .diagnosisRejectedMissing: [.simplifiedChinese: "没有引用任何证据", .english: "cites no evidence"],
+        .diagnosisRejectedUnknown: [.simplifiedChinese: "引用了不存在的证据：%@", .english: "cites unknown evidence: %@"],
+        .diagnosisRejectedUnparsable: [.simplifiedChinese: "没看懂这一行", .english: "this line could not be parsed"],
+        .diagnosisInserted: [.simplifiedChinese: "已放进编辑器（未执行）", .english: "Put in the editor (not executed)"],
         .mcpRefusedReadOnly: [.simplifiedChinese: "当前连接是只读的（或语句被判为写操作）：该调用被拒绝，批准也不能绕过", .english: "This connection is read-only (or the statement counts as a write): the call is refused and approval cannot bypass it"],
         .mcpNeedsApproval: [.simplifiedChinese: "工具 %@ 需要审批：请先在界面上确认这一次外部调用", .english: "Tool %@ needs approval: confirm this external call in the app first"],
         .mcpInitialized: [.simplifiedChinese: "已就绪：能力继承当前会话，调用进审批与审计", .english: "Ready: capabilities inherit the current session, and every call is approved and audited"],

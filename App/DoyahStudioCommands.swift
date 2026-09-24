@@ -78,6 +78,11 @@ struct DoyahStudioCommands: Commands {
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])
 
+            // 诊断这条查询（FR-AI-03）：与 ⌘K 的 `diagnoseQuery` 打开同一个面板。
+            Button(L(.menuDiagnoseQuery)) {
+                appState.openDiagnosis()
+            }
+
             Divider()
 
             Button(L(.menuDataTask)) {
