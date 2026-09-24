@@ -404,6 +404,15 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // er-diagram：ER 图 / 关系图（FR-DDL-05）。由外键元数据生成图模型，
+        // 导出 mermaid / dot / json —— 图能被外部工具渲染与核对，"布局是不是每次都在跳"
+        // 也能靠这个出口脚本化验证。
+        if arguments.first == "er-diagram" {
+            let code = await runERDiagramCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
         // schema-diff：比较两个快照并生成同步脚本。**不需要数据库连接**，走离线文件。
         if arguments.first == "schema-diff" {
             exit(runSchemaDiffCommand(arguments: Array(arguments.dropFirst())))
@@ -2123,6 +2132,107 @@ struct DoyahCLI {
             return 0
         } catch {
             print("导出结构失败：\(error.localizedDescription)")
+            return 66
+        }
+    }
+
+    /// `er-diagram [--schema S] [--format mermaid|dot|json] [--out 文件] [--layout]`
+    ///
+    /// 不带 `--layout` 只导出图（文本）；带 `--layout` 额外打印各表的层号与坐标 ——
+    /// 布局是纯计算，"同一份输入给同一份输出"这条能靠它一眼看出来，也能进脚本断言。
+    private static func runERDiagramCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        let dialect = PostgresDialect()
+        let database = ProcessInfo.processInfo.environment["PGDATABASE"] ?? "postgres"
+        let schema = value(for: "--schema") ?? "public"
+        let format = (value(for: "--format") ?? "mermaid").lowercased()
+
+        do {
+            // 表与列：与结构快照同一条口径（一次列清单查询 / 一张表）。
+            var snapshots: [TableSnapshot] = []
+            var listResult: QueryResult?
+            for try await event in service.execute(
+                dialect.listTablesQuery(database: database, schema: schema),
+                options: .default
+            ) {
+                if case .resultSet(let result) = event { listResult = result }
+            }
+            let names = (listResult?.rows ?? []).compactMap { row -> String? in
+                guard row.indices.contains(0), let name = row[0], !name.isEmpty else { return nil }
+                // 视图也画进来？不：ER 图讲的是"表之间的关系"，视图没有外键约束，画上去只会添乱。
+                if row.indices.contains(1), let kind = row[1], kind.uppercased().contains("VIEW") { return nil }
+                return name
+            }
+            for name in names.sorted() {
+                guard let structureQuery = dialect.tableStructureQuery(table: name, schema: schema) else { continue }
+                var structure: QueryResult?
+                for try await event in service.execute(structureQuery, options: .default) {
+                    if case .resultSet(let result) = event { structure = result }
+                }
+                snapshots.append(
+                    TableSnapshot(
+                        schema: schema,
+                        name: name,
+                        columns: MetadataService.columnDefinitions(from: structure ?? QueryResult(columns: [], rows: []))
+                    )
+                )
+            }
+
+            // 外键：一次查询取回整个 schema。
+            var foreignKeys: QueryResult?
+            for try await event in service.execute(
+                ERDiagramSource.foreignKeysQuery(schema: schema),
+                options: .default
+            ) {
+                if case .resultSet(let result) = event { foreignKeys = result }
+            }
+
+            let diagram = ERDiagramSource.diagram(
+                snapshots: snapshots,
+                foreignKeys: foreignKeys ?? QueryResult(columns: [], rows: [])
+            )
+
+            let output: String
+            switch format {
+            case "mermaid", "mmd": output = diagram.mermaid()
+            case "dot", "graphviz": output = diagram.dot()
+            case "json": output = diagram.json()
+            default:
+                print("不支持的导出格式（mermaid / dot / json）：\(format)")
+                return 64
+            }
+
+            if let out = value(for: "--out") {
+                try output.write(to: URL(fileURLWithPath: out), atomically: true, encoding: .utf8)
+                print("已导出 ER 图（\(format)）→ \(out)")
+            } else {
+                print(output, terminator: "")
+            }
+
+            if arguments.contains("--layout") {
+                let layout = diagram.layout()
+                print("")
+                print("布局（父子方向：被引用的一方在上层）")
+                for node in layout.nodes {
+                    print("  第 \(node.layer) 层 · \(node.table) @ (\(Int(node.x)), \(Int(node.y))) \(Int(node.width))×\(Int(node.height))")
+                }
+                if !layout.cyclicTables.isEmpty {
+                    print("  互相引用（无法拓扑排序，已放到最后）：\(layout.cyclicTables.joined(separator: "、"))")
+                }
+                print("  画布：\(Int(layout.width)) × \(Int(layout.height))")
+            }
+            return 0
+        } catch {
+            print("生成 ER 图失败：\(error.localizedDescription)")
             return 66
         }
     }
