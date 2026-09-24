@@ -177,6 +177,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneOutputEmpty
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
+    case treeMenuEmpty
     case terminalRestart
     case terminalClearScrollback
     case terminalCursorStyle
@@ -1568,6 +1569,7 @@ public enum LocalizedStrings {
         .lowerPaneOutputEmpty: [.simplifiedChinese: "还没有输出。执行 SQL 的状态、影响行数与耗时摘要会出现在这里。", .english: "No output yet. Execution status, affected rows and timings will show up here."],
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
+        .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
         .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],
         .commonPaste: [.simplifiedChinese: "粘贴", .english: "Paste"],
         .commonSelectAll: [.simplifiedChinese: "全选", .english: "Select All"],

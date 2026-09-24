@@ -20,7 +20,12 @@ struct ObjectTreeView: View {
     @State private var loadingIDs: Set<String> = []
     @State private var errors: [String: String] = [:]
     /// 鼠标当前在哪一行（右键菜单按它决定内容，见 `hoveredMenuObject`）。
-    @State private var hoveredRowID: String?
+    ///
+    /// **为什么用引用类型装、而不是 `@State`**（2026-09-24 需求提出者实测「鼠标放上去，对象数不停闪烁」）：
+    /// `@State` 一写就让视图作废 → 整棵树重算 → 行视图被重建 → `onHover` 再触发一次 →
+    /// 悬停状态来回翻，于是"鼠标停着不动，界面自己闪"。而这个盒子**没有任何观察者**：
+    /// 写它不产生一次重绘，右键菜单在**呈现那一刻**读它即可。
+    @State private var hoverBox = HoverBox()
     @State private var isLoadingRoot = false
     @State private var rootError: String?
     // 注：所有「弹出面板」的目标与开关都**不在这里** —— 它们住在 `AppState`
@@ -89,15 +94,9 @@ struct ObjectTreeView: View {
                         rowView(row)
                     }
                 }
-                .contextMenuIf(hoveredMenuObject != nil) {
-                    if let object = hoveredMenuObject {
-                        if object.kind == .server {
-                            serverContextMenu
-                        } else {
-                            objectContextMenu(for: object)
-                        }
-                    }
-                }
+                // 菜单**无条件**挂在这里（有条件挂 = 视图结构随悬停变，又会诱发上面那种循环），
+                // 内容在**呈现那一刻**按"鼠标底下那一行"算。
+                .contextMenu { menuItems(for: hoveredMenuObject) }
             }
         }
         // 这里**不要**再加 `.id(appState.selectedConnectionID)`：
@@ -310,9 +309,9 @@ struct ObjectTreeView: View {
             .onHover { hovering in
                 guard !row.isGroupHeader else { return }
                 if hovering {
-                    hoveredRowID = row.object.id
-                } else if hoveredRowID == row.object.id {
-                    hoveredRowID = nil
+                    hoverBox.rowID = row.object.id
+                } else if hoverBox.rowID == row.object.id {
+                    hoverBox.rowID = nil
                 }
             }
 
@@ -354,17 +353,26 @@ struct ObjectTreeView: View {
     /// 现在整块只挂一个，内容由**悬停行**决定：鼠标在哪一行，菜单就是那一行的 ——
     /// 与"每行自己挂"结果等价，但没有歧义。
     private var hoveredMenuObject: DatabaseObject? {
-        if let hoveredRowID,
-           let row = visibleRows.first(where: { $0.object.id == hoveredRowID }),
-           !row.isGroupHeader,
-           ObjectTreeActions.hasContextMenu(row.object.kind) {
-            return row.object
+        guard let rowID = hoverBox.rowID,
+              let row = visibleRows.first(where: { $0.object.id == rowID }),
+              !row.isGroupHeader,
+              ObjectTreeActions.hasContextMenu(row.object.kind) else { return nil }
+        return row.object
+    }
+
+    /// 右键菜单的内容：作用在**鼠标底下那一行**上；没有可作用对象时给一条说明，
+    /// 而不是弹一个空菜单（空菜单比没有菜单更让人困惑）。
+    @ViewBuilder
+    private func menuItems(for object: DatabaseObject?) -> some View {
+        if let object {
+            if object.kind == .server {
+                serverContextMenu
+            } else {
+                objectContextMenu(for: object)
+            }
+        } else {
+            Text(L(.treeMenuEmpty))
         }
-        // 兜底：拿不到悬停信息（例如鼠标是从别的窗口直接移进来就右键）时用当前选中项 ——
-        // 总比"右键没反应"好，而且仍然只在菜单可用的节点类型上给。
-        guard let selected = appState.selectedTreeObject,
-              ObjectTreeActions.hasContextMenu(selected.kind) else { return nil }
-        return selected
     }
 
     /// 表 / 视图 / 列节点的右键菜单（FR-META-14）。
@@ -724,18 +732,10 @@ struct ObjectTreeView: View {
     }
 }
 
-private extension View {
-    /// 条件式右键菜单：条件不成立时不挂菜单，
-    /// 避免右键其它层级节点时弹出空菜单。
-    @ViewBuilder
-    func contextMenuIf<MenuContent: View>(
-        _ condition: Bool,
-        @ViewBuilder menuContent: () -> MenuContent
-    ) -> some View {
-        if condition {
-            contextMenu(menuItems: menuContent)
-        } else {
-            self
-        }
-    }
+/// 鼠标悬停行的**无观察者**小盒子（见 `ObjectTreeView.hoverBox` 的说明）。
+///
+/// 刻意不是 `ObservableObject`、也不放进 `@State` 的观察链：它的用途只有"右键菜单呈现那一刻读一眼"，
+/// 而任何"写一下就让整棵树重算"的做法都会把悬停变成闪烁。
+final class HoverBox {
+    var rowID: String?
 }
