@@ -93,7 +93,7 @@ public enum ConnectionConfigMigrator {
 extension ConnectionConfig {
     enum CodingKeys: String, CodingKey {
         case id, name, dbType, host, port, database, username, sslMode, timeout, schemaVersion
-        case environment, colorTag
+        case environment, colorTag, isReadOnly, startupSQL
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,6 +109,10 @@ extension ConnectionConfig {
         timeout = try container.decodeIfPresent(Int.self, forKey: .timeout) ?? 5
         // 缺失 = v0：交给迁移器走 0 → 1 的路径，而不是这里假装已经是当前版本。
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
+        // 纯新增的可选字段：**缺失就是默认值**，不触发迁移、不抬高 schemaVersion
+        // （与 FR-CONN-16 的 environment/colorTag 同一纪律）。
+        isReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
+        startupSQL = try container.decodeIfPresent(String.self, forKey: .startupSQL)
         // FR-CONN-16 的两个字段是**纯新增且可选**，老文件读出来自然是 nil。
         // 因此**不提升 schemaVersion** —— 版本号留给"读不懂的破坏性变更"用；
         // 给可选字段升版本只会让老版本应用把文件误判成"来自更新版本"而拒绝改写。

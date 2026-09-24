@@ -16,14 +16,23 @@ public struct ExecutionSafetyPolicy: Equatable, Sendable {
     /// 「生产标签需与 FR-EXEC-16 的高危确认联动」的落地。
     public var forcesConfirmationForHighRisk: Bool
 
+    /// 只读连接（FR-CONN-17）：写语句**直接拒绝**，不是"确认后放行"。
+    ///
+    /// 为什么与"高危确认"分开：确认的语义是"我看到了风险、仍然要做"，而只读标记的语义是
+    /// "这个连接不该有写操作"。前者可以绕过（点确认），后者**不允许绕过** ——
+    /// 否则用户关掉 Safe Mode 就等于顺手关掉了只读保护。
+    public var isReadOnly: Bool
+
     public init(
         isEnabled: Bool = true,
         confirmAllWrites: Bool = false,
-        forcesConfirmationForHighRisk: Bool = false
+        forcesConfirmationForHighRisk: Bool = false,
+        isReadOnly: Bool = false
     ) {
         self.isEnabled = isEnabled
         self.confirmAllWrites = confirmAllWrites
         self.forcesConfirmationForHighRisk = forcesConfirmationForHighRisk
+        self.isReadOnly = isReadOnly
     }
 
     /// 默认：开启，只确认高危语句。
@@ -33,12 +42,14 @@ public struct ExecutionSafetyPolicy: Equatable, Sendable {
     public static func policy(
         for appearance: ConnectionAppearance,
         isEnabled: Bool = true,
-        confirmAllWrites: Bool = false
+        confirmAllWrites: Bool = false,
+        isReadOnly: Bool = false
     ) -> ExecutionSafetyPolicy {
         ExecutionSafetyPolicy(
             isEnabled: isEnabled,
             confirmAllWrites: confirmAllWrites,
-            forcesConfirmationForHighRisk: appearance.isProduction
+            forcesConfirmationForHighRisk: appearance.isProduction,
+            isReadOnly: isReadOnly
         )
     }
 }
@@ -63,6 +74,8 @@ public enum ExecutionSafety {
         case allow
         /// 需要用户二次确认。
         case needsConfirmation(reasons: [String], findings: [AgentGuardFinding], statements: [String])
+        /// **直接拒绝**（只读连接上的写语句）。与 `needsConfirmation` 的区别是：它不可绕过。
+        case refused(reasons: [String], statements: [String])
 
         public var isAllowed: Bool {
             if case .allow = self { return true }
@@ -81,8 +94,48 @@ public enum ExecutionSafety {
                     lines.append(contentsOf: statements.map { "· " + ExecutionSafety.oneLine($0) })
                 }
                 return lines.joined(separator: "\n")
+            case .refused(let reasons, let statements):
+                var lines = reasons
+                if !statements.isEmpty {
+                    lines.append("")
+                    lines.append(contentsOf: statements.map { "· " + ExecutionSafety.oneLine($0) })
+                }
+                return lines.joined(separator: "\n")
             }
         }
+    }
+
+    /// 只读连接的拒绝判定：写语句（改数据或改结构）一律拒绝，只读查询与 `SET` 之类放行。
+    ///
+    /// 为什么用 `AgentGuardrail` 的语句分类而不是另写一套词法：同一套规则既服务于智能体护栏、
+    /// 也服务于人手敲的 SQL，两处各写一份必然互相矛盾（这条纪律在 Safe Mode 里已经立过）。
+    static func readOnlyRefusal(
+        statements: [String],
+        databaseType: DatabaseType
+    ) -> Decision? {
+        var offenders: [String] = []
+        for statement in statements {
+            let assessment = AgentGuardrail.evaluate(
+                sql: statement,
+                databaseType: databaseType,
+                policy: AgentGuardPolicy(
+                    readOnly: false,
+                    requireApprovalForHighRisk: false,
+                    requireApprovalForWrites: false
+                )
+            )
+            if assessment.statements.contains(where: { $0.kind.changesDataOrSchema }) {
+                offenders.append(statement)
+            }
+        }
+        guard !offenders.isEmpty else { return nil }
+        return .refused(
+            reasons: [
+                "该连接已标记为**只读**：客户端拒绝执行写语句。",
+                "这是本机保护，不是数据库权限 —— 需要写入请改用非只读的连接。"
+            ],
+            statements: offenders
+        )
     }
 
     /// 检查一整段 SQL（内部按语句拆分后逐条判定）。
@@ -91,6 +144,14 @@ public enum ExecutionSafety {
         databaseType: DatabaseType = .postgresql,
         policy: ExecutionSafetyPolicy = .default
     ) -> Decision {
+        // 只读连接先判：它是连接的**属性**，不是提醒 —— 总开关关掉也不能绕过。
+        let statementsForReadOnly = StatementSplitter(databaseType: databaseType)
+            .split(sql)
+            .map(\.sql)
+        if policy.isReadOnly, let refusal = readOnlyRefusal(statements: statementsForReadOnly, databaseType: databaseType) {
+            return refusal
+        }
+
         // 总开关关闭时：**生产连接的强制确认仍然生效**（见 policy 的说明）。
         guard policy.isEnabled || policy.forcesConfirmationForHighRisk else { return .allow }
 
@@ -106,6 +167,11 @@ public enum ExecutionSafety {
         databaseType: DatabaseType = .postgresql,
         policy: ExecutionSafetyPolicy = .default
     ) -> Decision {
+        // 只读连接：**先于一切开关**判定（见 `isReadOnly` 的说明）。
+        if policy.isReadOnly, let refusal = readOnlyRefusal(statements: statements, databaseType: databaseType) {
+            return refusal
+        }
+
         // 与上面的单条入口同一口径：生产连接的强制确认在总开关关闭时**仍然生效**，
         // 否则"生产上不许关高危确认"就只是句口号（这条一致性本轮靠测试发现才补上）。
         guard policy.isEnabled || policy.forcesConfirmationForHighRisk else { return .allow }

@@ -15,6 +15,9 @@ struct ConnectionFormView: View {
     @State private var username: String
     @State private var environment: ConnectionEnvironment?
     @State private var colorTag: CategoricalTone?
+    /// 只读连接与启动 SQL（FR-CONN-17）。
+    @State private var isReadOnly: Bool
+    @State private var startupSQL: String
     @State private var password: String
     @State private var sslMode: SSLMode
     @State private var timeout: Int
@@ -40,7 +43,8 @@ struct ConnectionFormView: View {
         // 编辑已有连接时把标签带进来 —— 否则"编辑一次就丢标签"（这类丢失很难被发现）。
         _environment = State(initialValue: configuration?.environment)
         _colorTag = State(initialValue: configuration?.colorTag)
-    }
+        _isReadOnly = State(initialValue: configuration?.isReadOnly ?? false)
+        _startupSQL = State(initialValue: configuration?.startupSQL ?? "")    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -128,6 +132,26 @@ struct ConnectionFormView: View {
                 SecureASCIIField(text: $password, placeholder: configuration == nil ? L(.connectionFormPassword) : L(.connectionFormPasswordKeep))
                     .frame(height: 22)
 
+                // 只读连接（FR-CONN-17）：客户端拒绝写语句。
+                // 说明文案点明"这是本机保护、不替代数据库权限"，免得用户以为它是权限控制。
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle(L(.connectionFormReadOnly), isOn: $isReadOnly)
+                    Text(L(.connectionFormReadOnlyHint))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // 启动 SQL：连接建立后逐条执行（如 SET search_path / statement_timeout）。
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField(L(.connectionFormStartupSQL), text: $startupSQL, axis: .vertical)
+                        .lineLimit(2...4)
+                    Text(L(.connectionFormStartupSQLHint))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.text(.secondary))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Picker(L(.connectionFormSSLMode), selection: $sslMode) {
                     ForEach(SSLMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -203,7 +227,11 @@ struct ConnectionFormView: View {
             timeout: timeout,
             schemaVersion: ConnectionConfig.currentSchemaVersion,
             environment: environment,
-            colorTag: colorTag
+            colorTag: colorTag,
+            isReadOnly: isReadOnly,
+            startupSQL: startupSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : startupSQL
         )
     }
 }

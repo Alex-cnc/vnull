@@ -858,6 +858,13 @@ public enum LKey: String, CaseIterable, Sendable {
     case safetyConfirmAllWrites
     case safetyConfirmTitle
     case safetyConfirmMessage
+    case safetyReadOnlyRefused
+    case startupSQLFailed
+    case startupSQLRefused
+    case connectionFormReadOnly
+    case connectionFormReadOnlyHint
+    case connectionFormStartupSQL
+    case connectionFormStartupSQLHint
     case safetyConfirmRun
     case safetyConfirmCancel
 
@@ -1655,6 +1662,13 @@ public enum LocalizedStrings {
         .agentRiskElevated: [.simplifiedChinese: "较高", .english: "Elevated"],
         .agentRiskDestructive: [.simplifiedChinese: "高危", .english: "Destructive"],
         .toolbarSafety: [.simplifiedChinese: "防护", .english: "Safety"],
+        .connectionFormReadOnly: [.simplifiedChinese: "只读连接（客户端拒绝写语句）", .english: "Read-only connection (client refuses writes)"],
+        .connectionFormReadOnlyHint: [.simplifiedChinese: "这是**本机保护**，不替代数据库权限；关闭 Safe Mode 也不会放开它", .english: "This is local protection, not a database privilege; turning Safe Mode off will not lift it"],
+        .connectionFormStartupSQL: [.simplifiedChinese: "连接后自动执行（启动 SQL，分号分隔）", .english: "Run after connecting (startup SQL, semicolon separated)"],
+        .connectionFormStartupSQLHint: [.simplifiedChinese: "例：`SET search_path TO public; SET statement_timeout = '5s'` —— 逐条执行，一条失败不影响其它条", .english: "e.g. `SET search_path TO public; SET statement_timeout = '5s'` — executed one by one; a failure does not stop the rest"],
+        .startupSQLFailed: [.simplifiedChinese: "启动 SQL 有语句失败：%@（%@）", .english: "A startup statement failed: %@ (%@)"],
+        .startupSQLRefused: [.simplifiedChinese: "启动 SQL 里有 %@ 条写语句，而该连接是只读的 —— 已整体跳过", .english: "%@ startup statement(s) write data but this connection is read-only — all skipped"],
+        .safetyReadOnlyRefused: [.simplifiedChinese: "该连接是只读的，已拒绝执行写语句", .english: "This connection is read-only; the write statement was refused"],
         .safetySafeMode: [.simplifiedChinese: "高危语句保护", .english: "Safe mode"],
         .safetySafeModeHint: [.simplifiedChinese: "对不带条件的批量更新 / 删除、删表、清空表等，执行前先确认一次。", .english: "Confirm once before running unqualified UPDATE/DELETE, DROP or TRUNCATE."],
         .safetyConfirmAllWrites: [.simplifiedChinese: "每次写入都确认", .english: "Confirm every write"],

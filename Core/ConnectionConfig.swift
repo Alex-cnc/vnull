@@ -19,6 +19,15 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
     /// 用户自选颜色（FR-CONN-16）。环境标签的语义色优先于它。
     public var colorTag: CategoricalTone?
 
+    /// 只读连接（FR-CONN-17）：客户端**拒绝执行写语句**。
+    ///
+    /// 口径必须说清：这是**本机保护**，不替代数据库权限 —— 它拦的是"我在这台机器上点错了"，
+    /// 不是"有人绕过客户端"。所以它不能被 Safe Mode 之类的开关关掉（那是提醒，这是标记）。
+    public var isReadOnly: Bool
+
+    /// 连接建立后自动执行的 SQL（FR-CONN-17），例如 `SET search_path` / `statement_timeout`。
+    public var startupSQL: String?
+
     public init(
         id: UUID = UUID(),
         name: String = "",
@@ -31,7 +40,9 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         timeout: Int = 5,
         schemaVersion: Int = ConnectionConfig.currentSchemaVersion,
         environment: ConnectionEnvironment? = nil,
-        colorTag: CategoricalTone? = nil
+        colorTag: CategoricalTone? = nil,
+        isReadOnly: Bool = false,
+        startupSQL: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -45,6 +56,22 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         self.schemaVersion = schemaVersion
         self.environment = environment
         self.colorTag = colorTag
+        self.isReadOnly = isReadOnly
+        self.startupSQL = startupSQL
+    }
+
+    /// 启动 SQL 拆成**逐条**语句（空串 / 纯注释不算）。
+    ///
+    /// 拆分的意义：连接之后要逐条发、逐条报错 —— 一条失败不该把后面的一起吞掉，
+    /// 用户需要知道到底是哪一条没生效（`search_path` 没设上，后面所有查询都可能找错表）。
+    public var startupStatements: [String] {
+        guard let startupSQL, !startupSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return StatementSplitter(databaseType: dbType)
+            .split(startupSQL)
+            .map { $0.sql.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("--") }
     }
 
     /// 显示用的外观（环境标签 + 自选色）。各处显示都走它，保证一致。

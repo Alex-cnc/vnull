@@ -1042,6 +1042,52 @@ struct DoyahCLI {
                 return 0
             }
 
+            // `--check <连接名> --sql "…"`：把「这条语句在这个连接上能不能跑」做成可脚本化的判定。
+            // 为什么要这个出口：只读是**客户端**保护，只有真正走一遍判定才算验过 ——
+            // 光看配置文件里有 `isReadOnly: true` 证明不了任何东西。
+            if let name = value(for: "--check") {
+                guard let configuration = configurations.first(where: { $0.name == name }) else {
+                    print("没有这个连接：\(name)")
+                    return 66
+                }
+                guard let sql = value(for: "--sql") else {
+                    print("用法：connections --check <连接名> --sql \"…\" [--dir …]")
+                    return 64
+                }
+                let decision = ExecutionSafety.check(
+                    sql: sql,
+                    databaseType: configuration.dbType,
+                    policy: ExecutionSafetyPolicy(
+                        isEnabled: false,
+                        isReadOnly: configuration.isReadOnly
+                    )
+                )
+                switch decision {
+                case .allow:
+                    print("允许：\(configuration.name)\(configuration.isReadOnly ? "（只读）" : "") 上可以执行")
+                    return 0
+                case .refused(let reasons, let statements):
+                    print("拒绝：\(reasons.joined(separator: " "))")
+                    for statement in statements { print("  · \(statement)") }
+                    return 3
+                case .needsConfirmation(let reasons, _, _):
+                    print("需要确认：\(reasons.joined(separator: "；"))")
+                    return 4
+                }
+            }
+
+            // `--show-startup <连接名>`：打印连接建立后会执行的**逐条**启动 SQL（拆分结果）
+            if let name = value(for: "--show-startup") {
+                guard let configuration = configurations.first(where: { $0.name == name }) else {
+                    print("没有这个连接：\(name)")
+                    return 66
+                }
+                let statements = configuration.startupStatements
+                print("\(configuration.name)：启动 SQL \(statements.count) 条")
+                for statement in statements { print("  · \(statement)") }
+                return statements.isEmpty ? 1 : 0
+            }
+
             print("连接配置：\(configurations.count) 条（文件 \(await store.fileLocation().path)）")
             if summary.didMigrate {
                 print("（本次读入时迁移了 \(summary.migrated.count) 条）")
@@ -1049,7 +1095,9 @@ struct DoyahCLI {
             for configuration in configurations {
                 let environment = configuration.environment?.rawValue ?? "—"
                 let color = configuration.colorTag?.rawValue ?? "—"
-                print("  \(configuration.name)\t\(configuration.endpointDescription)\t环境=\(environment)\t颜色=\(color)")
+                let readOnly = configuration.isReadOnly ? "这是只读连接" : "可写"
+                let startup = configuration.startupStatements.count
+                print("  \(configuration.name)\t\(configuration.endpointDescription)\t环境=\(environment)\t颜色=\(color)\t\(readOnly)\t启动 SQL \(startup) 条")
             }
             return 0
         } catch {

@@ -553,7 +553,9 @@ final class AppState: ObservableObject {
         ExecutionSafetyPolicy.policy(
             for: selectedConnection?.appearance ?? ConnectionAppearance(),
             isEnabled: isSafeModeEnabled,
-            confirmAllWrites: isConfirmAllWritesEnabled
+            confirmAllWrites: isConfirmAllWritesEnabled,
+            // 只读是连接的属性，不受 Safe Mode 开关影响（见 `ExecutionSafetyPolicy.isReadOnly`）
+            isReadOnly: selectedConnection?.isReadOnly ?? false
         )
     }
 
@@ -3785,6 +3787,14 @@ final class AppState: ObservableObject {
                 pendingExecution = PendingExecution(tabID: tabID, sql: sql, decision: decision)
                 return
             }
+            // 只读连接的拒绝**不走确认流程**：它不是"要不要冒险"，而是"这个连接不写"。
+            // 若把它塞进确认弹窗，用户点一次「仍然执行」就等于关掉了只读标记。
+            if case .refused(let reasons, let statements) = decision {
+                let detail = (reasons + statements.map { "· " + $0 }).joined(separator: "\n")
+                updateTab(tabID) { $0.errorMessage = detail }
+                statusMessage = reasons.first ?? L(.safetyReadOnlyRefused)
+                return
+            }
         }
 
         let targetDatabase = queryDatabase(for: configuration)
@@ -4072,6 +4082,9 @@ final class AppState: ObservableObject {
             let (service, serverInfo) = try await task.value
             services[key] = service
             connectTasks[key] = nil
+            // 启动 SQL（FR-CONN-17）：只在**新建连接**后执行一次（缓存命中不重跑），
+            // 且放在这个唯一收口点 —— 连接别处也建，散着写必漏。
+            await runStartupStatements(configuration.startupStatements, for: configuration, on: service)
             // 只有主库（连接配置里的库）刷新 serverInfo，避免浏览其他库时覆盖工具栏显示。
             if serverInfos[configuration.id] == nil || targetDatabase == configuration.database {
                 serverInfos[configuration.id] = serverInfo
@@ -4080,6 +4093,41 @@ final class AppState: ObservableObject {
         } catch {
             connectTasks[key] = nil
             throw error
+        }
+    }
+
+    /// 逐条执行启动 SQL。
+    ///
+    /// 三条口径：
+    /// 1. **逐条发、逐条报错** —— 一条失败不该吞掉后面的，用户要知道是哪条没生效
+    ///    （`search_path` 没设上，后面所有查询都可能找错表）；
+    /// 2. **只读连接上写语句直接拒绝**：复用 `ExecutionSafety` 的只读判定（关掉 Safe Mode 也拦得住），
+    ///    但**不启用**高危确认 —— 启动 SQL 是用户自己配的常规设置（`SET`），不该每次连接都弹窗；
+    /// 3. 失败只写状态栏，**不阻断连接**：连上了就是连上了，配置写错是另一件事。
+    private func runStartupStatements(
+        _ statements: [String],
+        for configuration: ConnectionConfig,
+        on service: any DatabaseService
+    ) async {
+        guard !statements.isEmpty else { return }
+
+        let readOnlyOnly = ExecutionSafetyPolicy(isEnabled: false, isReadOnly: configuration.isReadOnly)
+        let decision = ExecutionSafety.check(
+            statements: statements,
+            databaseType: configuration.dbType,
+            policy: readOnlyOnly
+        )
+        if case .refused(let reasons, let offenders) = decision {
+            statusMessage = L(.startupSQLRefused, offenders.count) + " " + (reasons.first ?? "")
+            return
+        }
+
+        for statement in statements {
+            do {
+                _ = try await runSingleQuery(statement, on: service)
+            } catch {
+                statusMessage = L(.startupSQLFailed, statement, ErrorPresenter.message(for: error))
+            }
         }
     }
 
