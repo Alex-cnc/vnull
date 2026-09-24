@@ -350,6 +350,18 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // server-objects：服务器级对象管理（FR-SESS-03）。只读列出 + 写操作的「预览 / 确认」。
+        // 默认只打印将要执行的语句（dry-run），只有显式 `--yes` 才真执行 —— 与 Safe Mode
+        // 「先看后做」同一纪律；`--dry-run` 可以显式把 `--yes` 压回预览。
+        if arguments.first == "server-objects" {
+            let code = await runServerObjectsCommand(
+                arguments: Array(arguments.dropFirst()),
+                service: service
+            )
+            await service.disconnect()
+            exit(code)
+        }
+
         // slow-queries：慢查询排行（FR-DIAG-03）。扩展没装时**给出怎么装**，而不是抛原始错误。
         if arguments.first == "slow-queries" {
             let code = await runSlowQueriesCommand(
@@ -1629,6 +1641,210 @@ struct DoyahCLI {
             print("缓存命中率：无访问数据")
         }
         return 0
+    }
+
+    /// `server-objects <roles|tablespaces|extensions|all> [--limit N] [--json] [--dialect …]`
+    /// `server-objects create-role --name <角色名> [--password <口令>] [--nologin] [--superuser] [--host <主机>] [--yes]`
+    /// `server-objects drop-role --name <角色名> [--host <主机>] [--yes]`
+    /// `server-objects create-extension --name <扩展名> [--schema <schema>] [--version <版本>] [--yes]`
+    /// `server-objects drop-extension --name <扩展名> [--yes]`
+    ///
+    /// 三条纪律，与 Core 的 `ServerObjects` 一一对应：
+    /// ① **默认 dry-run**：写操作只打印将要执行的语句 / 风险等级 / 提醒，只有显式 `--yes` 才真执行；
+    ///    语句由 `ServerObjects.plan` 生成 —— CLI 不自己拼 SQL，免得与界面两套口径。
+    /// ② **不支持就说人话**：方言没有这个概念（GBase 的表空间 / 扩展）时打印 Core 给的中文说明，
+    ///    一条 SQL 都不发，返回 3（"环境不具备"与"命令写错"用不同退出码区分，照 slow-queries）。
+    /// ③ **输入非法直接拒绝**：空名字 / `a; DROP …` 这类注入名由 Core 的校验挡下，打印可读理由，返回 64。
+    ///
+    /// `--dialect` 只改变**语句构造用的方言**（默认 postgresql），用来核对"不支持的方言会怎么说话"；
+    /// 它不会换连接 —— 拿 GBase 口径的查询去 PG 上跑当然会报错，那是调用方自己的选择。
+    private static func runServerObjectsCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        let usage = """
+        用法：server-objects <roles|tablespaces|extensions|all> [--limit N] [--json]
+              server-objects create-role --name <角色名> [--password <口令>] [--nologin] [--superuser] [--host <主机>] [--yes]
+              server-objects drop-role --name <角色名> [--host <主机>] [--yes]
+              server-objects create-extension --name <扩展名> [--schema <schema>] [--version <版本>] [--yes]
+              server-objects drop-extension --name <扩展名> [--yes]
+        [--dialect postgresql|gbase8a] 只影响语句构造（用来核对不支持的方言怎么说话），不换连接。
+        写操作**默认只预览**；`--dry-run` 显式预览，只有 `--yes` 才真执行。
+        """
+
+        guard let action = arguments.first else {
+            print(usage)
+            return 64
+        }
+
+        let dialect: any ServerObjectDialect
+        switch value(for: "--dialect") ?? "postgresql" {
+        case "gbase8a": dialect = GBaseServerObjectDialect()
+        case "postgresql": dialect = PostgresServerObjectDialect()
+        default:
+            print("--dialect 只支持 postgresql / gbase8a")
+            return 64
+        }
+
+        // ① 只读列出：roles / tablespaces / extensions / all
+        let requestedKinds: [ServerObjectKind]?
+        switch action {
+        case "roles": requestedKinds = [.role]
+        case "tablespaces": requestedKinds = [.tablespace]
+        case "extensions": requestedKinds = [.extension]
+        case "all": requestedKinds = ServerObjectKind.allCases
+        default: requestedKinds = nil
+        }
+
+        if let requestedKinds {
+            let limit = Int(value(for: "--limit") ?? "") ?? ServerObjects.defaultLimit
+            let isJSON = arguments.contains("--json")
+
+            // 一类一个结果：**不支持的那类不查**，只把 Core 给的说明带上来（不发必然报错的 SQL）。
+            var sections: [(kind: ServerObjectKind, objects: [ServerObject], reason: String?, note: String?)] = []
+            for kind in requestedKinds {
+                let plan = ServerObjects.browsePlan(kind, dialect: dialect, limit: limit)
+                guard let sql = plan.sql else {
+                    sections.append((kind, [], plan.unsupportedReason, nil))
+                    continue
+                }
+                var result: QueryResult?
+                do {
+                    for try await event in service.execute(sql, options: .default) {
+                        if case .resultSet(let value) = event { result = value }
+                    }
+                } catch {
+                    print("（\(kind.displayName) 读取失败：\(error.localizedDescription)）")
+                    sections.append((kind, [], nil, plan.note))
+                    continue
+                }
+                let objects = ServerObjects.objects(
+                    from: result ?? QueryResult(columns: [], rows: []),
+                    kind: kind
+                )
+                sections.append((kind, objects, nil, plan.note))
+            }
+
+            if isJSON {
+                let payload: [String: Any] = [
+                    "dialect": dialect.databaseType.rawValue,
+                    "sections": sections.map { section -> [String: Any] in
+                        var entry: [String: Any] = [
+                            "kind": section.kind.rawValue,
+                            "objects": section.objects.map { object -> [String: Any] in
+                                var item: [String: Any] = ["name": object.name, "summary": object.displaySummary]
+                                if let owner = object.owner { item["owner"] = owner }
+                                if let comment = object.comment { item["comment"] = comment }
+                                if let location = object.location { item["location"] = location }
+                                if let bytes = object.sizeBytes { item["bytes"] = bytes }
+                                if let version = object.version { item["version"] = version }
+                                if let schema = object.schema { item["schema"] = schema }
+                                if let canLogin = object.canLogin { item["canLogin"] = canLogin }
+                                if let isSuperuser = object.isSuperuser { item["isSuperuser"] = isSuperuser }
+                                if let status = object.status { item["status"] = status }
+                                return item
+                            }
+                        ]
+                        if let reason = section.reason { entry["unsupported"] = reason }
+                        if let note = section.note { entry["approximation"] = note }
+                        return entry
+                    }
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return sections.allSatisfy { $0.reason != nil } ? 3 : 0
+                }
+            }
+
+            var printedAnything = false
+            for section in sections {
+                if let reason = section.reason {
+                    print("\(section.kind.displayName)：不支持 —— \(reason)")
+                    continue
+                }
+                printedAnything = true
+                if let note = section.note { print("说明：\(note)") }
+                print("\(section.kind.displayName)（\(section.objects.count) 个）：")
+                for object in section.objects {
+                    print("  \(object.name)\t\(object.displaySummary)")
+                }
+            }
+            if !printedAnything {
+                // 全都是"不支持"：说明已经打印过了，但仍要用退出码把"环境不具备"与"跑通了"分开。
+                return 3
+            }
+            return 0
+        }
+
+        // ② 写操作：先生成语句（预览），只有 `--yes` 且没给 `--dry-run` 才执行。
+        let request: ServerObjectRequest
+        switch action {
+        case "create-role":
+            guard let name = value(for: "--name") else { print(usage); return 64 }
+            request = .createRole(
+                RoleSpec(
+                    name: name,
+                    password: value(for: "--password"),
+                    canLogin: !arguments.contains("--nologin"),
+                    isSuperuser: arguments.contains("--superuser"),
+                    host: value(for: "--host") ?? "%"
+                )
+            )
+        case "drop-role":
+            guard let name = value(for: "--name") else { print(usage); return 64 }
+            request = .dropRole(name: name, host: value(for: "--host") ?? "%")
+        case "create-extension":
+            guard let name = value(for: "--name") else { print(usage); return 64 }
+            request = .createExtension(
+                ExtensionSpec(name: name, schema: value(for: "--schema"), version: value(for: "--version"))
+            )
+        case "drop-extension":
+            guard let name = value(for: "--name") else { print(usage); return 64 }
+            request = .dropExtension(name: name)
+        default:
+            print(usage)
+            return 64
+        }
+
+        switch ServerObjects.plan(request, dialect: dialect) {
+        case .rejected(let reason):
+            print("已拒绝：\(reason)")
+            return 64
+
+        case .unsupported(let reason):
+            print("不支持：\(reason)")
+            return 3
+
+        case .ready(let command):
+            print("将要执行（\(command.action.displayName) · \(ServerObjects.riskText(command.risk))）：")
+            print("  \(command.statement)")
+            for warning in command.warnings {
+                print("  · \(warning)")
+            }
+
+            let shouldExecute = arguments.contains("--yes") && !arguments.contains("--dry-run")
+            guard shouldExecute else {
+                print("（dry-run：未执行。确认无误后加 --yes 真执行）")
+                return 0
+            }
+
+            do {
+                for try await _ in service.execute(command.statement, options: .default) {}
+            } catch {
+                print("执行失败：\(error.localizedDescription)")
+                return 2
+            }
+            print("已执行：\(command.statement)")
+            return 0
+        }
     }
 
     /// `schema-snapshot [--schema S] [--out <文件>] [--json]`

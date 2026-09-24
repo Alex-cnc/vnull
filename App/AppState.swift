@@ -225,6 +225,9 @@ final class AppState: ObservableObject {
     /// 「Schema 对比与同步」面板（FR-DDL-04）。
     @Published var isSchemaDiffPresented = false
 
+    /// 「服务器级对象」面板（FR-SESS-03）：角色 / 表空间 / 扩展的浏览与增删改。
+    @Published var isServerObjectsPresented = false
+
     /// 多个外键目标时的待选择请求（FR-DATA-06）。
     @Published var pendingForeignKeyJump: ForeignKeyJumpRequest?
 
@@ -3064,6 +3067,10 @@ final class AppState: ObservableObject {
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
         case "schemaDiff": isSchemaDiffPresented = true
+        case "serverObjects":
+            // 与「数据库统计」同一模式：面板自己按 `selectedConnection` 取数；
+            // 没连接时由面板显示 `AppError.notConnected` 的人话，而不是在这里静默不开。
+            isServerObjectsPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
@@ -3447,6 +3454,71 @@ final class AppState: ObservableObject {
             cacheHit: await run(.cacheHitRate),
             limit: limit
         )
+    }
+
+    // MARK: - 服务器级对象（FR-SESS-03）
+
+    /// 读三类服务器级对象（角色 / 表空间 / 扩展）。
+    ///
+    /// 与 `databaseStats(limit:)` 同一分工：**查什么由 Core 的方言能力开关决定**
+    /// （`ServerObjects.browsePlan`）。不支持的那一类既不发查询、也不编造空列表 ——
+    /// Core 给的可读理由原样带回界面，界面才能说「GBase 8a 没有表空间概念」，
+    /// 而不是摆一个空表格让人以为「恰好一个都没有」。
+    func serverObjectSections(limit: Int = ServerObjects.defaultLimit) async throws -> [ServerObjectSection] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let dialect = ServerObjectDialectFactory.make(for: configuration.dbType)
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+
+        var sections: [ServerObjectSection] = []
+        for kind in ServerObjectKind.allCases {
+            let plan = ServerObjects.browsePlan(kind, dialect: dialect, limit: limit)
+            guard let sql = plan.sql else {
+                sections.append(
+                    ServerObjectSection(kind: kind, unsupportedReason: plan.unsupportedReason)
+                )
+                continue
+            }
+            // 单类失败不影响其它类：与统计面板同一条口径（"有什么看什么"）。
+            let result = try? await runSingleQuery(sql, on: service)
+            sections.append(
+                ServerObjectSection(
+                    kind: kind,
+                    objects: result.map { ServerObjects.objects(from: $0, kind: kind) } ?? [],
+                    approximationNote: plan.note
+                )
+            )
+        }
+        return sections
+    }
+
+    /// 生成一条写操作的**预览**（语句 / 风险等级 / 提醒）—— **不执行任何东西**。
+    ///
+    /// 校验与语句构造都在 Core 的 `ServerObjects.plan`：非法名字在这里就变成一条可读的拒绝理由，
+    /// 而不是等数据库报错（那会把「名字写错了」说成「权限不足 / 语法错误」）。
+    func serverObjectWritePlan(_ request: ServerObjectRequest) throws -> ServerObjectWritePlan {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        return ServerObjects.plan(request, dialect: ServerObjectDialectFactory.make(for: configuration.dbType))
+    }
+
+    /// 执行一条**已经预览、并由用户显式确认过**的写操作。
+    ///
+    /// 只接受 `ServerObjectCommand`（而不是任意 SQL）：命令带着风险等级与目标名，
+    /// 上层没法「绕过预览直接执行一条谁也没看过的语句」。
+    func executeServerObjectWrite(_ command: ServerObjectCommand) async throws {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+        // DDL / DCL 可能**没有结果集**（`CREATE ROLE` 就是），所以不能用 `runSingleQuery`
+        // —— 那个入口把「没有结果集」当成错误，会把一次成功的建角色报成失败。
+        for try await _ in service.execute(command.statement, options: .default) {}
+        statusMessage = L(.serverObjectsExecuted, command.statement)
     }
 
 

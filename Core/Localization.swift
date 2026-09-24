@@ -912,6 +912,44 @@ public enum LKey: String, CaseIterable, Sendable {
     case databaseStatsNoScans
     case databaseStatsLoading
     case databaseStatsFailure
+    // 服务器级对象管理面板（FR-SESS-03）
+    case menuServerObjects
+    case serverObjectsTitle
+    case serverObjectsHint
+    case serverObjectsRefresh
+    case serverObjectsLoading
+    case serverObjectsEmpty
+    case serverObjectsKindRole
+    case serverObjectsKindTablespace
+    case serverObjectsKindExtension
+    case serverObjectsUnsupported
+    case serverObjectsApproximation
+    case serverObjectsTablespaceReadOnly
+    case serverObjectsCreateTitle
+    case serverObjectsNamePlaceholder
+    case serverObjectsPasswordPlaceholder
+    case serverObjectsHostPlaceholder
+    case serverObjectsSchemaPlaceholder
+    case serverObjectsCanLogin
+    case serverObjectsSuperuser
+    case serverObjectsPreviewCreateRole
+    case serverObjectsPreviewDropRole
+    case serverObjectsPreviewCreateExtension
+    case serverObjectsPreviewDropExtension
+    case serverObjectsPreview
+    case serverObjectsConfirm
+    case serverObjectsDryRunHint
+    case serverObjectsNoPreview
+    case serverObjectsNoSelection
+    case serverObjectsExecuted
+    case serverObjectsRejected
+    case serverObjectsFailure
+    case serverObjectsRisk
+    case serverObjectsRiskElevated
+    case serverObjectsRiskDestructive
+    case serverObjectsConfirmCreate
+    case serverObjectsConfirmDestructive
+    case serverObjectsWarnings
     // Schema 对比与同步面板（FR-DDL-04）
     case schemaDiffTitle
     case schemaDiffHint
@@ -1772,6 +1810,43 @@ public enum LocalizedStrings {
         .databaseStatsNoScans: [.simplifiedChinese: "无扫描数据", .english: "No scan data"],
         .databaseStatsLoading: [.simplifiedChinese: "正在采集…", .english: "Collecting…"],
         .databaseStatsFailure: [.simplifiedChinese: "统计失败：%@", .english: "Could not collect statistics: %@"],
+        .menuServerObjects: [.simplifiedChinese: "服务器级对象…", .english: "Server-level Objects…"],
+        .serverObjectsTitle: [.simplifiedChinese: "服务器级对象", .english: "Server-level objects"],
+        .serverObjectsHint: [.simplifiedChinese: "浏览与管理服务器级对象（角色 / 表空间 / 扩展）。写操作一律先出语句、再确认。", .english: "Browse and manage server-level objects (roles, tablespaces, extensions). Every write shows its statement first."],
+        .serverObjectsRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .serverObjectsLoading: [.simplifiedChinese: "正在读取…", .english: "Loading…"],
+        .serverObjectsEmpty: [.simplifiedChinese: "这一类没有对象", .english: "No objects in this category"],
+        .serverObjectsKindRole: [.simplifiedChinese: "角色", .english: "Roles"],
+        .serverObjectsKindTablespace: [.simplifiedChinese: "表空间", .english: "Tablespaces"],
+        .serverObjectsKindExtension: [.simplifiedChinese: "扩展", .english: "Extensions"],
+        .serverObjectsUnsupported: [.simplifiedChinese: "%@ 不支持查看%@", .english: "%@ does not support browsing %@"],
+        .serverObjectsApproximation: [.simplifiedChinese: "%@ 没有完全对应的概念，下面是近似物：", .english: "%@ has no exact equivalent — the list below is an approximation:"],
+        .serverObjectsTablespaceReadOnly: [.simplifiedChinese: "表空间只做只读列出：CREATE TABLESPACE 需要超级用户权限与真实磁盘目录，本面板不提供建 / 删。", .english: "Tablespaces are read-only here: CREATE TABLESPACE needs superuser rights and a real on-disk directory, so this panel does not offer create or drop."],
+        .serverObjectsCreateTitle: [.simplifiedChinese: "写操作（先预览，再确认）", .english: "Write operations (preview, then confirm)"],
+        .serverObjectsNamePlaceholder: [.simplifiedChinese: "名称", .english: "Name"],
+        .serverObjectsPasswordPlaceholder: [.simplifiedChinese: "口令（可留空）", .english: "Password (optional)"],
+        .serverObjectsHostPlaceholder: [.simplifiedChinese: "账号主机（GBase / MySQL 用，默认通配）", .english: "Account host (GBase / MySQL only; wildcard by default)"],
+        .serverObjectsSchemaPlaceholder: [.simplifiedChinese: "Schema（可留空）", .english: "Schema (optional)"],
+        .serverObjectsCanLogin: [.simplifiedChinese: "可登录", .english: "Can log in"],
+        .serverObjectsSuperuser: [.simplifiedChinese: "超级用户", .english: "Superuser"],
+        .serverObjectsPreviewCreateRole: [.simplifiedChinese: "预览新建角色", .english: "Preview new role"],
+        .serverObjectsPreviewDropRole: [.simplifiedChinese: "预览删除角色", .english: "Preview drop role"],
+        .serverObjectsPreviewCreateExtension: [.simplifiedChinese: "预览安装扩展", .english: "Preview install extension"],
+        .serverObjectsPreviewDropExtension: [.simplifiedChinese: "预览卸载扩展", .english: "Preview uninstall extension"],
+        .serverObjectsPreview: [.simplifiedChinese: "预览", .english: "Preview"],
+        .serverObjectsConfirm: [.simplifiedChinese: "执行", .english: "Execute"],
+        .serverObjectsDryRunHint: [.simplifiedChinese: "预览只生成语句，不会真的执行；确认后再按「执行」。", .english: "Preview only builds the statement — nothing runs until you press Execute."],
+        .serverObjectsNoPreview: [.simplifiedChinese: "还没有预览任何语句", .english: "Nothing previewed yet"],
+        .serverObjectsNoSelection: [.simplifiedChinese: "先在列表里选中一个对象", .english: "Select an object in the list first"],
+        .serverObjectsExecuted: [.simplifiedChinese: "已执行：%@", .english: "Executed: %@"],
+        .serverObjectsRejected: [.simplifiedChinese: "已拒绝：%@", .english: "Rejected: %@"],
+        .serverObjectsFailure: [.simplifiedChinese: "操作失败：%@", .english: "Operation failed: %@"],
+        .serverObjectsRisk: [.simplifiedChinese: "风险等级：%@", .english: "Risk level: %@"],
+        .serverObjectsRiskElevated: [.simplifiedChinese: "需确认", .english: "Needs confirmation"],
+        .serverObjectsRiskDestructive: [.simplifiedChinese: "不可逆（高危）", .english: "Irreversible (high risk)"],
+        .serverObjectsConfirmCreate: [.simplifiedChinese: "确认执行这条语句？", .english: "Execute this statement?"],
+        .serverObjectsConfirmDestructive: [.simplifiedChinese: "这是不可逆操作，确认执行？", .english: "This cannot be undone. Execute anyway?"],
+        .serverObjectsWarnings: [.simplifiedChinese: "提醒", .english: "Notes"],
         .schemaDiffTitle: [.simplifiedChinese: "Schema 对比与同步", .english: "Schema diff and sync"],
         .schemaDiffHint: [.simplifiedChinese: "源 = 期望结构，目标 = 要被同步的库。默认只做加法与安全修改；删除必须显式打开。生成的脚本只会打开在编辑器里，由你确认后再执行。", .english: "Source is the desired structure, target is the database to be synced. By default only additions and safe changes are made; dropping requires an explicit opt-in. The generated script is only opened in the editor — you decide whether to run it."],
         .schemaDiffSource: [.simplifiedChinese: "期望结构（源）", .english: "Desired structure (source)"],

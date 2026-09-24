@@ -127,6 +127,11 @@ struct MainWindow: View {
             SchemaDiffPanel()
                 .environmentObject(appState)
         }
+        // 服务器级对象（FR-SESS-03）：角色 / 表空间 / 扩展的浏览与增删改。
+        .sheet(isPresented: $appState.isServerObjectsPresented) {
+            ServerObjectsPanel()
+                .environmentObject(appState)
+        }
         // 外键跳转目标选择（FR-DATA-06）：一列被多条外键引用时才出现。
         .sheet(item: $appState.pendingForeignKeyJump) { request in
             ForeignKeyJumpSheet(request: request)

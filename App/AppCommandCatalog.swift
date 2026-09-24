@@ -30,6 +30,8 @@ enum AppCommandCatalog {
             item("backupRestore", .backupRestoreTitle, "backup restore dump 备份 恢复 导出", "backup restore", .paletteCategoryServer),
             item("connectionSettings", .connectionSettingsTitle, "keepalive heartbeat settings 保活 心跳 连接 设置 间隔", "keepalive connection settings", .paletteCategoryServer),
             item("databaseStats", .databaseStatsTitle, "stats statistics size index cache connections 统计 表大小 索引 缓存 连接数", "database stats size cache hit", .paletteCategoryServer),
+            // 服务器级对象（FR-SESS-03）：与「显示」菜单里的同一项打开同一个面板。
+            item("serverObjects", .serverObjectsTitle, "server objects roles tablespaces extensions 服务器级对象 角色 表空间 扩展 权限", "server objects roles tablespaces extensions", .paletteCategoryServer),
             item("schemaDiff", .schemaDiffTitle, "schema diff compare sync migration 对比 差异 同步 迁移 结构", "schema diff compare sync", .paletteCategoryObject),
             item("routineCandidates", .routineCandidatesTitle, "routine 例行 候选 记忆 重复", "routine candidates", .paletteCategoryAgent),
             item("objectSearch", .objectSearchTitle, "search 搜索 找 对象 表 视图 列 函数", "search objects find", .paletteCategoryObject),

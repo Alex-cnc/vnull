@@ -109,6 +109,12 @@ struct DoyahStudioCommands: Commands {
                 appState.isDatabaseStatsPresented = true
             }
 
+            // 服务器级对象（FR-SESS-03）：菜单叶子项用 `menu` 前缀的键，并登记进
+            // `MenuLocalization.menuKeys` —— 否则切换语言时这一项会停在旧语言（实测过的坑）。
+            Button(L(.menuServerObjects)) {
+                appState.isServerObjectsPresented = true
+            }
+
             Button(L(.schemaDiffTitle)) {
                 appState.isSchemaDiffPresented = true
             }

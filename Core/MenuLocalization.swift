@@ -33,6 +33,8 @@ public enum MenuLocalization {
         .menuLanguage,
         .menuAppearance,
         .menuConnectionSettings,
+        // 服务器级对象（FR-SESS-03）：菜单叶子项也要能在运行时切语言，故走 menu 前缀并登记。
+        .menuServerObjects,
         .menuViewDatabase,
         .menuViewWorkspace
     ]
