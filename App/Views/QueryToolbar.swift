@@ -66,6 +66,9 @@ struct QueryToolbar: View {
 
             // 事务模式（FR-EXEC-15）：紧挨执行按钮 —— 它改变的是「执行会发生什么」。
             TransactionControl(tab: tab)
+                // 事务控件也会在手动模式下多出「提交 / 回滚」两个按钮 —— 它们同样不该换行，
+                // 否则又是"工具条被文案撑高"（与连接信息组同一类问题）。
+                .lineLimit(1)
 
             if tab.isExecuting {
                 ProgressView()
@@ -482,6 +485,14 @@ struct QueryToolbar: View {
                 .foregroundStyle(Theme.text(.tertiary))
                 .lineLimit(1)
         }
+        // 整组**只占一行**，空间不够就截断 —— 理由见这一行的历史：
+        // 2026-09-24 实测「点执行后工具条被撑高」：执行让事务控件多出两个按钮 → 这一排宽度不够 →
+        // 上面两段**没写 lineLimit** 的文字开始**按字符换行**（PostgreSQL / ; 各占好几行），
+        // 连接信息组从 14pt 涨到 140pt，整条工具条从 38pt 涨到 156pt。
+        // 工具条的高度不该由文案长度决定：宁可截断（完整值在 tooltip 与连接设置里）。
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .help("· \(connection.endpointDescription)")
     }
 
     // MARK: - 通用图标按钮样式
