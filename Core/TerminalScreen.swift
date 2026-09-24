@@ -135,6 +135,13 @@ public final class TerminalScreen {
 
     private var state: ParserState = .ground
     private var csiParameters: [Int] = []
+    /// 与 `csiParameters` 平行：该参数是用 `:` 引入的**子参数**吗？
+    ///
+    /// 需要它是因为 `38:5:n` 与 `38;5;n` 都合法（前者是 ISO-8613-6 的写法，
+    /// 后者是 xterm 为兼容 konsole 额外接受的）。只留一个 `[Int]` 就分不出
+    /// "`38:2::255:0:0`（带一个空的颜色空间标识）"与"`38;2;255;0;0`"，
+    /// 前者会多出一个参数，按后者解析就会把颜色读错位。
+    private var csiSubParameterFlags: [Bool] = []
     private var csiCurrent: String = ""
     private var csiPrivateMarker: Character?
     private var csiIntermediate: Character?
@@ -391,6 +398,7 @@ public final class TerminalScreen {
         case "[":
             state = .csi
             csiParameters = []
+            csiSubParameterFlags = []
             csiCurrent = ""
             csiPrivateMarker = nil
             csiIntermediate = nil
@@ -442,8 +450,9 @@ public final class TerminalScreen {
             csiCurrent.append(character)
             return
         }
-        if character == ";" {
+        if character == ";" || character == ":" {
             csiParameters.append(Int(csiCurrent) ?? 0)
+            csiSubParameterFlags.append(character == ":")
             csiCurrent = ""
             return
         }
@@ -456,7 +465,10 @@ public final class TerminalScreen {
             return
         }
 
-        if !csiCurrent.isEmpty { csiParameters.append(Int(csiCurrent) ?? 0) }
+        if !csiCurrent.isEmpty {
+            csiParameters.append(Int(csiCurrent) ?? 0)
+            csiSubParameterFlags.append(false)
+        }
         csiCurrent = ""
 
         pendingWrap = false
@@ -671,6 +683,80 @@ public final class TerminalScreen {
 
     // MARK: SGR
 
+    /// 解析 `38` / `48` 之后的扩展颜色（两种写法都要认）。
+    ///
+    /// - 冒号写法（ISO-8613-6，ECMA-48 5th 里标注为"保留待标准化"，xterm 已支持）：
+    ///   `38:5:196`（索引色）、`38:2:Pi:Pr:Pg:Pb`（真彩色，`Pi` 是颜色空间标识，
+    ///   实践中常常**留空** → 解析成 0）；`38:2:Pr:Pg:Pb` 这种省略 `Pi` 的也认。
+    /// - 分号写法（xterm 为兼容 KDE konsole 额外接受）：`38;5;196`、`38;2;Pr;Pg;Pb`。
+    ///
+    /// 返回"颜色 + 消耗了几个参数"，让调用方推进下标。
+    private func extendedColor(
+        after index: Int,
+        codes: [Int]
+    ) -> (color: TerminalColor, consumed: Int)? {
+        // 先把紧随其后的**冒号子参数**全部收进来（空字段在收集时已变成 0）。
+        //
+        // 注意标记的含义：`csiSubParameterFlags[i]` 记的是**参数 i 之后**那个分隔符是不是冒号，
+        // 所以"参数 i 是子参数"等价于"分隔符 i-1 是冒号" —— 一开始按"自己的标记"判断，
+        // 结果是最后一个子参数（它的后面是 `m`）永远收不进来，颜色静默丢失。
+        var subParameters: [Int] = []
+        var cursor = index + 1
+        while cursor < codes.count,
+              cursor - 1 >= 0,
+              cursor - 1 < csiSubParameterFlags.count,
+              csiSubParameterFlags[cursor - 1] {
+            subParameters.append(codes[cursor])
+            cursor += 1
+        }
+
+        if !subParameters.isEmpty {
+            switch subParameters[0] {
+            case 5 where subParameters.count >= 2:
+                return (.indexed(UInt8(clamping: subParameters[1])), subParameters.count)
+            case 2 where subParameters.count >= 5:
+                // 带颜色空间标识：`2 : Pi : R : G : B` → 跳过 Pi
+                return (
+                    .rgb(
+                        UInt8(clamping: subParameters[2]),
+                        UInt8(clamping: subParameters[3]),
+                        UInt8(clamping: subParameters[4])
+                    ),
+                    subParameters.count
+                )
+            case 2 where subParameters.count >= 4:
+                return (
+                    .rgb(
+                        UInt8(clamping: subParameters[1]),
+                        UInt8(clamping: subParameters[2]),
+                        UInt8(clamping: subParameters[3])
+                    ),
+                    subParameters.count
+                )
+            default:
+                return nil
+            }
+        }
+
+        // 分号写法：只吃刚好够的那几个参数。
+        guard index + 1 < codes.count else { return nil }
+        let selector = codes[index + 1]
+        if selector == 5, index + 2 < codes.count {
+            return (.indexed(UInt8(clamping: codes[index + 2])), 2)
+        }
+        if selector == 2, index + 4 < codes.count {
+            return (
+                .rgb(
+                    UInt8(clamping: codes[index + 2]),
+                    UInt8(clamping: codes[index + 3]),
+                    UInt8(clamping: codes[index + 4])
+                ),
+                4
+            )
+        }
+        return nil
+    }
+
     private func applySGR() {
         let codes = csiParameters.isEmpty ? [0] : csiParameters
         var index = 0
@@ -711,18 +797,10 @@ public final class TerminalScreen {
                 attributes.background = .indexed(UInt8(code - 100 + 8))
             case 38, 48:
                 let isForeground = code == 38
-                if index + 2 < codes.count, codes[index + 1] == 5 {
-                    let value = UInt8(clamping: codes[index + 2])
-                    if isForeground { attributes.foreground = .indexed(value) }
-                    else { attributes.background = .indexed(value) }
-                    index += 2
-                } else if index + 4 < codes.count, codes[index + 1] == 2 {
-                    let red = UInt8(clamping: codes[index + 2])
-                    let green = UInt8(clamping: codes[index + 3])
-                    let blue = UInt8(clamping: codes[index + 4])
-                    if isForeground { attributes.foreground = .rgb(red, green, blue) }
-                    else { attributes.background = .rgb(red, green, blue) }
-                    index += 4
+                if let color = extendedColor(after: index, codes: codes) {
+                    if isForeground { attributes.foreground = color.color }
+                    else { attributes.background = color.color }
+                    index += color.consumed
                 }
             default:
                 break

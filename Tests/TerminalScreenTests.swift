@@ -384,3 +384,62 @@ final class TerminalDimAttributeTests: XCTestCase {
         XCTAssertFalse(cell(terminal, 1).isDim)
     }
 }
+
+// MARK: - 扩展颜色的两种写法（FR-EDIT-29；对照 xterm ctlseqs 后补）
+
+/// 交叉核对 xterm 控制序列文档时发现：`38` / `48` 有**两种合法写法** ——
+/// 冒号形式（ISO-8613-6 / ECMA-48 5th 标注为"保留待标准化"）与分号形式
+/// （xterm 为兼容 KDE konsole 额外接受）。原先只认分号形式，
+/// 于是 `38:5:n` 这类写法会被整段忽略（颜色静默丢失）。
+final class TerminalExtendedColorTests: XCTestCase {
+
+    private func screen(_ text: String) -> TerminalScreen {
+        let screen = TerminalScreen(columns: 20, rows: 4)
+        screen.feed(text: text)
+        return screen
+    }
+
+    private func cell(_ terminal: TerminalScreen, _ column: Int) -> TerminalCell {
+        terminal.line(0)[column]
+    }
+
+    /// 分号形式（原有行为，不能回归）。
+    func testSemicolonFormsStillWork() {
+        XCTAssertEqual(cell(screen("\u{1B}[38;5;196mX"), 0).foreground, .indexed(196))
+        XCTAssertEqual(cell(screen("\u{1B}[38;2;255;0;0mX"), 0).foreground, .rgb(255, 0, 0))
+        XCTAssertEqual(cell(screen("\u{1B}[48;5;17mX"), 0).background, .indexed(17))
+        XCTAssertEqual(cell(screen("\u{1B}[48;2;0;128;255mX"), 0).background, .rgb(0, 128, 255))
+    }
+
+    /// 冒号形式：索引色 `38:5:n`。
+    func testColonIndexedForm() {
+        XCTAssertEqual(cell(screen("\u{1B}[38:5:196mX"), 0).foreground, .indexed(196))
+        XCTAssertEqual(cell(screen("\u{1B}[48:5:17mX"), 0).background, .indexed(17))
+    }
+
+    /// 冒号形式：真彩色 `38:2:Pi:Pr:Pg:Pb`（带颜色空间标识）。
+    func testColonTrueColorWithColorSpaceIdentifier() {
+        XCTAssertEqual(cell(screen("\u{1B}[38:2:0:255:0:0mX"), 0).foreground, .rgb(255, 0, 0))
+        // 空字段（实践中很常见：`38:2::255:0:0`）会被收集成 0，仍然按 Pi 处理
+        XCTAssertEqual(cell(screen("\u{1B}[38:2::255:0:0mX"), 0).foreground, .rgb(255, 0, 0))
+    }
+
+    /// 冒号形式：省略颜色空间标识的 `38:2:Pr:Pg:Pb` 也认。
+    func testColonTrueColorWithoutColorSpaceIdentifier() {
+        XCTAssertEqual(cell(screen("\u{1B}[38:2:10:20:30mX"), 0).foreground, .rgb(10, 20, 30))
+    }
+
+    /// 越界的数值要夹取而不是崩（`UInt8(clamping:)` 的口径）。
+    func testOutOfRangeComponentsAreClamped() {
+        XCTAssertEqual(cell(screen("\u{1B}[38;2;300;0;0mX"), 0).foreground, .rgb(255, 0, 0))
+        XCTAssertEqual(cell(screen("\u{1B}[38;5;999mX"), 0).foreground, .indexed(255))
+    }
+
+    /// 认不出来的选择子（例如 `38:9`）不该把后面的普通参数吃掉。
+    func testUnknownSelectorDoesNotSwallowFollowingParameters() {
+        let terminal = screen("\u{1B}[38:9;1mX")
+        // 颜色没被改（保持默认），但粗体（`1`）照常生效
+        XCTAssertEqual(cell(terminal, 0).foreground, .default)
+        XCTAssertTrue(cell(terminal, 0).bold)
+    }
+}
