@@ -57,11 +57,13 @@ public enum Metrics {
     public static let rowHeight: CGFloat = 26
     /// 树 / 列表行的**内容高度**（对象树、工作区文件树共用）。
     ///
-    /// 2026-09-24 由 26 收到 22：需求提出者实测「层级行与行的间隔太大了，显得很松散，
-    /// 表稍微多一点就要向下拉滚动条」。实测显示**行距 34pt 而内容只有 26pt** ——
-    /// `List` 每行还自带 ~4pt 上下的内边距（见下面 `.listRowInsets(EdgeInsets())` 那处修复）。
-    /// 两处一起改之后行距 = 22pt（比原来的 34 密三分之一），仍然放得下 caption 字与图标。
-    public static let listRowHeight: CGFloat = 22
+    /// 2026-09-24 由 26 收到 **20**（两步：先 26 → 22 修"太松散"，再按需求提出者点名的目标值收到 20）。
+    /// 起因：「层级行与行的间隔太大了，显得很松散，表稍微多一点就要向下拉滚动条」。
+    /// 实测当时的**行距是 34pt 而内容只有 26pt** —— 多出来的是 `List` 给的行距，
+    /// 而且 `listRowInsets` / 负内边距 / `defaultMinListRowHeight` 对它**全都无效**（都试过）。
+    /// 所以真正的修法是**把整棵树放进一个 `List` 行**（`ObjectTreeView` 里的 `VStack(spacing: 0)`），
+    /// 行距从此等于这个令牌。20pt 仍放得下 caption 字与 12pt 图标（实测行距 = 20pt）。
+    public static let listRowHeight: CGFloat = 20
 
     public static let tabHeight: CGFloat = 30
     public static let toolbarHeight: CGFloat = 44
