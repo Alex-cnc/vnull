@@ -752,7 +752,7 @@ struct DoyahCLI {
         }
 
         guard let directory = value(for: "--dir") else {
-            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect postgresql|gbase8a]] [--json]")
+            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect …]] [--routines] [--veto 指纹] [--unveto 指纹] [--keep-literal 指纹 字面量] [--json]")
             return 64
         }
 
@@ -761,6 +761,97 @@ struct DoyahCLI {
             print("跳过 \(index.skippedFiles.count) 个文件（空 / 非归档格式 / 读不了）：\(index.skippedFiles.joined(separator: "、"))")
         }
         print("从 \(index.parsedEntryCount) 条归档记录派生出 \(index.memories.count) 条记忆")
+
+        // ── 人工决定（FR-AI-14）：否决 / 取消否决 / 把误判的常量标回字面量 ──
+        //    这些是**人显式触发**的动作，所以允许写文件；评估本身仍是纯函数（不落盘、不建任务）。
+        let decisionsDirectory = URL(fileURLWithPath: directory)
+        var loadedDecisions = MemoryDecisionsStore.load(from: decisionsDirectory)
+        if !loadedDecisions.warnings.isEmpty {
+            for warning in loadedDecisions.warnings { print("⚠️ 记忆决定：\(warning)") }
+        }
+        var decisionsDirty = false
+
+        if let fingerprint = value(for: "--veto") {
+            loadedDecisions.decisions.veto(fingerprint: fingerprint)
+            decisionsDirty = true
+            print("已否决：\(fingerprint)（长期生效，跨进程有效）")
+        }
+        if let fingerprint = value(for: "--unveto") {
+            loadedDecisions.decisions.unveto(fingerprint: fingerprint)
+            decisionsDirty = true
+            print("已取消否决：\(fingerprint)")
+        }
+        if let flagIndex = arguments.firstIndex(of: "--keep-literal"), flagIndex + 2 < arguments.count {
+            let fingerprint = arguments[flagIndex + 1]
+            let literal = arguments[flagIndex + 2]
+            loadedDecisions.decisions.keepLiteral(fingerprint: fingerprint, literal: literal)
+            decisionsDirty = true
+            print("已保留字面量：\(fingerprint) → \(literal)（只改模板渲染，不改聚类与频次）")
+        }
+        if decisionsDirty {
+            do {
+                try MemoryDecisionsStore.save(loadedDecisions.decisions, to: decisionsDirectory)
+            } catch {
+                print("⚠️ 记忆决定写入失败：\(error)")
+                return 1
+            }
+        }
+
+        // ── 例行候选（FR-AI-14）──
+        if arguments.contains("--routines") {
+            let report = RoutineCandidate.evaluate(index: index, decisions: loadedDecisions.decisions)
+            if arguments.contains("--json") {
+                let payload: [String: Any] = [
+                    "candidates": report.candidates.map { candidate -> [String: Any] in
+                        [
+                            "fingerprint": candidate.fingerprint,
+                            "template": candidate.template,
+                            "runs": candidate.runCount,
+                            "days": candidate.dayCount,
+                            "concentrationPercent": candidate.concentration.percent,
+                            "windowStartHour": candidate.concentration.startHour,
+                            "variants": candidate.variantCount,
+                            "slotSamples": candidate.slotSamples,
+                            "connections": candidate.connections.sorted()
+                        ]
+                    },
+                    "assessments": report.assessments.map { assessment -> [String: Any] in
+                        [
+                            "fingerprint": assessment.fingerprint,
+                            "isCandidate": assessment.isCandidate,
+                            "reasons": assessment.reasons,
+                            "runs": assessment.runCount,
+                            "days": assessment.dayCount
+                        ]
+                    },
+                    "vetoed": report.vetoedFingerprints
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                    return report.candidates.isEmpty ? 1 : 0
+                }
+            }
+            print("例行候选：\(report.candidates.count) 条（被否决 \(report.vetoedFingerprints.count) 条）")
+            for candidate in report.candidates {
+                print("  [执行 \(candidate.runCount) 次 · \(candidate.dayCount) 天 · 集中 \(candidate.concentration.percent)%"
+                      + "（\(candidate.concentration.startHour) 点起 \(candidate.concentration.windowHours) 小时）"
+                      + " · 变体 \(candidate.variantCount) 条]")
+                print("      \(candidate.template)")
+                for (ordinal, samples) in candidate.slotSamples.enumerated() {
+                    print("      槽位 \(ordinal + 1) 样例：\(samples.joined(separator: " / "))")
+                }
+            }
+            // 未达标的也列出来（含"为什么不是候选"）—— 这层只产建议，所以理由必须可见
+            let blocked = report.assessments.filter { !$0.isCandidate }
+            if !blocked.isEmpty {
+                print("未达标（\(blocked.count) 条）：")
+                for assessment in blocked.prefix(10) {
+                    print("  \(assessment.reasons.joined(separator: "；"))")
+                }
+            }
+            return report.candidates.isEmpty ? 1 : 0
+        }
 
         if let prefix = value(for: "--prefix") {
             // `--completion`：输出**编辑器里实际会看到的候选**（方言关键字 + 当前连接的记忆），

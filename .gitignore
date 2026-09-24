@@ -44,3 +44,5 @@ App/Resources/AppIcon-1024.png
 /.build-cache-*/
 /.build-x86/
 /.build-cache-x86/
+/.build-ai14/
+/.build-cache-ai14/
