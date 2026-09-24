@@ -161,6 +161,30 @@ struct ForeignKeyJumpRequest: Identifiable {
     var column: String
 }
 
+/// 一次导入请求（FR-IO-03）：界面选好的映射、数据与写入通道。
+///
+/// 全部是纯值：它要跨到 `Task` 里执行，也需要在"安全检查 → 二次确认 → 真执行"
+/// 之间保持同一份内容（否则用户确认的是 A、执行的是 B）。
+struct TableImportRequest {
+    var table: String
+    var schema: String?
+    var plan: TableImport.Plan
+    var rows: [[String?]]
+    var mode: ImportWriteMode
+    /// 已确认过（`needsConfirmation` 走过一次）时为 true，避免重复弹窗。
+    var bypassingSafetyCheck: Bool
+}
+
+/// `startTableImport` 的结论：起了 / 需要确认 / 被拒。
+///
+/// 把三种结果显式分开，是为了让界面**永远不会**在"被拒"之后还去执行 ——
+/// 只返回 `Bool` 时，"false 到底是需要确认还是被拒"就得靠调用方猜。
+enum TableImportStart {
+    case started
+    case needsConfirmation(ExecutionSafety.Decision)
+    case refused(String)
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var connections: [ConnectionConfig] = []
@@ -1105,7 +1129,9 @@ final class AppState: ObservableObject {
         succeeded: Bool,
         note: String?
     ) {
-        guard isSQLArchiveEnabled else { return }
+        // 「本次执行不记录」（FR-AI-15）：判定收在 Core 的 `MemoryRecordingPolicy` ——
+        // 这里再写一遍 `if isSQLArchiveEnabled && !suppress` 就是第二套判据，迟早漂移。
+        guard memoryRecordingPolicy.shouldRecord else { return }
 
         let entry = SQLArchiveEntry(
             sql: sql,
@@ -2715,6 +2741,9 @@ final class AppState: ObservableObject {
         let index = await Task.detached(priority: .utility) {
             QueryMemory.buildIndex(directory: directory)
         }.value
+        // 顺带把索引缓存放进 `queryMemoryIndex`：面板的「记忆」页签读的是它 ——
+        // 否则同一份归档要在同一个面板里被解析两遍，而且两处可能显示不同的快照。
+        queryMemoryIndex = index
         routineReport = RoutineCandidate.evaluate(index: index, decisions: loaded.decisions)
         for warning in loaded.warnings { statusMessage = L(.routineCandidatesHint) + "（\(warning)）" }
     }
@@ -2737,6 +2766,81 @@ final class AppState: ObservableObject {
     func insertRoutineTemplate(_ template: String) {
         openSQLInNewTab(template)
         isRoutineCandidatesPresented = false
+    }
+
+    // MARK: - 记忆治理（FR-AI-15 的界面入口，住在例行候选面板的「记忆」页签里）
+
+    /// 「本次执行不记录」（FR-AI-15）：**会话级**开关。
+    ///
+    /// 放在 AppState 而不是视图里，因为它的效果必须真的落到归档收口点上 ——
+    /// 一个只改界面文字的开关等于骗人。
+    @Published var suppressesCurrentExecutionRecording = false
+
+    /// 归档策略：**判定交给 Core 的 `MemoryRecordingPolicy`**，
+    /// 界面与 `archiveExecutedSQL` 读的是同一个结论（不在这里另写一遍 `if`）。
+    var memoryRecordingPolicy: MemoryRecordingPolicy {
+        MemoryRecordingPolicy(
+            isArchiveEnabled: isSQLArchiveEnabled,
+            suppressesCurrentRun: suppressesCurrentExecutionRecording
+        )
+    }
+
+    /// 记忆治理的一次性提示 / 错误（与其它面板一致：就地显示，不弹打断）。
+    @Published var memoryGovernanceMessage: String?
+    @Published var memoryGovernanceError: String?
+
+    /// 删除一条记忆：作用在**归档**上（记忆只是派生索引），随后重建索引与候选。
+    ///
+    /// 复用 `openQueriesDirectory` 的目录解析 —— 与写入归档、重建索引同一处，
+    /// 免得"界面删的是 A 目录、记忆读的是 B 目录"。
+    func deleteMemory(fingerprint: String) async {
+        guard let opened = try? await openQueriesDirectory() else {
+            memoryGovernanceError = L(.memoryGovernanceDeleteFailed, L(.archiveDirectoryNotAuthorized))
+            return
+        }
+        defer { opened.grant?.stopAccessing() }
+        let directory = opened.url
+        do {
+            let report = try await Task.detached(priority: .utility) {
+                try SQLArchiveEditor.removeEntries(matchingFingerprint: fingerprint, in: directory)
+            }.value
+            memoryGovernanceError = nil
+            memoryGovernanceMessage = L(
+                .memoryGovernanceDeleted,
+                report.removedEntryCount,
+                report.changedFiles.count
+            )
+            await refreshQueryMemoryIndex()
+            await refreshRoutineCandidates()
+        } catch {
+            memoryGovernanceError = L(.memoryGovernanceDeleteFailed, ErrorPresenter.message(for: error))
+        }
+    }
+
+    /// 整层清空（环境层 = 归档）。**调用方必须先拿到显式确认** —— Core 的纪律是
+    /// 「清空需确认」，这里只负责执行，不负责替用户点头。
+    func clearMemoryEnvironmentLayer() async {
+        guard let opened = try? await openQueriesDirectory() else {
+            memoryGovernanceError = L(.memoryGovernanceClearFailed, L(.archiveDirectoryNotAuthorized))
+            return
+        }
+        defer { opened.grant?.stopAccessing() }
+        let directory = opened.url
+        do {
+            let report = try await Task.detached(priority: .utility) {
+                try SQLArchiveEditor.removeAll(in: directory)
+            }.value
+            memoryGovernanceError = nil
+            memoryGovernanceMessage = L(
+                .memoryGovernanceCleared,
+                report.removedEntryCount,
+                report.changedFiles.count
+            )
+            await refreshQueryMemoryIndex()
+            await refreshRoutineCandidates()
+        } catch {
+            memoryGovernanceError = L(.memoryGovernanceClearFailed, ErrorPresenter.message(for: error))
+        }
     }
 
     /// 对象搜索结果 → 「浏览数据」：在新页签里打开前 N 行（FR-META-12 的界面动作）。
@@ -2853,11 +2957,58 @@ final class AppState: ObservableObject {
             )
     }
 
-    /// 写盘并把内存里的那份同步成「落盘后的版本」（`updatedAt` 会变）。
+    // MARK: 版本历史与回滚（FR-AI-11 的界面入口）
+
+    /// 版本记录所在目录：与 `DataTaskStore` 的 `data-tasks.json` **同一个目录**
+    /// （Core 的 `DataTaskStore.save` 就是往那里记版本）。
+    ///
+    /// 目录来源交给 store（读 `tasksFileLocation()`），**不自己拼路径** ——
+    /// 拼错了症状是"界面里历史为空，CLI 里却查得到"，很难查。
+    private func specVersionStore() async -> SpecVersionStore {
+        let directory = (await dataTaskStore.tasksFileLocation()).deletingLastPathComponent()
+        return SpecVersionStore(directoryURL: directory)
+    }
+
+    /// 读某个任务的全部版本（按版本号升序）。解析放后台：一天几百条保存时不至于卡住界面。
+    func dataTaskVersions(taskID: UUID) async -> [SpecVersion] {
+        let store = await specVersionStore()
+        return await Task.detached(priority: .utility) {
+            store.versions(taskID: taskID)
+        }.value
+    }
+
+    /// 回滚到某个版本：**把那份旧内容再存一次**（Core 的"只追加"语义），
+    /// 于是"曾经回滚过"本身也留在历史里。走 `persistDataTask` 这条唯一收口点，
+    /// 与 CLI `specs --rollback` 落的是同一份历史。
     @discardableResult
-    private func persistDataTask(_ task: DataTaskDefinition, successMessage: String?) async -> Bool {
+    func rollbackDataTask(taskID: UUID, to number: Int) async -> DataTaskDefinition? {
+        let store = await specVersionStore()
+        guard let version = store.version(taskID: taskID, number: number) else {
+            dataTaskError = L(.dataTaskVersionsRollbackFailed, "v\(number)")
+            return nil
+        }
+        let ok = await persistDataTask(
+            version.definition,
+            successMessage: L(.dataTaskVersionsRolledBack, number),
+            // 版本自己解释自己：这一条在历史里会写明「回滚到 vN」。
+            note: L(.dataTaskVersionsRollbackNote, number)
+        )
+        guard ok else { return nil }
+        return dataTasks.first { $0.id == version.definition.id }
+    }
+
+    /// 写盘并把内存里的那份同步成「落盘后的版本」（`updatedAt` 会变）。
+    ///
+    /// - Parameter note: 这次保存的原因（写进版本历史）。回滚会带「回滚到 vN」——
+    ///   否则事后只看内容分不出"用户改的"与"回滚来的"。
+    @discardableResult
+    private func persistDataTask(
+        _ task: DataTaskDefinition,
+        successMessage: String?,
+        note: String? = nil
+    ) async -> Bool {
         do {
-            let stored = try await dataTaskStore.save(task)
+            let stored = try await dataTaskStore.save(task, note: note)
             if let index = dataTasks.firstIndex(where: { $0.id == stored.id }) {
                 dataTasks[index] = stored
             } else {
@@ -3425,6 +3576,10 @@ final class AppState: ObservableObject {
         case "help": isShortcutHelpCommandPresented = true
         case "objectSearch": isObjectSearchPresented = true
         case "routineCandidates": isRoutineCandidatesPresented = true
+        case "importData":
+            // 与「浏览数据」不同：导入的目标表可以手输，所以**没有对象树选中项也照开**，
+            // 只是少一个默认值（刚打开时把它设成选中的表，见面板的 `onAppear`）。
+            isImportPresented = true
         case "backupRestore": isBackupRestorePresented = true
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
@@ -3618,6 +3773,209 @@ final class AppState: ObservableObject {
             } catch {
                 syntheticDataError = ErrorPresenter.message(for: error)
             }
+        }
+    }
+
+    // MARK: - 导入（FR-IO-03 的界面入口）
+
+    /// 导入面板是否呈现（「文件」菜单与 ⌘K 命令 `importData` 都打开它）。
+    @Published var isImportPresented = false
+    @Published private(set) var isImportRunning = false
+    /// 0…1；COPY 路径只有 0 / 0.5 / 1 三档（驱动一次性提交整段数据，取不到更细的粒度）。
+    @Published private(set) var importProgress: Double = 0
+    /// 逐批日志（与备份 / 恢复面板同一做法：用户要能看到"跑到第几批、写了几行"）。
+    @Published private(set) var importLog: [String] = []
+    @Published var importError: String?
+    @Published var importMessage: String?
+    private var importTask: Task<Void, Never>?
+
+    /// 读目标表结构 → 生成列映射。**映射用 Core 的 `TableImport.plan`**，
+    /// 界面不自己写一套"名字对上就映射"的规则（那会与 CLI 的映射漂移）。
+    func tableImportPlan(
+        table: String,
+        schema: String?,
+        sourceHeader: [String]
+    ) async throws -> TableImport.Plan {
+        guard let configuration = selectedConnection else { throw AppError.notConnected }
+        let object = DatabaseObject(
+            id: "import:\(schema.map { "\($0)." } ?? "")\(table)",
+            name: table,
+            kind: .table,
+            database: currentDatabaseName(for: configuration),
+            schema: schema
+        )
+        let structure = try await tableStructure(of: object)
+        return TableImport.plan(
+            table: table,
+            schema: schema,
+            sourceHeader: sourceHeader,
+            targetColumns: structure.map { TableImport.TargetColumn($0) }
+        )
+    }
+
+    /// 安全检查：**用界面上真正会下发的那条语句**过 `ExecutionSafety`。
+    ///
+    /// 为什么不复用智能体审批闸门：那条路会在批准后**执行审批单里的 SQL**，
+    /// 而 COPY 的实际下发由驱动完成（审批单里那条语句根本不能单独执行）。
+    /// 手动导入与"在编辑器里敲一条 INSERT"是同一类动作，因此走同一道
+    /// `ExecutionSafety`（只读连接直接拒绝、`needsConfirmation` 时二次确认）。
+    func tableImportSafetyDecision(_ request: TableImportRequest) -> ExecutionSafety.Decision {
+        let databaseType = selectedConnection?.dbType ?? .postgresql
+        let dialect: any SQLDialect = SQLDialectFactory.make(for: databaseType)
+        let representative: String?
+        switch request.mode {
+        case .copy:
+            representative = TableImport.copyStatement(
+                table: request.plan.table,
+                schema: request.plan.schema,
+                columns: request.plan.mappedColumns.map(\.targetName),
+                dialect: dialect
+            )
+        case .batchInsert:
+            // 代表性语句：一条只含映射列、值为 NULL 的 INSERT —— 分类与"是否写操作"
+            // 与真实批次完全一致，但不必把几百行真实数据丢进词法扫描。
+            let row: [String?] = request.plan.mappedColumns.map { _ in nil }
+            representative = TableImport.insertStatement(rows: [row], plan: request.plan, dialect: dialect)
+        }
+        guard let representative, !representative.isEmpty else { return .allow }
+        return ExecutionSafety.check(
+            sql: representative,
+            databaseType: databaseType,
+            policy: executionSafetyPolicy
+        )
+    }
+
+    /// 启动一次导入。返回"起了 / 需要确认 / 被拒"，**被拒时一定不执行**。
+    @discardableResult
+    func startTableImport(_ request: TableImportRequest) -> TableImportStart {
+        guard !isImportRunning else { return .refused(L(.importRunning)) }
+        guard selectedConnection != nil else {
+            importError = L(.importNeedsConnection)
+            return .refused(L(.importNeedsConnection))
+        }
+        guard !request.plan.mappedColumns.isEmpty else {
+            importError = L(.importNothingMapped)
+            return .refused(L(.importNothingMapped))
+        }
+        if !request.bypassingSafetyCheck {
+            let decision = tableImportSafetyDecision(request)
+            switch decision {
+            case .allow:
+                break
+            case .needsConfirmation:
+                return .needsConfirmation(decision)
+            case .refused(let reasons, _):
+                let message = reasons.first ?? L(.safetyReadOnlyRefused)
+                importError = message
+                return .refused(message)
+            }
+        }
+
+        importError = nil
+        importMessage = nil
+        importProgress = 0
+        importLog = []
+        isImportRunning = true
+        importTask = Task { [weak self] in
+            guard let self else { return }
+            await self.performTableImport(request)
+        }
+        return .started
+    }
+
+    /// 停止导入：只在**批次之间**生效（COPY 是单条语句，驱动不给中途取消的钩子）。
+    func cancelTableImport() {
+        importTask?.cancel()
+    }
+
+    func clearImportLog() {
+        importLog = []
+        importError = nil
+        importMessage = nil
+        importProgress = 0
+    }
+
+    private func appendImportLog(_ line: String) {
+        importLog.append(line)
+        // 2 万行 / 500 一批只有 40 条；上限只是防御性措施，免得异常情况下无限增长。
+        if importLog.count > 500 { importLog.removeFirst(importLog.count - 500) }
+    }
+
+    private func performTableImport(_ request: TableImportRequest) async {
+        defer {
+            isImportRunning = false
+            importTask = nil
+        }
+        guard let configuration = selectedConnection else {
+            importError = L(.importNeedsConnection)
+            return
+        }
+        let dialect: any SQLDialect = SQLDialectFactory.make(for: configuration.dbType)
+        let columns = request.plan.mappedColumns.map(\.targetName)
+        var written = 0
+
+        do {
+            let service = try await ensureService(
+                for: configuration,
+                database: queryDatabase(for: configuration)
+            )
+
+            if request.mode == .copy {
+                // 驱动的 COPY 自己给表名加引号，表达不了 schema 限定名 ——
+                // 与 CLI `import --copy --schema` 同一做法：先在同一个连接上设 search_path。
+                if let schema = request.plan.schema, !schema.isEmpty {
+                    let statement = "SET search_path TO \(dialect.quoteIdentifier(schema))"
+                    appendImportLog(statement)
+                    for try await _ in service.execute(statement, options: .default) {}
+                }
+                appendImportLog(L(.importCopyAtomicNote))
+                let payload = TableImport.copyRows(rows: request.rows, plan: request.plan)
+                    .map { CopyTextFormat.encode(row: $0) + CopyTextFormat.rowSeparator }
+                    .joined()
+                appendImportLog(L(.importCopyStarted, request.rows.count, columns.count, payload.utf8.count))
+                importProgress = 0.5
+
+                let started = Date()
+                try await service.copyFromText(
+                    table: request.plan.table,
+                    columns: columns,
+                    text: payload
+                )
+                written = request.rows.count
+                importProgress = 1
+                importMessage = L(.importDoneCopy, written, Date().timeIntervalSince(started))
+                return
+            }
+
+            let batches = TableImport.batches(request.rows, size: request.plan.batchSize)
+            for (index, batch) in batches.enumerated() {
+                if Task.isCancelled {
+                    importMessage = L(.importCancelled, written)
+                    return
+                }
+                guard let sql = TableImport.insertStatement(rows: batch, plan: request.plan, dialect: dialect) else {
+                    importError = L(.importNothingMapped)
+                    return
+                }
+                var tally = AffectedRowsTally()
+                for try await event in service.execute(sql, options: .default) {
+                    tally.absorb(event)
+                }
+                // 驱动不报行数时按本批行数计（INSERT 的值个数就是写进去的行数）。
+                written += tally.value ?? batch.count
+                importProgress = Double(index + 1) / Double(batches.count)
+                appendImportLog(L(.importProgress, index + 1, batches.count, written))
+            }
+            importMessage = L(.importDone, written, batches.count)
+        } catch is CancellationError {
+            importMessage = L(.importCancelled, written)
+        } catch {
+            let reason = ErrorPresenter.message(for: error)
+            if written > 0, request.mode == .batchInsert {
+                // 前面批次已生效：这说明白，别让用户以为"整体回滚了"。
+                importMessage = L(.importPartial, written)
+            }
+            importError = L(.importFailed, reason)
         }
     }
 

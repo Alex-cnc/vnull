@@ -47,6 +47,13 @@ struct DoyahStudioCommands: Commands {
                 appState.isSQLArchivePresented = true
             }
             .keyboardShortcut(AppShortcut.archive.key, modifiers: AppShortcut.archive.modifiers)
+
+            // 导入与「归档…」同住「文件」菜单：它是对**文件**做的动作，不是对连接做的。
+            // 用 `menu` 前缀的键并登记进 `MenuLocalization.menuKeys` —— 否则切语言时
+            // 这一项会停在旧语言（实测过的坑）。
+            Button(L(.menuImportData)) {
+                appState.isImportPresented = true
+            }
         }
 
         CommandMenu(L(.menuAgent)) {

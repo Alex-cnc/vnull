@@ -25,6 +25,9 @@ enum AppCommandCatalog {
             item("exportCSV", .commandExportCSV, "export csv 导出", "export csv", .paletteCategoryResult),
             item("exportJSON", .commandExportJSON, "export json 导出", "export json", .paletteCategoryResult),
             item("browseRows", .commandBrowseRows, "browse rows 浏览 表", "browse rows", .paletteCategoryObject),
+            // 导入数据（FR-IO-03）：目标表默认取对象树当前选中项，没有也能手输 ——
+            // 所以这条命令**不需要对象上下文**，任何时候都能打开。
+            item("importData", .importTitle, "import csv tsv json copy data file 导入 文件 批量 数据", "import data file", .paletteCategoryObject),
             item("tableDDL", .commandTableDDL, "ddl 查看 建表 结构", "view ddl", .paletteCategoryObject),
             // 全库对象搜索（FR-META-12）：与对象树工具条的放大镜打开同一个面板。
             item("backupRestore", .backupRestoreTitle, "backup restore dump 备份 恢复 导出", "backup restore", .paletteCategoryServer),

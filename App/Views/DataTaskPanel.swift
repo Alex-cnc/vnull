@@ -26,6 +26,7 @@ struct DataTaskPanel: View {
     /// 最近一次试运行结果；**任何改动都会清掉它**，从而强制「改了就先试运行」。
     @State private var dryRun: TaskDryRun?
     @State private var isSpecSheetPresented = false
+    @State private var isVersionSheetPresented = false
     @State private var isDeleteConfirmPresented = false
 
     // 列表类 / 时间类字段用本地文本承接，避免「输入中的逗号被立刻吃掉」这类问题。
@@ -83,6 +84,19 @@ struct DataTaskPanel: View {
                 appState.dataTaskMessage = L(.dataTaskSpecGenerated)
             }
         }
+        // 版本历史（FR-AI-11）：入口在头部，入口与面板都**只对已保存的任务**开放 ——
+        // 新任务还没有历史，点开只会看到一个空列表。
+        .sheet(isPresented: $isVersionSheetPresented) {
+            if let taskID = draft?.id {
+                DataTaskVersionSheet(
+                    taskID: taskID,
+                    // "当前定义"取编辑器里这一份：用户想知道的是"这个版本和我现在看的差在哪"。
+                    currentDefinition: draft
+                ) { stored in
+                    loadDraft(stored)
+                }
+            }
+        }
         // 审批单挂在本面板上：数据任务的写语句同样要逐次批准（FR-AI-09）。
         .sheet(item: $appState.agentApprovalRequest) { approval in
             AgentApprovalSheet(approval: approval)
@@ -106,6 +120,8 @@ struct DataTaskPanel: View {
 
             Button(L(.dataTaskNew)) { createNewTask() }
             Button(L(.dataTaskSpecOpen)) { isSpecSheetPresented = true }
+            Button(L(.dataTaskVersionsOpen)) { isVersionSheetPresented = true }
+                .disabled(storedDraft == nil)
             Button(L(.dataTaskRefresh)) {
                 Task { await appState.loadDataTasks() }
             }
@@ -138,6 +154,13 @@ struct DataTaskPanel: View {
 
     private var visibleTasks: [DataTaskDefinition] {
         DataTaskPresentation.filter(appState.dataTasks, query: query, onlyEnabled: onlyEnabled)
+    }
+
+    /// 编辑器里这一份对应的**已保存任务**（`nil` = 还没保存过）。
+    /// 版本历史只对已保存的任务存在，入口据此启用 / 禁用。
+    private var storedDraft: DataTaskDefinition? {
+        guard let draft else { return nil }
+        return appState.dataTasks.first { $0.id == draft.id }
     }
 
     private var sidebar: some View {

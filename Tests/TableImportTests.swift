@@ -181,4 +181,66 @@ final class TableImportTests: XCTestCase {
         XCTAssertTrue(plan.isEmpty)
         XCTAssertNil(TableImport.insertStatement(rows: [["1"]], plan: plan))
     }
+
+    // MARK: 写入通道（COPY / 批量 INSERT）
+
+    /// COPY 的可用性必须**带理由**：不可用时退回 INSERT，"为什么退"是用户必须看到的事实。
+    func testCopySupportByDatabaseType() {
+        let postgres = TableImport.copySupport(databaseType: .postgresql)
+        XCTAssertTrue(postgres.isAvailable)
+        XCTAssertNil(postgres.reason)
+
+        let gbase = TableImport.copySupport(databaseType: .gbase8a)
+        XCTAssertFalse(gbase.isAvailable)
+        XCTAssertNotNil(gbase.reason)
+        XCTAssertTrue(gbase.reason?.contains("INSERT") == true, "理由要说清退回哪条路：\(gbase.reason ?? "")")
+    }
+
+    func testPreferredWriteModeFollowsCopySupport() {
+        XCTAssertEqual(TableImport.preferredWriteMode(databaseType: .postgresql).mode, .copy)
+        XCTAssertNil(TableImport.preferredWriteMode(databaseType: .postgresql).reason)
+
+        let fallback = TableImport.preferredWriteMode(databaseType: .gbase8a)
+        XCTAssertEqual(fallback.mode, .batchInsert)
+        XCTAssertNotNil(fallback.reason)
+    }
+
+    /// 预览 / 安全检查用的 COPY 语句：限定名与列名都要按方言加引号，且**没有列就没有语句**。
+    func testCopyStatementRendersQualifiedTarget() {
+        let sql = TableImport.copyStatement(table: "items", schema: "public", columns: ["id", "note"])
+        XCTAssertEqual(sql, #"COPY "public"."items" ("id", "note") FROM STDIN"#)
+        XCTAssertNil(TableImport.copyStatement(table: "items", columns: []), "没有列就没有可下的 COPY")
+    }
+
+    /// COPY 语句必须被护栏识别成**数据变更** —— 否则这条快路径会绕过只读保护与写确认。
+    func testCopyStatementIsClassifiedAsDataChange() throws {
+        let sql = try XCTUnwrap(TableImport.copyStatement(table: "items", columns: ["id"]))
+        let assessment = AgentGuardrail.evaluate(
+            sql: sql,
+            policy: AgentGuardPolicy(readOnly: true)
+        )
+        XCTAssertFalse(assessment.verdict.isAllowed, "只读模式下 COPY 必须被判为不可执行")
+    }
+
+    /// 只读连接上的 `ExecutionSafety` 也要拦下 COPY（界面据此直接拒绝，而不是"确认后放行"）。
+    func testCopyStatementIsRefusedOnReadOnlyConnection() throws {
+        let sql = try XCTUnwrap(TableImport.copyStatement(table: "items", columns: ["id"]))
+        let decision = ExecutionSafety.check(
+            sql: sql,
+            policy: ExecutionSafetyPolicy(isEnabled: false, isReadOnly: true)
+        )
+        if case .refused = decision {
+            // 期望路径
+        } else {
+            XCTFail("只读连接上 COPY 应被直接拒绝，实际：\(decision)")
+        }
+    }
+
+    /// COPY 路径原样取值（不做字面量转义），顺序与"有来源列"的映射一致。
+    func testCopyRowsKeepsRawValuesInMappingOrder() {
+        let plan = TableImport.plan(table: "t", sourceHeader: ["name", "id"], targetColumns: target)
+        let rows = TableImport.copyRows(rows: [["alice", "1"]], plan: plan)
+        // 目标列顺序是 id → name，所以源列顺序被重排；且值**原样**（没有引号）。
+        XCTAssertEqual(rows, [["1", "alice"]])
+    }
 }

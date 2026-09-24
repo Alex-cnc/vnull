@@ -678,8 +678,11 @@ public actor DataTaskStore {
     /// 保存是**版本化的唯一收口点**（FR-AI-11）：放在这里，界面 / 命令行 / 数据任务调度
     /// 无论从哪条路径改定义，历史都会自动留下；散在各处写"记一条版本"必漏。
     /// 内容没变时不记新版本（`SpecVersionStore.record` 自己判定），免得历史被噪音淹掉。
+    ///
+    /// - Parameter note: 这次保存的**原因**（例如「回滚到 v2」）。历史要能自己解释自己：
+    ///   光看内容分不出"用户改的"与"回滚来的"，而这两件事在事后追查时完全不同。
     @discardableResult
-    public func save(_ task: DataTaskDefinition) throws -> DataTaskDefinition {
+    public func save(_ task: DataTaskDefinition, note: String? = nil) throws -> DataTaskDefinition {
         var stored = task
         stored.updatedAt = Date()
         var all = try tasks()
@@ -692,7 +695,8 @@ public actor DataTaskStore {
         // 版本记录失败**不该让保存失败**（与归档同一条纪律：历史是附加价值，
         // 不是用户这次操作的必要条件），但要看得到。
         do {
-            try SpecVersionStore(directoryURL: tasksURL.deletingLastPathComponent()).record(definition: stored)
+            try SpecVersionStore(directoryURL: tasksURL.deletingLastPathComponent())
+                .record(definition: stored, note: note)
         } catch {
             lastVersioningError = error.localizedDescription
         }

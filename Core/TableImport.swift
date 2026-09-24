@@ -251,3 +251,78 @@ public enum TableImport {
         return problems
     }
 }
+
+// MARK: - 写入通道（COPY 快路径 / 批量 INSERT 回退）
+
+/// 导入的写入通道。
+///
+/// 存在两个值而不是一个 `Bool`：因为"现在走的是哪条路"是用户**必须看到**的事实 ——
+/// 同一份数据，COPY 与逐批 INSERT 的耗时差一个数量级，而两者的**错误行为也不同**
+/// （COPY 在单条语句内原子、坏值整批被服务端拒绝；INSERT 会把转不过去的值写成 NULL）。
+public enum ImportWriteMode: String, CaseIterable, Sendable {
+    /// `COPY … FROM STDIN`（快路径）。
+    case copy
+    /// 批量 `INSERT`（回退路径）。
+    case batchInsert
+}
+
+public extension TableImport {
+
+    /// COPY 通道在当前连接上的可用性**与不可用的理由**。
+    ///
+    /// 为什么理由要由 Core 给：界面里"退回批量 INSERT"如果不是一条**带原因**的明确说明，
+    /// 用户看到的就是"这个勾选框点不动" —— 那与静默降级没有区别（只是把静默挪到了界面上）。
+    struct CopySupport: Equatable, Sendable {
+        public var isAvailable: Bool
+        /// 不可用时的可读理由（可用时为 `nil`）。
+        public var reason: String?
+
+        public init(isAvailable: Bool, reason: String? = nil) {
+            self.isAvailable = isAvailable
+            self.reason = reason
+        }
+
+        public static let available = CopySupport(isAvailable: true)
+    }
+
+    /// 按数据库类型判断 COPY 是否可用。
+    ///
+    /// 判据是"驱动有没有实现 `DatabaseService.copyFromText`"：PostgreSQL 实现了；
+    /// GBase 8a 目前走 `NotImplementedDatabaseService`（其默认实现**抛「不支持」而不是
+    /// 静默退回 INSERT**），所以在界面里就该把这条通道标成不可用并说明理由。
+    static func copySupport(databaseType: DatabaseType) -> CopySupport {
+        switch databaseType {
+        case .postgresql:
+            return .available
+        case .gbase8a:
+            return CopySupport(
+                isAvailable: false,
+                reason: "当前连接是 GBase 8a：驱动未实现 COPY FROM STDIN，本次导入将走批量 INSERT"
+            )
+        }
+    }
+
+    /// 默认选中的写入通道：能用 COPY 就用 COPY，否则退回批量 INSERT（并带上理由）。
+    static func preferredWriteMode(databaseType: DatabaseType) -> (mode: ImportWriteMode, reason: String?) {
+        let support = copySupport(databaseType: databaseType)
+        return support.isAvailable ? (.copy, nil) : (.batchInsert, support.reason)
+    }
+
+    /// 渲染即将下发的 `COPY … FROM STDIN` 语句（**用于预览与安全检查**，不用于执行）。
+    ///
+    /// 为什么要单独渲染一份：真正下发 COPY 的是驱动（`copyFromText` 自己拼语句），
+    /// 而"将要写哪张表、哪几列"必须让用户在执行前看到，也必须能被 `ExecutionSafety`
+    /// 按同一套词法规则分类（COPY 属于数据变更）—— 否则这条快路径就成了唯一
+    /// 绕过写语句确认与只读保护的入口。
+    static func copyStatement(
+        table: String,
+        schema: String? = nil,
+        columns: [String],
+        dialect: any SQLDialect = PostgresDialect()
+    ) -> String? {
+        guard !columns.isEmpty else { return nil }
+        let target = SQLGenerator.qualifiedName(table: table, schema: schema, dialect: dialect)
+        let columnList = columns.map { dialect.quoteIdentifier($0) }.joined(separator: ", ")
+        return "COPY \(target) (\(columnList)) FROM STDIN"
+    }
+}

@@ -851,6 +851,35 @@ public enum LKey: String, CaseIterable, Sendable {
     case dataTaskOverwriteWarning
     case dataTaskUpsertWarning
 
+    // 规格 / 定义的版本历史与回滚（FR-AI-11 的界面入口）
+    case dataTaskVersionsOpen
+    case dataTaskVersionsTitle
+    case dataTaskVersionsHint
+    case dataTaskVersionsEmpty
+    case dataTaskVersionsColumnNumber
+    case dataTaskVersionsColumnTime
+    case dataTaskVersionsColumnNote
+    case dataTaskVersionsColumnCurrent
+    case dataTaskVersionsSameCurrent
+    case dataTaskVersionsDifferentCurrent
+    case dataTaskVersionsUnknownCurrent
+    case dataTaskVersionsCompareTitle
+    case dataTaskVersionsCompareLeft
+    case dataTaskVersionsCompareRight
+    case dataTaskVersionsDiffTitle
+    case dataTaskVersionsDiffEmpty
+    case dataTaskVersionsDiffCount
+    case dataTaskVersionsDiffNoSelection
+    case dataTaskVersionsRollback
+    case dataTaskVersionsRollbackConfirmTitle
+    case dataTaskVersionsRollbackConfirmMessage
+    case dataTaskVersionsRolledBack
+    case dataTaskVersionsRollbackNote
+    case dataTaskVersionsRollbackFailed
+    case dataTaskVersionsLoadFailed
+    case dataTaskVersionsAppendOnlyNote
+    case dataTaskVersionsNoSelection
+
     // 高危语句保护（FR-EXEC-16）
     case toolbarSafety
     case safetySafeMode
@@ -1188,6 +1217,83 @@ public enum LKey: String, CaseIterable, Sendable {
     case createDatabaseConfirm
     case createDatabaseSucceeded
     case createDatabaseFailed
+
+    // 记忆治理（FR-AI-15 的界面入口：例行候选面板里的「记忆」页签）
+    case memoryGovernanceTabCandidates
+    case memoryGovernanceTabMemory
+    case memoryGovernanceHint
+    case memoryGovernanceEmpty
+    case memoryGovernanceArchiveDisabled
+    case memoryGovernanceIndexNote
+    case memoryGovernanceExplain
+    case memoryGovernanceRetentionForget
+    case memoryGovernanceRetentionKeep
+    case memoryGovernanceKindLabel
+    case memoryGovernanceDelete
+    case memoryGovernanceDeleteConfirmTitle
+    case memoryGovernanceDeleteConfirmMessage
+    case memoryGovernanceDeleted
+    case memoryGovernanceDeleteFailed
+    case memoryGovernanceClearLayer
+    case memoryGovernanceClearConfirmTitle
+    case memoryGovernanceClearConfirmMessage
+    case memoryGovernanceCleared
+    case memoryGovernanceClearFailed
+    case memoryGovernanceLayerNote
+    case memoryGovernanceRecordingTitle
+    case memoryGovernanceRecordingToggle
+    case memoryGovernanceRecordingOn
+    case memoryGovernanceRecordingOff
+    case memoryGovernanceLoadFailed
+
+    // CSV / TSV / JSON 导入（FR-IO-03 的整套界面）
+    case menuImportData
+    case importTitle
+    case importHint
+    case importFile
+    case importChooseFile
+    case importNoFile
+    case importFormat
+    case importHasHeader
+    case importTargetTable
+    case importTargetTableHint
+    case importParse
+    case importParseFailed
+    case importReadFailed
+    case importSourceSummary
+    case importWarnings
+    case importColumnMapping
+    case importMappingMissing
+    case importMappingUnknown
+    case importMappingMissingRequired
+    case importMappingEmpty
+    case importPrecheckInvalid
+    case importWriteMode
+    case importWriteModeCopy
+    case importWriteModeBatchInsert
+    case importCopyStatement
+    case importPreviewTitle
+    case importPreviewEmpty
+    case importExecute
+    case importStop
+    case importConfirmTitle
+    case importConfirmMessage
+    case importRunning
+    case importProgress
+    case importCopyStarted
+    case importDone
+    case importDoneCopy
+    case importFailed
+    case importPartial
+    case importCancelled
+    case importLog
+    case importNeedsConnection
+    case importNeedsParsedFile
+    case importStructureFailed
+    case importStructureEmpty
+    case importNothingMapped
+    case importSampleNote
+    case importCopyAtomicNote
 }
 
 public enum LocalizedStrings {
@@ -2291,5 +2397,111 @@ public enum LocalizedStrings {
         .dataTaskScheduleKindRecurring: [.simplifiedChinese: "周期", .english: "Recurring"],
         .dataTaskOverwriteWarning: [.simplifiedChinese: "覆盖模式会先清空目标表；真正执行时仍需逐次审批。", .english: "Overwrite truncates the target table first; the run still needs per-run approval."],
         .dataTaskUpsertWarning: [.simplifiedChinese: "更新插入会改写目标表里已存在的行。", .english: "Upsert rewrites rows that already exist in the target table."],
+
+        // 版本历史与回滚（FR-AI-11 的界面入口）
+        .dataTaskVersionsOpen: [.simplifiedChinese: "版本历史…", .english: "Version history…"],
+        .dataTaskVersionsTitle: [.simplifiedChinese: "版本历史", .english: "Version history"],
+        .dataTaskVersionsHint: [.simplifiedChinese: "历史只追加：回滚不删除任何版本，而是把旧内容作为新版本再记一次。", .english: "History is append-only: rolling back deletes nothing — the old content is recorded again as a new version."],
+        .dataTaskVersionsEmpty: [.simplifiedChinese: "这个任务还没有版本记录（保存任务时自动记下第一条）。", .english: "No versions yet for this task (the first save records v1)."],
+        .dataTaskVersionsColumnNumber: [.simplifiedChinese: "版本", .english: "Version"],
+        .dataTaskVersionsColumnTime: [.simplifiedChinese: "时间", .english: "Time"],
+        .dataTaskVersionsColumnNote: [.simplifiedChinese: "备注", .english: "Note"],
+        .dataTaskVersionsColumnCurrent: [.simplifiedChinese: "与当前定义", .english: "vs. current"],
+        .dataTaskVersionsSameCurrent: [.simplifiedChinese: "相同", .english: "Same"],
+        .dataTaskVersionsDifferentCurrent: [.simplifiedChinese: "不同", .english: "Different"],
+        .dataTaskVersionsUnknownCurrent: [.simplifiedChinese: "尚未保存", .english: "Not saved yet"],
+        .dataTaskVersionsCompareTitle: [.simplifiedChinese: "对比两个版本（字段级）", .english: "Compare two versions (field level)"],
+        .dataTaskVersionsCompareLeft: [.simplifiedChinese: "基准", .english: "Base"],
+        .dataTaskVersionsCompareRight: [.simplifiedChinese: "对比", .english: "Compare"],
+        .dataTaskVersionsDiffTitle: [.simplifiedChinese: "字段级差异", .english: "Field-level differences"],
+        .dataTaskVersionsDiffEmpty: [.simplifiedChinese: "这两个版本没有差异。", .english: "These two versions are identical."],
+        .dataTaskVersionsDiffCount: [.simplifiedChinese: "共 %d 处改动", .english: "%d changes"],
+        .dataTaskVersionsDiffNoSelection: [.simplifiedChinese: "选两个版本看差异。", .english: "Pick two versions to see the differences."],
+        .dataTaskVersionsRollback: [.simplifiedChinese: "回滚到此版本", .english: "Roll back to this version"],
+        .dataTaskVersionsRollbackConfirmTitle: [.simplifiedChinese: "确认回滚", .english: "Confirm rollback"],
+        .dataTaskVersionsRollbackConfirmMessage: [.simplifiedChinese: "回滚到 v%d：该版本的内容会被重新保存为一个新版本，现有历史不会被删除。", .english: "Roll back to v%d: that version's content is saved again as a new version; existing history is not deleted."],
+        .dataTaskVersionsRolledBack: [.simplifiedChinese: "已回滚到 v%d（以新版本留痕，旧版本仍可查）", .english: "Rolled back to v%d (recorded as a new version; earlier versions stay readable)"],
+        .dataTaskVersionsRollbackNote: [.simplifiedChinese: "回滚到 v%d", .english: "Roll back to v%d"],
+        .dataTaskVersionsRollbackFailed: [.simplifiedChinese: "回滚失败：%@", .english: "Rollback failed: %@"],
+        .dataTaskVersionsLoadFailed: [.simplifiedChinese: "读取版本历史失败：%@", .english: "Failed to read version history: %@"],
+        .dataTaskVersionsAppendOnlyNote: [.simplifiedChinese: "回滚不是删历史：版本记录只追加，旧版本始终可查。", .english: "Rollback is not deletion: the version log is append-only, so earlier versions stay readable."],
+        .dataTaskVersionsNoSelection: [.simplifiedChinese: "先选一个已保存的任务（未保存的新任务还没有历史）。", .english: "Select a saved task first (a new unsaved task has no history yet)."],
+
+        // 记忆治理（FR-AI-15 的界面入口）
+        .memoryGovernanceTabCandidates: [.simplifiedChinese: "例行候选", .english: "Routine candidates"],
+        .memoryGovernanceTabMemory: [.simplifiedChinese: "记忆治理", .english: "Memory governance"],
+        .memoryGovernanceHint: [.simplifiedChinese: "记忆的事实源是查询归档：这里只做浏览与治理（来源解释 / 单条删除 / 整层清空 / 本次执行不记录），每条判定都由 Core 的纯函数给出。", .english: "Query memory derives from the SQL archive. This tab only browses and governs it — provenance, single-entry delete, whole-layer clear, and a per-session recording switch — with every verdict computed by Core's pure functions."],
+        .memoryGovernanceEmpty: [.simplifiedChinese: "记忆层是空的：还没有归档记录，或者归档未开启。", .english: "The memory layer is empty: no archive records yet, or archiving is off."],
+        .memoryGovernanceArchiveDisabled: [.simplifiedChinese: "归档功能未开启：记忆层不会再有新内容。请先在「归档」面板里指定目录并开启。", .english: "Archiving is off, so the memory layer will not gain new entries. Set a directory in the Archive panel and enable it first."],
+        .memoryGovernanceIndexNote: [.simplifiedChinese: "从 %d 条归档记录派生出 %d 条记忆。", .english: "%d archive records yield %d memories."],
+        .memoryGovernanceExplain: [.simplifiedChinese: "来源解释", .english: "Provenance"],
+        .memoryGovernanceRetentionForget: [.simplifiedChinese: "会被遗忘", .english: "Will be forgotten"],
+        .memoryGovernanceRetentionKeep: [.simplifiedChinese: "会保留", .english: "Will be kept"],
+        .memoryGovernanceKindLabel: [.simplifiedChinese: "类别", .english: "Kind"],
+        .memoryGovernanceDelete: [.simplifiedChinese: "删除这条", .english: "Delete this entry"],
+        .memoryGovernanceDeleteConfirmTitle: [.simplifiedChinese: "确认删除", .english: "Confirm delete"],
+        .memoryGovernanceDeleteConfirmMessage: [.simplifiedChinese: "删除会改写归档文件（记忆的事实源），该骨架下的所有取值变体都会被删掉：%@", .english: "Deleting rewrites the archive files (the source of truth) and removes every value variant under this fingerprint: %@"],
+        .memoryGovernanceDeleted: [.simplifiedChinese: "已删除 %d 条归档记录（改动 %d 个文件）", .english: "Deleted %d archive records (%d files changed)"],
+        .memoryGovernanceDeleteFailed: [.simplifiedChinese: "删除失败：%@", .english: "Delete failed: %@"],
+        .memoryGovernanceClearLayer: [.simplifiedChinese: "清空环境层…", .english: "Clear environment layer…"],
+        .memoryGovernanceClearConfirmTitle: [.simplifiedChinese: "确认清空环境层", .english: "Confirm clearing the environment layer"],
+        .memoryGovernanceClearConfirmMessage: [.simplifiedChinese: "整层清空不可逆：会删掉归档目录下的全部归档文件（共 %d 条记录）。确定继续？", .english: "Clearing the whole layer is irreversible: every archive file under the archive directory (with %d records) will be deleted. Continue?"],
+        .memoryGovernanceCleared: [.simplifiedChinese: "已清空环境层：删除 %d 条记录 / %d 个文件", .english: "Environment layer cleared: %d records deleted / %d files"],
+        .memoryGovernanceClearFailed: [.simplifiedChinese: "清空失败：%@", .english: "Clear failed: %@"],
+        .memoryGovernanceLayerNote: [.simplifiedChinese: "环境层 = 归档（按连接隔离）；通用层目前只做脱敏判定、不落盘，所以这里没有可清空的通用层内容。", .english: "The environment layer is the archive (isolated per connection). The general layer is only checked for de-identification and is not persisted yet, so there is nothing general to clear here."],
+        .memoryGovernanceRecordingTitle: [.simplifiedChinese: "「本次执行不记录」", .english: "\"Do not record\" switch"],
+        .memoryGovernanceRecordingToggle: [.simplifiedChinese: "本次执行不记录（本会话内后续执行也不归档）", .english: "Do not record (later runs in this session are not archived either)"],
+        .memoryGovernanceRecordingOn: [.simplifiedChinese: "判定：%@；这次执行不会被记入记忆。", .english: "Decision: %@; this run will not be remembered."],
+        .memoryGovernanceRecordingOff: [.simplifiedChinese: "判定：%@；执行会正常记入记忆。", .english: "Decision: %@; runs are recorded normally."],
+        .memoryGovernanceLoadFailed: [.simplifiedChinese: "读取记忆失败：%@", .english: "Failed to read memory: %@"],
+
+        // 导入（FR-IO-03 的整套界面）
+        .menuImportData: [.simplifiedChinese: "导入数据…", .english: "Import Data…"],
+        .importTitle: [.simplifiedChinese: "导入数据（CSV / TSV / JSON）", .english: "Import data (CSV / TSV / JSON)"],
+        .importHint: [.simplifiedChinese: "选文件 → 选目标表 → 列映射预览 → 写入通道 → 执行。列映射直接用 Core 的匹配规则；COPY 优先，取不到时如实说明理由再退回批量 INSERT。", .english: "Pick a file, pick a target table, review the column mapping, choose the write channel, then run. Mapping uses Core's rules directly; COPY is preferred, and when it is unavailable the reason is stated before falling back to batched INSERT."],
+        .importFile: [.simplifiedChinese: "文件", .english: "File"],
+        .importChooseFile: [.simplifiedChinese: "选择文件…", .english: "Choose file…"],
+        .importNoFile: [.simplifiedChinese: "还没有选文件。", .english: "No file chosen yet."],
+        .importFormat: [.simplifiedChinese: "格式", .english: "Format"],
+        .importHasHeader: [.simplifiedChinese: "首行是表头", .english: "First row is a header"],
+        .importTargetTable: [.simplifiedChinese: "目标表", .english: "Target table"],
+        .importTargetTableHint: [.simplifiedChinese: "填 schema.table 或只填表名；默认取对象树当前选中的表。", .english: "Use schema.table or just the table name; defaults to the table selected in the object tree."],
+        .importParse: [.simplifiedChinese: "解析并预览", .english: "Parse and preview"],
+        .importParseFailed: [.simplifiedChinese: "解析失败：%@", .english: "Parse failed: %@"],
+        .importReadFailed: [.simplifiedChinese: "读取文件失败：%@", .english: "Failed to read file: %@"],
+        .importSourceSummary: [.simplifiedChinese: "文件：%@（%d 行数据 · %d 列）", .english: "File: %@ (%d rows · %d columns)"],
+        .importWarnings: [.simplifiedChinese: "解析告警（前 %d 条）", .english: "Parse warnings (first %d)"],
+        .importColumnMapping: [.simplifiedChinese: "列映射（文件 → 目标列）", .english: "Column mapping (file → target)"],
+        .importMappingMissing: [.simplifiedChinese: "文件里没有，走默认值 / NULL", .english: "Absent in the file — default value / NULL"],
+        .importMappingUnknown: [.simplifiedChinese: "文件里有、目标表没有的列（会被忽略）：%@", .english: "Columns in the file but not in the target table (ignored): %@"],
+        .importMappingMissingRequired: [.simplifiedChinese: "这些必填列在文件里没有对应列：%@（继续导入一定失败，已阻止）", .english: "Required columns with no matching file column: %@ (the import would fail, so it is blocked)"],
+        .importMappingEmpty: [.simplifiedChinese: "没有任何列能映射到目标表。", .english: "No column maps to the target table."],
+        .importPrecheckInvalid: [.simplifiedChinese: "这些值无法按目标列类型转换（前 %d 条）—— INSERT 路径会写成 NULL，COPY 路径会被服务端直接拒绝：", .english: "Values that cannot convert to the target column types (first %d) — the INSERT path writes NULL, while the COPY path is rejected by the server:"],
+        .importWriteMode: [.simplifiedChinese: "写入通道", .english: "Write channel"],
+        .importWriteModeCopy: [.simplifiedChinese: "COPY（快路径）", .english: "COPY (fast path)"],
+        .importWriteModeBatchInsert: [.simplifiedChinese: "批量 INSERT（回退）", .english: "Batched INSERT (fallback)"],
+        .importCopyStatement: [.simplifiedChinese: "将下发的 COPY 语句（预览用；数据由驱动按 COPY text 格式编码）", .english: "COPY statement to be issued (preview only; the driver encodes the data in COPY text format)"],
+        .importPreviewTitle: [.simplifiedChinese: "前 %d 行预览", .english: "Preview of the first %d rows"],
+        .importPreviewEmpty: [.simplifiedChinese: "没有可预览的数据行。", .english: "No data rows to preview."],
+        .importExecute: [.simplifiedChinese: "执行导入", .english: "Run import"],
+        .importStop: [.simplifiedChinese: "停止", .english: "Stop"],
+        .importConfirmTitle: [.simplifiedChinese: "确认导入", .english: "Confirm import"],
+        .importConfirmMessage: [.simplifiedChinese: "安全检查要求二次确认：%@", .english: "The safety check requires confirmation: %@"],
+        .importRunning: [.simplifiedChinese: "正在执行…", .english: "Running…"],
+        .importProgress: [.simplifiedChinese: "进度：第 %d / %d 批（已写 %d 行）", .english: "Progress: batch %d of %d (%d rows written)"],
+        .importCopyStarted: [.simplifiedChinese: "开始 COPY：%d 行 / %d 列（%d 字节，text 格式）", .english: "Starting COPY: %d rows / %d columns (%d bytes, text format)"],
+        .importDone: [.simplifiedChinese: "导入完成：写入 %d 行（%d 批）", .english: "Import complete: %d rows written (%d batches)"],
+        .importDoneCopy: [.simplifiedChinese: "COPY 写入完成：%d 行，用时 %.2f 秒", .english: "COPY finished: %d rows in %.2f s"],
+        .importFailed: [.simplifiedChinese: "导入失败：%@", .english: "Import failed: %@"],
+        .importPartial: [.simplifiedChinese: "已写入 %d 行（前面的批次已生效，请按需清理）", .english: "%d rows were written (earlier batches are committed; clean up as needed)"],
+        .importCancelled: [.simplifiedChinese: "已停止：已写入 %d 行（前面的批次已生效）", .english: "Stopped: %d rows written (earlier batches are committed)"],
+        .importLog: [.simplifiedChinese: "逐批日志", .english: "Batch log"],
+        .importNeedsConnection: [.simplifiedChinese: "先选择一个连接。", .english: "Select a connection first."],
+        .importNeedsParsedFile: [.simplifiedChinese: "先选文件并点「解析并预览」。", .english: "Choose a file and click Parse and preview first."],
+        .importStructureFailed: [.simplifiedChinese: "读取目标表结构失败：%@", .english: "Failed to read the target table structure: %@"],
+        .importStructureEmpty: [.simplifiedChinese: "读不到目标表的列结构（表名写对了吗？）。", .english: "Could not read the target table's columns (is the table name right?)"],
+        .importNothingMapped: [.simplifiedChinese: "没有任何列能映射到目标表，已中止。", .english: "No column maps to the target table; aborted."],
+        .importSampleNote: [.simplifiedChinese: "预览只取前若干行；执行时按批处理全部行。", .english: "The preview shows only the first rows; the run processes every row in batches."],
+        .importCopyAtomicNote: [.simplifiedChinese: "COPY 在单条语句内是原子的：失败即整批未写入，不会留下半截。", .english: "COPY is atomic within a single statement: on failure nothing is written, so no half-import remains."],
     ]
 }

@@ -119,6 +119,21 @@ final class SpecVersioningTests: XCTestCase {
         XCTAssertNil(versioningError)
     }
 
+    /// 保存时给的 `note` 要落进版本记录：界面里的「备注」列靠它，
+    /// 而"这次是用户改的还是回滚来的"只能靠它分辨。
+    func testSaveNoteLandsInVersionRecord() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = DataTaskStore(directoryURL: directory)
+        let taskID = UUID()
+
+        try await store.save(definition(id: taskID, name: "v1"))
+        try await store.save(definition(id: taskID, name: "v2"), note: "回滚到 v1")
+
+        let versions = SpecVersionStore(directoryURL: directory).versions(taskID: taskID)
+        XCTAssertEqual(versions.map(\.note), [nil, "回滚到 v1"])
+    }
+
     // MARK: diff
 
     func testDiffReportsFieldChanges() {

@@ -192,6 +192,12 @@ struct MainWindow: View {
             BackupRestoreSheet()
                 .environmentObject(appState)
         }
+        // 导入数据（FR-IO-03）：挂在窗口上 —— 菜单与 ⌘K 都是全局入口，
+        // 不依赖"当前视图里正好有对象树"。目标表默认取对象树选中项，没有也能手输。
+        .sheet(isPresented: $appState.isImportPresented) {
+            ImportPanel()
+                .environmentObject(appState)
+        }
         // 切换语言后系统级菜单要重启才跟随（NFR-I18N-03）。
         .sheet(isPresented: $localization.isRestartPromptPresented) {
             RelaunchPromptSheet()
