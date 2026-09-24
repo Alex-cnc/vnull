@@ -170,6 +170,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneMaximize
     case lowerPaneRestore
     case lowerPaneProblemEmpty
+    case lowerPaneProblemSkipped
     case lowerPaneOutputEmpty
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
@@ -1142,6 +1143,7 @@ public enum LocalizedStrings {
         .lowerPaneHide: [.simplifiedChinese: "收起面板", .english: "Collapse pane"],
         .lowerPaneMaximize: [.simplifiedChinese: "最大化面板", .english: "Maximize pane"],
         .lowerPaneRestore: [.simplifiedChinese: "恢复面板", .english: "Restore pane"],
+        .lowerPaneProblemSkipped: [.simplifiedChinese: "SQL 超过 %@ 字符，已**暂停实时语法检查**（执行与语法高亮不受影响）", .english: "SQL is longer than %@ characters, so real-time syntax checking is paused (running and highlighting are unaffected)"],
         .lowerPaneProblemEmpty: [.simplifiedChinese: "还没有问题。执行 SQL 的错误与语法诊断会出现在这里。", .english: "No problems. SQL errors and syntax diagnostics will show up here."],
         .lowerPaneOutputEmpty: [.simplifiedChinese: "还没有输出。执行 SQL 的状态、影响行数与耗时摘要会出现在这里。", .english: "No output yet. Execution status, affected rows and timings will show up here."],
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],

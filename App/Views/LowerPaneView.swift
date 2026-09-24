@@ -165,6 +165,16 @@ struct LowerPaneView: View {
     private var problemsContent: some View {
         // 语法诊断（编辑器实时算出来的）+ 执行期错误，按时间先后合并展示。
         VStack(alignment: .leading, spacing: 0) {
+            // 超长跳过要显式说出来：否则空态读起来就是"检查过了，没问题"（欺骗性空态）。
+            if QueryDiagnostics.isRealtimeAnalysisSkipped(sql: tab.sql) {
+                logRow(
+                    severity: .warning,
+                    timestamp: nil,
+                    message: L(.lowerPaneProblemSkipped, "\(sqlRealtimeScanLimit)")
+                )
+                if !diagnostics.isEmpty || !tab.problemLog.isEmpty { Divider() }
+            }
+
             if !diagnostics.isEmpty {
                 ForEach(diagnostics) { diagnostic in
                     logRow(

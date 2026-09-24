@@ -216,6 +216,15 @@ struct ResultTableView: View {
 
     /// 结果表 + 分页条。侧栏收起时它就是整个结果区，打开时它是左半边 ——
     /// 分页条跟着表格走（它描述的是表格，不是详情）。
+    /// 分页条是否出现。
+    ///
+    /// 判据不是"当前是否分页"，而是"用户有没有可能需要改分页"：
+    /// 有多页要翻、或者用户正处在「全部」这一档（必须能切回去），都要给。
+    private func showsPager(for result: QueryResult, page: ResultPage) -> Bool {
+        guard !result.rows.isEmpty else { return false }
+        return page.pageCount > 1 || !gridState.isPaged
+    }
+
     private func gridSection(for result: QueryResult, page: ResultPage) -> some View {
         VStack(spacing: 0) {
             ResultGrid(
@@ -232,7 +241,12 @@ struct ResultTableView: View {
                 }
             )
 
-            if gridState.isPaged {
+            // **只要结果里有行就给出分页条**，包括"每页 = 全部"这一档。
+            //
+            // 2026-09-23 修：原先只在 `isPaged`（pageSize > 0）时渲染，而**改每页条数的唯一入口
+            // 就在这条分页条里** —— 用户一旦选「全部」，分页条消失，视图内再也切不回分页
+            // （只能重跑查询或切页签）。这不是"不便"，是死路。
+            if showsPager(for: result, page: page) {
                 HairlineView()
                 ResultPagerBar(
                     page: page,

@@ -48,6 +48,17 @@ public struct SQLDiagnostic: Identifiable, Hashable, Sendable {
 /// - 括号是否配对
 ///
 /// 这样可以在执行前就给出确定的错误，且不会对合法 SQL 产生误报。
+/// 实时全量扫描的**长度上限**（超过就暂停实时检查，避免每次按键都卡）。
+///
+/// 为什么放在 Core：这个阈值有**两个消费方**（编辑器与下方面板的「问题」页签），
+/// 而"超限时要不要给用户一句人话"是产品行为 —— 放在视图里就只能靠手点验证。
+public let sqlRealtimeScanLimit = 20_000
+
+/// 这次输入是否超出实时扫描范围。
+public func sqlExceedsRealtimeScanLimit(_ sql: String) -> Bool {
+    sql.count > sqlRealtimeScanLimit
+}
+
 public struct SQLLinter: Sendable {
     public let databaseType: DatabaseType
     /// 诊断文案语言（默认中文，便于 Core 单测与 CLI 使用）。

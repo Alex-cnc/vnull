@@ -42,3 +42,5 @@ App/Resources/AppIcon-1024.png
 # 并行代理各自使用的独立 SwiftPM 构建目录（避免同一 scratch 的锁竞争），只在本机存在
 /.build-agent-*/
 /.build-cache-*/
+/.build-x86/
+/.build-cache-x86/

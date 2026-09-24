@@ -142,7 +142,8 @@ echo "==> 用例 4：对象树（MetadataService）"
 run_cli -c "CREATE SCHEMA IF NOT EXISTS ic_empty_schema;" >/dev/null
 
 OUTPUT="$(run_cli --tree)"
-assert_contains "根节点是服务器" "${OUTPUT}" "server postgres@127.0.0.1:55432"
+# 端口必须用同一个变量：写死 55432 时，一旦用 TEST_PGPORT 换端口就会**假失败**
+assert_contains "根节点是服务器" "${OUTPUT}" "server postgres@127.0.0.1:${TEST_PGPORT}"
 assert_contains "服务器下列出数据库" "${OUTPUT}" "database postgres"
 assert_contains "列出 schema" "${OUTPUT}" "schema public"
 assert_contains "空 schema 也能枚举" "${OUTPUT}" "schema ic_empty_schema"

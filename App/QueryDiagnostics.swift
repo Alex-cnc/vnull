@@ -8,12 +8,18 @@ import DoyahCore
 /// 所以不能再由 `QueryEditorView` 算好再传下去。
 enum QueryDiagnostics {
 
-    /// 超过这个长度就先不做全量扫描（避免每次按键都卡）。
-    static let maximumScannedLength = 20_000
+    /// 本次输入是否**因为太长而跳过了**实时检查（判据在 Core，两处消费方共用）。
+    ///
+    /// 为什么要单独问一句：跳过时 `analyze` 返回空，界面只看得到"没有问题"的空态 ——
+    /// 用户会以为"检查过了，没问题"。跳过必须说出来（FR 的阻塞条件里承诺过这句提示，
+    /// 但在此之前它并不存在）。
+    static func isRealtimeAnalysisSkipped(sql: String) -> Bool {
+        sqlExceedsRealtimeScanLimit(sql)
+    }
 
     static func analyze(tab: QueryTab, databaseType: DatabaseType?) -> [SQLDiagnostic] {
         guard let databaseType else { return [] }
-        guard tab.sql.count <= maximumScannedLength else { return [] }
+        guard !isRealtimeAnalysisSkipped(sql: tab.sql) else { return [] }
         return SQLLinter(
             databaseType: databaseType,
             language: LocalizationManager.shared.language
