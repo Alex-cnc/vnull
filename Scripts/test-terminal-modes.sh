@@ -96,10 +96,37 @@ echo "$ALT" | grep -q "DECCKM 开" && echo "$ALT" | grep -q "鼠标 按住拖动
     || check "退出备用屏（?1049l）恢复了 TUI 改过的模式位" 1
 
 echo ""
+echo "== 3.5) 光标形状 / 颜色查询应答 / 弯下划线 / 清回滚区（FR-EDIT-29 本轮补充）=="
+DECSCUSR="$("$CLI" terminal-modes --feed "$(printf '\033[5 q')" 2>&1)"
+echo "$DECSCUSR" | grep -q "光标形状：竖线（闪烁）" && check "DECSCUSR（CSI 5 SP q）→ 竖线闪烁" 0 \
+    || { check "DECSCUSR 没生效" 1; echo "$DECSCUSR" | tail -3; }
+UNDER="$("$CLI" terminal-modes --feed "$(printf '\033[4 q')" 2>&1)"
+echo "$UNDER" | grep -q "光标形状：下划线（稳定）" && check "DECSCUSR（CSI 4 SP q）→ 下划线稳定" 0 \
+    || check "DECSCUSR 下划线没生效" 1
+KEEP="$("$CLI" terminal-modes --feed "$(printf '\033[2 q\033[9 q')" 2>&1)"
+echo "$KEEP" | grep -q "光标形状：块状（稳定）" && check "认不出的参数保持原状（不猜、不清空）" 0 \
+    || check "认不出的参数应当保持原状" 1
+
+OSC11="$("$CLI" terminal-modes --feed "$(printf '\033]11;?\007')" 2>&1)"
+echo "$OSC11" | grep -q "回给 PTY：ESC]11;rgb:" && check "OSC 11 查询被应答（背景色）" 0 \
+    || { check "OSC 11 没应答" 1; echo "$OSC11" | tail -3; }
+OSC10="$("$CLI" terminal-modes --feed "$(printf '\033]10;?\033\\')" 2>&1)"
+echo "$OSC10" | grep -q "回给 PTY：ESC]10;rgb:" && check "OSC 10 查询被应答（前景色，ST 结尾）" 0 \
+    || check "OSC 10 没应答" 1
+TITLE="$("$CLI" terminal-modes --feed "$(printf '\033]0;title\007')" 2>&1)"
+echo "$TITLE" | grep -q "回给 PTY：（无）" && check "其它 OSC（窗口标题）照旧忽略" 0 \
+    || check "其它 OSC 不该被当成颜色查询" 1
+
+grep -q "Ps=3 → 下划线（闪烁）" /tmp/terminal-modes.txt && check "对照表列出 DECSCUSR 六个取值" 0 \
+    || check "对照表应列出 DECSCUSR" 1
+grep -q "OSC 12;? → OSC 12;rgb:" /tmp/terminal-modes.txt && check "对照表列出颜色查询应答格式" 0 \
+    || check "对照表应列出颜色查询" 1
+
+echo ""
 echo "== 4) 单测（字节形状 + 解析器行为）=="
 if swift test --disable-sandbox --cache-path "$PWD/.build-cache" --scratch-path "$PWD/.build" \
     --manifest-cache local -Xswiftc -disable-sandbox \
-    --filter 'TerminalInputTests|TerminalModeTests' > /tmp/terminal-modes-tests.log 2>&1; then
+    --filter 'TerminalInputTests|TerminalModeTests|TerminalCursorTests' > /tmp/terminal-modes-tests.log 2>&1; then
     check "TerminalInputTests + TerminalModeTests 全过" 0
 else
     check "TerminalInputTests + TerminalModeTests 全过" 1

@@ -23,6 +23,9 @@ public struct TerminalCell: Equatable, Sendable {
     /// 暗淡（SGR 2）。渲染时把前景按比例混进底色 —— 见 `TerminalPalette.dimmed`。
     public var isDim: Bool
     public var underline: Bool
+    /// 弯（波浪）下划线（SGR `4:3`）。渲染时用虚线下划线**近似** ——
+    /// AppKit 的 `NSUnderlineStyle` 没有波浪样式，这一点在视图注释与文档里写明，不假装一样。
+    public var isCurlyUnderline: Bool
     public var inverse: Bool
     public var foreground: TerminalColor
     public var background: TerminalColor
@@ -32,6 +35,7 @@ public struct TerminalCell: Equatable, Sendable {
         bold: Bool = false,
         isDim: Bool = false,
         underline: Bool = false,
+        isCurlyUnderline: Bool = false,
         inverse: Bool = false,
         foreground: TerminalColor = .default,
         background: TerminalColor = .default
@@ -40,6 +44,7 @@ public struct TerminalCell: Equatable, Sendable {
         self.bold = bold
         self.isDim = isDim
         self.underline = underline
+        self.isCurlyUnderline = isCurlyUnderline
         self.inverse = inverse
         self.foreground = foreground
         self.background = background
@@ -117,6 +122,16 @@ public final class TerminalScreen {
     public private(set) var mouseTrackingMode: TerminalInput.MouseTrackingMode = .none
     /// `?1006`：鼠标上报用 SGR 编码（坐标不受 223 限制，且分得清哪个键松开）。
     public private(set) var isSGRMouseEnabled = false
+
+    /// 前台程序用 DECSCUSR（`CSI Ps SP q`）要求的光标外观；`nil` = 没要求（用用户偏好）。
+    public private(set) var requestedCursor: TerminalCursorAppearance?
+
+    /// 回答 `OSC 10/11/12`（前景 / 背景 / 光标色查询）时要报的颜色。
+    ///
+    /// 由**视图**注入（Core 不该猜现在是深色还是浅色 —— 那是外观偏好的事）。
+    /// 为 `nil` 时**不回答**：与其瞎报一个颜色，不如让程序退回自己的默认
+    /// （假装知道会让它按错误的底色选前景色，反而更难看）。
+    public var paletteProvider: (() -> TerminalPalette)?
 
     /// 前台程序是否接管了鼠标（视图据此决定"上报"还是"本地选中"）。
     public var isMouseReportingActive: Bool { mouseTrackingMode != .none }
@@ -202,6 +217,9 @@ public final class TerminalScreen {
 
     /// 跨 chunk 的 UTF-8 半截字节。
     private var pendingUTF8: [UInt8] = []
+
+    /// 当前 OSC 的内容（用于回答颜色查询）。
+    private var oscPayload: [UInt8] = []
 
     public init(columns: Int = 80, rows: Int = 24, scrollbackLimit: Int = 2_000) {
         self.columns = max(1, columns)
@@ -487,13 +505,63 @@ public final class TerminalScreen {
         }
     }
 
+    /// OSC：以 BEL 或 ST(`ESC \\`) 结束。
+    ///
+    /// 以前这里"内容一律忽略"，于是 `OSC 10;?`（问前景色）也一并吞掉了 —— 而程序问不到颜色时，
+    /// 常用的退路是**猜**（有的 TUI 就按黑底白字硬编码），在浅色主题下会很难看。
+    /// 现在只处理三件事，其余（窗口标题 / 剪贴板 / 超链接…）仍然忽略：
+    /// `OSC 10;?` 前景、`OSC 11;?` 背景、`OSC 12;?` 光标色。
     private func handleOSC(_ byte: UInt8) {
-        // OSC 以 BEL 或 ST(ESC \) 结束；内容（窗口标题等）一律忽略。
         if byte == 0x07 {
+            answerOSCQuery()
+            oscPayload.removeAll(keepingCapacity: true)
             state = .ground
         } else if byte == 0x1B {
-            state = .charset // 复用：吞掉紧随的 '\'
+            // ST（`ESC \\`）：**在这里就回答**，不能等"下一个字节" —— 紧随的反斜杠由
+            // `.charset` 状态吞掉，那条路上没有"OSC 收尾"这个回调（第一版就是这样漏答的）。
+            oscPayload.append(byte)
+            answerOSCQuery()
+            oscPayload.removeAll(keepingCapacity: true)
+            state = .charset // 复用：吞掉紧随的 '\\'
+        } else {
+            // 上限保护：OSC 内容可能很长（超链接），但查询只有十来字节 ——
+            // 超出上限就不再累积，避免畸形输入把内存拖大。
+            if oscPayload.count < 512 { oscPayload.append(byte) }
         }
+    }
+
+    /// 把收集到的 OSC 内容与查询对上号，答一次。
+    private func answerOSCQuery() {
+        guard !oscPayload.isEmpty, let palette = paletteProvider?() else { return }
+        // 去掉可能的 ST 尾巴：`ESC` 被记进来，而紧随的 `\` 已被 charset 状态吞掉 ——
+        // 所以这里最多只看到一个 0x1B；两种形态都容错（测试里 ST 与 BEL 各验一次）。
+        var payload = oscPayload
+        while let last = payload.last, last == 0x1B || last == 0x5C {
+            payload.removeLast()
+        }
+        guard let text = String(bytes: payload, encoding: .utf8) else { return }
+        let parts = text.split(separator: ";", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count >= 2, parts[1].trimmingCharacters(in: .whitespaces) == "?" else { return }
+
+        let rgb: TerminalPalette.RGB
+        switch parts[0] {
+        case "10": rgb = palette.foreground
+        case "11": rgb = palette.background
+        case "12": rgb = palette.cursor
+        default: return
+        }
+        // xterm 的回法：`OSC <N>;rgb:RRRR/GGGG/BBBB ST`（每个分量 4 位十六进制）。
+        let reply = "\u{1B}]" + parts[0] + ";rgb:" + Self.sixteenBit(rgb) + "\u{1B}\\"
+        respond(Array(reply.utf8))
+    }
+
+    /// 8 位分量 → xterm 的四位十六进制（`AB` → `ABAB`，保持比例）。
+    static func sixteenBit(_ rgb: TerminalPalette.RGB) -> String {
+        func component(_ value: UInt8) -> String {
+            let wide = Int(value) * 257   // 0xAB * 0x0101 = 0xABAB
+            return String(format: "%04X", wide)
+        }
+        return component(rgb.red) + "/" + component(rgb.green) + "/" + component(rgb.blue)
     }
 
     private func handleCSI(_ byte: UInt8) {
@@ -616,6 +684,12 @@ public final class TerminalScreen {
         case "q" where csiPrivateMarker == ">":
             // XTVERSION：回 DCS 串。程序据此区分终端实现（我们不冒充 xterm）。
             respond(TerminalInput.terminalVersion(name: DoyahIdentity.terminalVersionName))
+        case "q" where csiIntermediate == " ":
+            // DECSCUSR（`CSI Ps SP q`）：前台程序要求光标形状（vim 插入模式要竖线）。
+            // 参数认不出时**保持原状**，不猜。
+            if let appearance = TerminalCursorAppearance.fromDECSCUSR(first ?? 0) {
+                requestedCursor = appearance
+            }
         default:
             break
         }
@@ -809,6 +883,14 @@ public final class TerminalScreen {
     private func clampColumn(_ column: Int) -> Int { min(max(0, column), columns - 1) }
 
     /// 复位屏幕（RIS，或用户点「重新开始」时用）。
+    /// 清空回滚区（FR-EDIT-29 的右键菜单项）。
+    ///
+    /// 与 `reset()` 区别：只丢历史行，**不动当前屏幕、光标与模式位** ——
+    /// 用户想要的通常是"把上面那些翻不到头的历史清掉"，而不是把正在跑的 TUI 也重置。
+    public func clearScrollback() {
+        scrollbackLines.removeAll()
+    }
+
     public func reset() {
         screen = Array(repeating: blankRow(), count: rows)
         scrollbackLines.removeAll()
@@ -827,6 +909,8 @@ public final class TerminalScreen {
         isFocusReportingEnabled = false
         mouseTrackingMode = .none
         isSGRMouseEnabled = false
+        requestedCursor = nil
+        oscPayload.removeAll()
         pendingResponses.removeAll()
         savedCursor = nil
         savedMainScreen = nil
@@ -927,7 +1011,35 @@ public final class TerminalScreen {
                 // 我们按"先提亮再压暗"渲染，不把两者当成互斥开关。
                 attributes.isDim = true
             case 4:
-                attributes.underline = true
+                // `4` 是下划线；`4:N` 是它的**子样式**（ECMA-48 4th、xterm 支持）：0 无 / 1 单 /
+                // 2 双 / 3 弯（波浪）/ 4 点线 / 5 虚线。
+                //
+                // 子参数用 `:` 引入。注意 `csiSubParameterFlags[i]` 记的是**参数 i 之后**那个分隔符
+                // 是不是冒号（见 `extendedColor` 的注释）—— 所以"下一个参数是子参数"要看
+                // `flags[index]` 而不是 `flags[index + 1]`（第一版就写错了，测试当场抓到）。
+                let hasSubStyle = index + 1 < codes.count
+                    && csiSubParameterFlags.indices.contains(index)
+                    && csiSubParameterFlags[index]
+                if hasSubStyle {
+                    switch codes[index + 1] {
+                    case 0:
+                        attributes.underline = false
+                        attributes.isCurlyUnderline = false
+                    case 3, 4, 5:
+                        // 弯 / 点线 / 虚线：渲染上都用**点划线**近似（AppKit 没有波浪下划线），
+                        // 但语义上仍分开记住 —— 将来换渲染后端不必重解析。
+                        attributes.underline = true
+                        attributes.isCurlyUnderline = true
+                    default:
+                        // 1 单线、2 双线（双线同样用单线近似）：都是"有下划线、不是弯的"。
+                        attributes.underline = true
+                        attributes.isCurlyUnderline = false
+                    }
+                    index += 1        // 吃掉子参数
+                } else {
+                    attributes.underline = true
+                    attributes.isCurlyUnderline = false
+                }
             case 7:
                 attributes.inverse = true
             case 22:
@@ -936,6 +1048,7 @@ public final class TerminalScreen {
                 attributes.isDim = false
             case 24:
                 attributes.underline = false
+                attributes.isCurlyUnderline = false
             case 27:
                 attributes.inverse = false
             case 30...37:
@@ -980,5 +1093,15 @@ public final class TerminalScreen {
         default:
             return 1
         }
+    }
+}
+
+/// 给命令行探针用的只读转发（`terminal-modes` 要展示 OSC 应答里的十六进制格式）。
+///
+/// 为什么不把 `TerminalScreen.sixteenBit` 直接改成 public：那是**实现细节**，
+/// 只有探针需要它；转一层比把内部函数摊到公开 API 上更干净。
+public enum ScreenProbe {
+    public static func sixteenBit(_ rgb: TerminalPalette.RGB) -> String {
+        TerminalScreen.sixteenBit(rgb)
     }
 }

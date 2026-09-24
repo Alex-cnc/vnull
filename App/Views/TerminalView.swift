@@ -72,6 +72,13 @@ final class TerminalModel: ObservableObject {
         requestRedraw?()
     }
 
+    /// 清空回滚区（右键菜单项）：只丢历史行，不动当前屏幕、光标与模式位。
+    func clearScrollback() {
+        screen.clearScrollback()
+        scrollOffset = 0
+        requestRedraw?()
+    }
+
     func beginSelection(at raw: TerminalCellPosition) {
         let position = TerminalSelection.snapped(raw, in: displayLines())
         selection = TerminalSelection(anchor: position, focus: position)
@@ -271,12 +278,29 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     ///
     /// 字号变化必须**重建字体与格子尺寸并重新布局**：`layout()` 用格子宽度反算列数发给 PTY，
     /// 拿旧格子去算就会把一个 120 列的窗口报成 80 列，TUI 的第一帧就排错了。
+    /// 应用偏好（外观 / 字号 / 光标形状）。
+    ///
+    /// 光标形状同理：前台程序用 DECSCUSR 要求过就听它的，否则用用户偏好。
+    func applyCursor(preference: TerminalCursorAppearance) {
+        if cursorPreference != preference {
+            cursorPreference = preference
+            needsDisplay = true
+        }
+    }
+
+    /// 应用偏好（外观 / 字号）。
     func apply(appearance: TerminalAppearance, fontSize: Int) {
         if self.appearancePreference != appearance {
             self.appearancePreference = appearance
             runCache.removeAll()
             layer?.backgroundColor = Theme.nsColor(palette.background).cgColor
             needsDisplay = true
+        }
+        // 让屏幕模型能回答 `OSC 10/11/12`（前景 / 背景 / 光标色查询）：
+        // 颜色只有这一层知道（Core 不猜外观偏好）。不注入就**不回答**，让程序退回自己的默认，
+        // 而不是瞎报一个颜色让它按错误底色挑前景色。
+        model.screen.paletteProvider = { [weak self] in
+            self?.palette ?? TerminalPalette.deepSeaDark
         }
 
         // 字体族来自全局偏好（FR-EDIT-26）：偏好变了、或字号变了，都要重建字体与格子尺寸。
@@ -540,7 +564,11 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
             .foregroundColor: foreground(for: cell)
         ]
         if cell.underline {
-            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            // SGR `4:3` 是**弯（波浪）下划线**。AppKit 的 `NSUnderlineStyle` 没有波浪样式，
+            // 这里用「点划线」近似 —— 与实线**能一眼区分开**，且不假装两者一样（文档里写明）。
+            attributes[.underlineStyle] = cell.isCurlyUnderline
+                ? NSUnderlineStyle.patternDashDot.rawValue | NSUnderlineStyle.single.rawValue
+                : NSUnderlineStyle.single.rawValue
         }
         return attributes
     }
@@ -566,9 +594,16 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
         )
     }
 
+    /// 当前生效的光标外观：**前台程序要求优先**（DECSCUSR），否则用户偏好。
+    private var effectiveCursor: TerminalCursorAppearance {
+        model.screen.requestedCursor ?? cursorPreference
+    }
+
     private func drawCursor() {
         guard model.screen.isCursorVisible else { return }
         let rect = cursorCellRect
+        let style = effectiveCursor.style
+
         guard window?.firstResponder === self else {
             // 失焦时只描一个空心框：块状光标在失焦窗口里会显得"这里还能打字"。
             Theme.nsColor(palette.cursor).withAlphaComponent(0.55).setStroke()
@@ -578,10 +613,22 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
             return
         }
 
-        // 块状光标 + **把光标下的字用底色重画**（反白）。
-        // 半透明块会让字符看起来发脏，而真正终端里块光标下就是反白的。
         Theme.nsColor(palette.cursor).setFill()
-        rect.fill()
+        switch style {
+        case .bar:
+            // 竖线：宽度取格子的一小部分（太细在 Retina 上看不见）。
+            let width = max(1.5, cellSize.width * 0.12)
+            NSRect(x: rect.minX, y: rect.minY, width: width, height: rect.height).fill()
+            return
+        case .underline:
+            let height = max(1.5, cellSize.height * 0.12)
+            NSRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height).fill()
+            return
+        case .block:
+            // 块状光标 + **把光标下的字用底色重画**（反白）。
+            // 半透明块会让字符看起来发脏，而真正终端里块光标下就是反白的。
+            rect.fill()
+        }
 
         let line = model.screen.line(model.screen.cursorRow)
         let column = model.screen.cursorColumn
@@ -597,12 +644,57 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
         ).draw(at: rect.origin)
     }
 
+    /// 右键菜单（FR-EDIT-29）：复制 / 粘贴 / 全选 / 清除回滚区 / 重新开始 shell。
+    ///
+    /// 为什么要有它：终端里"只能用键盘"对不熟快捷键的人不友好，而 `⌘C/⌘V` 已经在
+    /// **菜单栏**有了入口 —— 这里复用同一批动作（`copy:` / `paste:` / `selectAll:` 与模型的公开方法），
+    /// 不新造第二条会分叉的实现。
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let hasSelection = model.selection != nil && model.selection?.isEmpty == false
+
+        let copyItem = NSMenuItem(title: L(.commonCopy), action: #selector(copy(_:)), keyEquivalent: "")
+        copyItem.target = self
+        copyItem.isEnabled = hasSelection
+        menu.addItem(copyItem)
+
+        let pasteItem = NSMenuItem(title: L(.commonPaste), action: #selector(paste(_:)), keyEquivalent: "")
+        pasteItem.target = self
+        menu.addItem(pasteItem)
+
+        let selectAllItem = NSMenuItem(title: L(.commonSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
+        selectAllItem.target = self
+        menu.addItem(selectAllItem)
+
+        menu.addItem(.separator())
+
+        let clearItem = NSMenuItem(title: L(.terminalClearScrollback), action: #selector(clearScrollback(_:)), keyEquivalent: "")
+        clearItem.target = self
+        menu.addItem(clearItem)
+
+        let restartItem = NSMenuItem(title: L(.terminalRestart), action: #selector(restartShell(_:)), keyEquivalent: "")
+        restartItem.target = self
+        menu.addItem(restartItem)
+        return menu
+    }
+
+    @objc private func clearScrollback(_ sender: Any?) {
+        model.clearScrollback()
+    }
+
+    @objc private func restartShell(_ sender: Any?) {
+        model.restart(columns: max(20, Int(bounds.width / cellSize.width)),
+                      rows: max(4, Int(bounds.height / cellSize.height)))
+    }
+
     // MARK: 颜色
 
     // MARK: 输入
 
     /// 触控板给的是带小数的精确位移，先攒够一行再滚，免得疯狂抖动。
     private var scrollRemainder: CGFloat = 0
+    /// 用户偏好里的光标形状（前台程序没要求时用它）。
+    private var cursorPreference: TerminalCursorAppearance = .default
     /// 窗口焦点通知的观察者（`?1004` 焦点上报用；换窗口时先摘掉旧的）。
     private var focusObservers: [NSObjectProtocol] = []
 
@@ -934,9 +1026,12 @@ struct TerminalView: NSViewRepresentable {
     var appearance: TerminalAppearance = .followSystem
     /// 终端字号（pt）。
     var fontSize: Int = TerminalFontSize.default
+    /// 光标形状偏好（前台程序用 DECSCUSR 要求过时以它为准）。
+    var cursor: TerminalCursorAppearance = .default
 
     func makeNSView(context: Context) -> TerminalHostView {
         let view = TerminalHostView(model: model, appearance: appearance, fontSize: fontSize)
+        view.applyCursor(preference: cursor)
         model.attach { [weak view] in
             view?.needsDisplay = true
         }
@@ -946,5 +1041,6 @@ struct TerminalView: NSViewRepresentable {
     func updateNSView(_ nsView: TerminalHostView, context: Context) {
         // 设置改了要**真的应用**（重建字体 / 换色板），不是只重画一次。
         nsView.apply(appearance: appearance, fontSize: fontSize)
+        nsView.applyCursor(preference: cursor)
     }
 }

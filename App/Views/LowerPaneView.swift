@@ -155,7 +155,8 @@ struct LowerPaneView: View {
             TerminalView(
                 model: terminal,
                 appearance: appState.terminalAppearance,
-                fontSize: appState.terminalFontSize
+                fontSize: appState.terminalFontSize,
+                cursor: appState.terminalCursorPreference.appearance
             )
 
         case .debugConsole:

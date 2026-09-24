@@ -35,6 +35,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case commonEdit
     case commonRetry
     case commonCopy
+    case commonPaste
+    case commonSelectAll
     case commonOk
 
     // 菜单 / 命令
@@ -175,6 +177,15 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
     case terminalRestart
+    case terminalClearScrollback
+    case terminalCursorStyle
+    case terminalCursorBlink
+    case terminalCursorHint
+    case terminalCursorBlock
+    case terminalCursorBar
+    case terminalCursorUnderline
+    case terminalCursorBlinking
+    case terminalCursorSteady
     case terminalStopped
 
     // 系统级菜单的语言需要重启才跟随（macOS 在进程启动时固定 AppKit 的本地化）
@@ -1513,6 +1524,17 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],
+        .commonPaste: [.simplifiedChinese: "粘贴", .english: "Paste"],
+        .commonSelectAll: [.simplifiedChinese: "全选", .english: "Select All"],
+        .terminalClearScrollback: [.simplifiedChinese: "清除回滚区", .english: "Clear Scrollback"],
+        .terminalCursorStyle: [.simplifiedChinese: "光标形状", .english: "Cursor shape"],
+        .terminalCursorBlink: [.simplifiedChinese: "闪烁", .english: "Blink"],
+        .terminalCursorHint: [.simplifiedChinese: "前台程序（vim 等）用 DECSCUSR 要求过形状时以它为准；这里设的是默认，只影响没提要求的程序。", .english: "When a foreground program (vim and friends) requests a shape with DECSCUSR, that wins. This setting is the default for programs that do not ask."],
+        .terminalCursorBlock: [.simplifiedChinese: "块状", .english: "Block"],
+        .terminalCursorBar: [.simplifiedChinese: "竖线", .english: "Bar"],
+        .terminalCursorUnderline: [.simplifiedChinese: "下划线", .english: "Underline"],
+        .terminalCursorBlinking: [.simplifiedChinese: "闪烁", .english: "blinking"],
+        .terminalCursorSteady: [.simplifiedChinese: "稳定", .english: "steady"],
         .terminalStopped: [.simplifiedChinese: "已停止", .english: "Stopped"],
         .relaunchTitle: [.simplifiedChinese: "系统菜单需要重启才能跟随", .english: "Restart to switch the system menus"],
         .relaunchMessage: [.simplifiedChinese: "应用界面已经切换。系统级菜单（文件 / 编辑 / 显示 / 窗口 / 帮助）由 macOS 渲染，语言在启动时就已固定，需要重启才能一起切换。", .english: "The app UI has switched. macOS renders the system menus (File, Edit, View, Window, Help) and fixes their language at launch, so a restart is needed for them to follow."],

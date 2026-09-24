@@ -281,6 +281,23 @@ final class AppState: ObservableObject {
 
     /// 终端字号（pt）。**夹取逻辑在 Core**（`TerminalFontSize`），这里只负责持久化：
     /// 写进来的越界值会被夹回区间，且夹回后的值才落盘 —— 偏好里不留非法值。
+    /// 终端光标形状（FR-EDIT-29）：前台程序用 DECSCUSR 要求过就听它的，否则用这里。
+    @Published var terminalCursorPreference: TerminalCursorPreference = TerminalCursorPreference.resolve(
+        style: UserDefaults.standard.string(forKey: TerminalCursorPreference.Storage.styleKey),
+        blinks: UserDefaults.standard.object(forKey: TerminalCursorPreference.Storage.blinksKey)
+    ) {
+        didSet {
+            UserDefaults.standard.set(
+                terminalCursorPreference.appearance.style.rawValue,
+                forKey: TerminalCursorPreference.Storage.styleKey
+            )
+            UserDefaults.standard.set(
+                terminalCursorPreference.appearance.blinks,
+                forKey: TerminalCursorPreference.Storage.blinksKey
+            )
+        }
+    }
+
     @Published var terminalFontSize: Int =
         TerminalFontSize.resolve(rawValue: UserDefaults.standard.object(forKey: "terminal.fontSize")) {
         didSet {

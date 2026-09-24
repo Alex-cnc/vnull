@@ -866,6 +866,8 @@ struct DoyahCLI {
 
         if let feed = value(for: "--feed") {
             let screen = TerminalScreen(columns: 80, rows: 24)
+            // 注入调色板：`OSC 10/11/12` 的颜色查询要有颜色才能回答（不注入时按设计不回答）。
+            screen.paletteProvider = { TerminalPalette.deepSeaDark }
             screen.feed(text: feed)
             let responses = screen.drainResponses()
             if arguments.contains("--json") {
@@ -892,6 +894,7 @@ struct DoyahCLI {
                   + "焦点上报 \(screen.isFocusReportingEnabled ? "开" : "关") · "
                   + "鼠标 \(screen.mouseTrackingMode.displayName) · "
                   + "SGR 编码 \(screen.isSGRMouseEnabled ? "开" : "关")")
+            print("光标形状：\(screen.requestedCursor?.description() ?? "（前台程序未要求，用用户偏好）")")
             print("光标：行 \(screen.cursorRow + 1) 列 \(screen.cursorColumn + 1)")
             print("回给 PTY：\(responses.isEmpty ? "（无）" : visible(responses))")
             return 0
@@ -926,6 +929,19 @@ struct DoyahCLI {
             print("  \(key.rawValue)：普通 \(visible(TerminalInput.cursorKey(key, applicationCursorKeys: false)))"
                   + " ｜ 应用模式 \(visible(TerminalInput.cursorKey(key, applicationCursorKeys: true)))")
         }
+        print("")
+        print("光标形状（xterm ctlseqs：DECSCUSR，CSI Ps SP q；0/1 同义）")
+        for parameter in 0...6 {
+            let appearance = TerminalCursorAppearance.fromDECSCUSR(parameter)
+            print("  Ps=\(parameter) → \(appearance?.description() ?? "（认不出，保持原状）")")
+        }
+        print("")
+        print("颜色查询应答（xterm ctlseqs：OSC 10 / 11 / 12）")
+        let probe = TerminalPalette.deepSeaDark
+        print("  OSC 10;? → OSC 10;rgb:\(ScreenProbe.sixteenBit(probe.foreground)) ST（前景）")
+        print("  OSC 11;? → OSC 11;rgb:\(ScreenProbe.sixteenBit(probe.background)) ST（背景）")
+        print("  OSC 12;? → OSC 12;rgb:\(ScreenProbe.sixteenBit(probe.cursor)) ST（光标）")
+        print("  未注入调色板时**不回答**：与其瞎报一个颜色，不如让程序退回自己的默认")
         print("")
         print("设备查询应答（xterm ctlseqs：DA1 / DA2 / DSR / DECRQM / XTVERSION）")
         print("  DA1（CSI c）        → \(visible(TerminalInput.primaryDeviceAttributes()))")

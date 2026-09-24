@@ -173,6 +173,34 @@ struct AppearanceSheet: View {
         fonts.select(family: trimmed)
     }
 
+    private var cursorStyleBinding: Binding<TerminalCursorStyle> {
+        Binding(
+            get: { appState.terminalCursorPreference.appearance.style },
+            set: { style in
+                appState.terminalCursorPreference = TerminalCursorPreference(
+                    appearance: TerminalCursorAppearance(
+                        style: style,
+                        blinks: appState.terminalCursorPreference.appearance.blinks
+                    )
+                )
+            }
+        )
+    }
+
+    private var cursorBlinkBinding: Binding<Bool> {
+        Binding(
+            get: { appState.terminalCursorPreference.appearance.blinks },
+            set: { blinks in
+                appState.terminalCursorPreference = TerminalCursorPreference(
+                    appearance: TerminalCursorAppearance(
+                        style: appState.terminalCursorPreference.appearance.style,
+                        blinks: blinks
+                    )
+                )
+            }
+        )
+    }
+
     /// 字体族绑定：`FontManager` 是 `private(set)`，改写走它的方法（也顺手落盘）。
     private var familyBinding: Binding<String?> {
         Binding(
@@ -235,6 +263,26 @@ struct AppearanceSheet: View {
             )
 
             Text(L(.terminalFontSizeHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
+
+            // 光标形状（FR-EDIT-29）：前台程序用 DECSCUSR 要求过时以它为准，这里设的是默认。
+            HStack(spacing: Spacing.m) {
+                Text(L(.terminalCursorStyle))
+                    .font(Theme.font(.body))
+                Picker("", selection: cursorStyleBinding) {
+                    ForEach(TerminalCursorStyle.allCases, id: \.self) { style in
+                        Text(style.label(language: LocalizationManager.shared.language)).tag(style)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 140)
+                Toggle(L(.terminalCursorBlink), isOn: cursorBlinkBinding)
+                    .font(Theme.font(.caption))
+                Spacer()
+            }
+            Text(L(.terminalCursorHint))
                 .font(Theme.font(.caption))
                 .foregroundStyle(Theme.text(.tertiary))
                 .fixedSize(horizontal: false, vertical: true)
