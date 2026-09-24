@@ -90,6 +90,18 @@ final class ERDiagramTests: XCTestCase {
         XCTAssertEqual(layout.node(for: "public.audit_log")?.layer, 0, "孤立表与时同层（不依赖别人）")
     }
 
+    /// 视图与导出共用同一批布局默认值：这里钉住"默认参数就是那些常量"，
+    /// 免得哪天改了默认值却漏改常量（画出来的格子与布局算出来的不一样高）。
+    func testDefaultLayoutConstantsMatchLayoutDefaults() {
+        let layout = ERDiagram.build(
+            tables: [ERDiagram.Table(schema: "public", name: "t", columns: [ERDiagram.Column(name: "id")])],
+            relationships: []
+        ).layout()
+        let node = try? XCTUnwrap(layout.node(for: "public.t"))
+        XCTAssertEqual(node?.width, ERDiagram.Layout.defaultNodeWidth)
+        XCTAssertEqual(node?.height, ERDiagram.Layout.defaultHeaderHeight + ERDiagram.Layout.defaultRowHeight)
+    }
+
     func testLayoutIsDeterministic() {
         let first = shop().layout()
         let second = shop().layout()

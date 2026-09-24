@@ -126,6 +126,10 @@ struct DoyahStudioCommands: Commands {
                 appState.isSchemaDiffPresented = true
             }
 
+            Button(L(.menuERDiagram)) {
+                appState.isERDiagramPresented = true
+            }
+
             Divider()
 
             Button(L(.lowerPaneToggle)) {

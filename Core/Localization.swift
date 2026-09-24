@@ -1039,6 +1039,22 @@ public enum LKey: String, CaseIterable, Sendable {
     case schemaDiffStatements
     case schemaDiffNoStatements
     case schemaDiffCopied
+    case erDiagramTitle
+    case menuERDiagram
+    case erDiagramHint
+    case erDiagramSchema
+    case erDiagramGenerate
+    case erDiagramCopyMermaid
+    case erDiagramCopyDOT
+    case erDiagramExport
+    case erDiagramEmpty
+    case erDiagramMoreColumns
+    case erDiagramSummary
+    case erDiagramCyclic
+    case erDiagramZoomIn
+    case erDiagramZoomOut
+    case erDiagramFit
+    case erDiagramExported
     case schemaDiffCopy
     case schemaDiffOpenInTab
     case schemaDiffFailed
@@ -2077,6 +2093,22 @@ public enum LocalizedStrings {
         .schemaDiffStatements: [.simplifiedChinese: "将对目标库执行的语句（%d 条）", .english: "Statements to run against the target (%d)"],
         .schemaDiffNoStatements: [.simplifiedChinese: "没有需要执行的语句", .english: "No statements to run"],
         .schemaDiffCopied: [.simplifiedChinese: "已复制", .english: "Copied"],
+        .erDiagramTitle: [.simplifiedChinese: "ER 图 / 关系图", .english: "ER Diagram"],
+        .menuERDiagram: [.simplifiedChinese: "ER 图…", .english: "ER Diagram…"],
+        .erDiagramHint: [.simplifiedChinese: "由外键元数据生成：被引用的一方在上层，箭头指向被引用的表。只读元数据，不执行任何语句；可复制成 Mermaid / DOT 或导出文件。", .english: "Built from foreign-key metadata: referenced tables sit above, arrows point at the referenced table. Metadata only — no statements are executed. Copy as Mermaid / DOT or export to a file."],
+        .erDiagramSchema: [.simplifiedChinese: "模式名", .english: "Schema"],
+        .erDiagramGenerate: [.simplifiedChinese: "生成", .english: "Generate"],
+        .erDiagramCopyMermaid: [.simplifiedChinese: "复制 Mermaid", .english: "Copy Mermaid"],
+        .erDiagramCopyDOT: [.simplifiedChinese: "复制 DOT", .english: "Copy DOT"],
+        .erDiagramExport: [.simplifiedChinese: "导出…", .english: "Export…"],
+        .erDiagramEmpty: [.simplifiedChinese: "这个 schema 里没有外键关系（ER 图只画有约束的表）。", .english: "No foreign keys in this schema (the diagram only shows tables with constraints)."],
+        .erDiagramMoreColumns: [.simplifiedChinese: "…还有 %d 列", .english: "…%d more columns"],
+        .erDiagramSummary: [.simplifiedChinese: "%d 张表 · %d 条外键", .english: "%d tables · %d foreign keys"],
+        .erDiagramCyclic: [.simplifiedChinese: "互相引用（已放到最后一层）：%@", .english: "Cyclic references (placed on the last layer): %@"],
+        .erDiagramZoomIn: [.simplifiedChinese: "放大", .english: "Zoom in"],
+        .erDiagramZoomOut: [.simplifiedChinese: "缩小", .english: "Zoom out"],
+        .erDiagramFit: [.simplifiedChinese: "复位", .english: "Reset view"],
+        .erDiagramExported: [.simplifiedChinese: "已导出：%@", .english: "Exported: %@"],
         .schemaDiffCopy: [.simplifiedChinese: "复制脚本", .english: "Copy script"],
         .schemaDiffOpenInTab: [.simplifiedChinese: "在新查询页签打开", .english: "Open in a new query tab"],
         .schemaDiffFailed: [.simplifiedChinese: "对比失败：%@", .english: "Comparison failed: %@"],

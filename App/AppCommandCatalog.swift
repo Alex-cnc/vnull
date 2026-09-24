@@ -36,6 +36,7 @@ enum AppCommandCatalog {
             // 服务器级对象（FR-SESS-03）：与「显示」菜单里的同一项打开同一个面板。
             item("serverObjects", .serverObjectsTitle, "server objects roles tablespaces extensions 服务器级对象 角色 表空间 扩展 权限", "server objects roles tablespaces extensions", .paletteCategoryServer),
             item("schemaDiff", .schemaDiffTitle, "schema diff compare sync migration 对比 差异 同步 迁移 结构", "schema diff compare sync", .paletteCategoryObject),
+            item("erDiagram", .menuERDiagram, "er diagram erd foreign key relationship 关系图 实体 外键 连线", "er diagram relationships", .paletteCategoryObject),
             item("routineCandidates", .routineCandidatesTitle, "routine 例行 候选 记忆 重复", "routine candidates", .paletteCategoryAgent),
             item("objectSearch", .objectSearchTitle, "search 搜索 找 对象 表 视图 列 函数", "search objects find", .paletteCategoryObject),
             item("sessions", .commandSessions, "sessions 会话", "server sessions", .paletteCategoryServer),

@@ -180,6 +180,15 @@ public struct ERDiagram: Equatable, Sendable {
     // MARK: - 布局
 
     public struct Layout: Equatable, Sendable {
+        /// 布局默认值：**放在这里而不是视图里** —— 视图画节点时要用同一个表头 / 行高，
+        /// 两处各写一份数字迟早会不一样（画出来的格子与布局算出来的不一样高）。
+        public static let defaultNodeWidth: Double = 220
+        public static let defaultHeaderHeight: Double = 34
+        public static let defaultRowHeight: Double = 18
+        public static let defaultHorizontalGap: Double = 60
+        public static let defaultVerticalGap: Double = 90
+        public static let defaultMaximumVisibleColumns: Int = 12
+
         public struct Node: Equatable, Sendable {
             public var table: String
             public var layer: Int
@@ -230,12 +239,12 @@ public struct ERDiagram: Equatable, Sendable {
     ///   - rowHeight: 每列一行的高度。
     ///   - horizontalGap / verticalGap: 同层间距与层间距。
     public func layout(
-        nodeWidth: Double = 220,
-        headerHeight: Double = 34,
-        rowHeight: Double = 18,
-        horizontalGap: Double = 60,
-        verticalGap: Double = 90,
-        maximumVisibleColumns: Int = 12
+        nodeWidth: Double = ERDiagram.Layout.defaultNodeWidth,
+        headerHeight: Double = ERDiagram.Layout.defaultHeaderHeight,
+        rowHeight: Double = ERDiagram.Layout.defaultRowHeight,
+        horizontalGap: Double = ERDiagram.Layout.defaultHorizontalGap,
+        verticalGap: Double = ERDiagram.Layout.defaultVerticalGap,
+        maximumVisibleColumns: Int = ERDiagram.Layout.defaultMaximumVisibleColumns
     ) -> Layout {
         let tablesByKey = Dictionary(uniqueKeysWithValues: tables.map { ($0.qualifiedName, $0) })
 

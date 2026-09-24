@@ -35,6 +35,7 @@ public enum MenuLocalization {
         .menuConnectionSettings,
         // 服务器级对象（FR-SESS-03）：菜单叶子项也要能在运行时切语言，故走 menu 前缀并登记。
         .menuServerObjects,
+        .menuERDiagram,
         // 导入数据（FR-IO-03）：与「归档…」同住「文件」菜单，同样需要运行时切语言。
         .menuImportData,
         .menuViewDatabase,

@@ -308,6 +308,8 @@ final class AppState: ObservableObject {
 
     /// 「Schema 对比与同步」面板（FR-DDL-04）。
     @Published var isSchemaDiffPresented = false
+    /// ER 图面板（FR-DDL-05）：由外键元数据画的图。
+    @Published var isERDiagramPresented = false
 
     /// 「服务器级对象」面板（FR-SESS-03）：角色 / 表空间 / 扩展的浏览与增删改。
     @Published var isServerObjectsPresented = false
@@ -3673,6 +3675,7 @@ final class AppState: ObservableObject {
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
         case "schemaDiff": isSchemaDiffPresented = true
+        case "erDiagram": isERDiagramPresented = true
         case "serverObjects":
             // 与「数据库统计」同一模式：面板自己按 `selectedConnection` 取数；
             // 没连接时由面板显示 `AppError.notConnected` 的人话，而不是在这里静默不开。
@@ -4551,6 +4554,48 @@ final class AppState: ObservableObject {
             allowDrop: allowsDrop,
             dialect: SQLDialectFactory.make(for: targetConfiguration.dbType)
         )
+    }
+
+
+    /// 抓取当前连接的 ER 图数据（FR-DDL-05）。
+    ///
+    /// 与 `captureSnapshot` 同一口径取表与列，另外**一次**取回整个 schema 的外键：
+    /// 逐表查约束在大 schema 上要发 N 次往返，而外键本来就是"全库一张图"的事。
+    /// 视图排除在外 —— 视图没有外键约束，画进去只会让人以为它们参与关系。
+    func erDiagram(schema: String, database: String?) async throws -> ERDiagram {
+        guard let configuration = selectedConnection else { throw AppError.notConnected }
+        let target = database?.isEmpty == false ? database! : queryDatabase(for: configuration)
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let service = try await ensureService(for: configuration, database: target)
+
+        let listResult = try await runSingleQuery(
+            dialect.listTablesQuery(database: target, schema: schema),
+            on: service
+        )
+        let names = listResult.rows.compactMap { row -> String? in
+            guard row.indices.contains(0), let name = row[0], !name.isEmpty else { return nil }
+            if row.indices.contains(1), let kind = row[1], kind.uppercased().contains("VIEW") { return nil }
+            return name
+        }.sorted()
+
+        var snapshots: [TableSnapshot] = []
+        for name in names {
+            guard let structureQuery = dialect.tableStructureQuery(table: name, schema: schema) else { continue }
+            let structure = try await runSingleQuery(structureQuery, on: service)
+            snapshots.append(
+                TableSnapshot(
+                    schema: schema,
+                    name: name,
+                    columns: MetadataService.columnDefinitions(from: structure)
+                )
+            )
+        }
+
+        let foreignKeys = try await runSingleQuery(
+            ERDiagramSource.foreignKeysQuery(schema: schema),
+            on: service
+        )
+        return ERDiagramSource.diagram(snapshots: snapshots, foreignKeys: foreignKeys)
     }
 
     private func captureSnapshot(

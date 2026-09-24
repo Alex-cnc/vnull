@@ -128,6 +128,12 @@ struct MainWindow: View {
             SchemaDiffPanel()
                 .environmentObject(appState)
         }
+
+        // ER 图 / 关系图（FR-DDL-05）：由外键元数据画的只读图。
+        .sheet(isPresented: $appState.isERDiagramPresented) {
+            ERDiagramPanel()
+                .environmentObject(appState)
+        }
         // 服务器级对象（FR-SESS-03）：角色 / 表空间 / 扩展的浏览与增删改。
         .sheet(isPresented: $appState.isServerObjectsPresented) {
             ServerObjectsPanel()
