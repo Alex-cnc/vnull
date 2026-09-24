@@ -60,7 +60,7 @@ A fuller list (including what is **not** done yet) lives in
 
 - **PostgreSQL is first-class** (verified on 16.2 and 18.6). The dialect and SQL generation layers for GBase 8a
   and MySQL exist, but there is **no instance to verify against**, so they are not listed as supported.
-- **Scope**: 223 requirements (168 FR · 43 NFR · 12 AC); current FR status **113 ✅ / 50 🟡 / 5 ⬜**
+- **Scope**: 223 requirements (168 FR · 43 NFR · 12 AC); current FR status **113 ✅ / 51 🟡 / 4 ⬜**
   (🟡 = implemented but awaiting manual acceptance, or blocked on an external environment). Statuses are
   derived from the index in `Docs/需求规范书.md` §10.1 and checked by `Scripts/check-doc-tables.py` on every
   run — they are never hand-maintained.

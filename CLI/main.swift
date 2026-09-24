@@ -164,6 +164,12 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // diagnose：FR-AI-03 的可脚本化出口（取证 → 组装上下文 → 解析模型回复）。
+        if arguments.first == "diagnose" {
+            let code = await runDiagnoseCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -888,6 +894,185 @@ struct DoyahCLI {
     ///
     /// 行为：起隧道 → 打印本地端点 → 保持（默认到被信号打断；给了 `--hold` 就等这么多秒）→ 收干净。
     /// 退出码：0 成功；2 参数不对；1 隧道起不来（stderr 带 ssh 的输出，已脱敏）。
+    /// `doyah diagnose`：把"对话式诊断"里**可以离线验证的两段**做成命令行出口 ——
+    /// ① 取证与上下文组装（对真实库跑 `EXPLAIN` / 锁查询 / 统计，如实标注哪些没拿到）；
+    /// ② 解析模型回复（`--advice-file` 传入一份回复文本，据此验"无依据断言必须被拒"与建议 SQL 的审批裁决）。
+    ///
+    /// **为什么要有 ②**：真实模型端点在本环境不可用，但"结论必须有依据"这条纪律
+    /// 是**我们这一侧的判决**，必须有可复跑的验证方式 —— 否则它只是一句写在文档里的话。
+    private static func runDiagnoseCommand(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let sql = value(for: "--sql") else {
+            FileHandle.standardError.write(Data(("用法：diagnose --sql <语句> [--question <问题>] "
+                + "[--advice-file <模型回复文件>] [--read-only] [--json]\n").utf8))
+            return 2
+        }
+
+        let isJSON = arguments.contains("--json")
+        let question = value(for: "--question") ?? "这条查询为什么慢？"
+        let dialect: any SQLDialect = PostgresDialect()
+
+        let environment = ProcessInfo.processInfo.environment
+        let host = environment["PGHOST"] ?? "127.0.0.1"
+        let port = Int(environment["PGPORT"] ?? "5432") ?? 5432
+        let username = environment["PGUSER"] ?? "postgres"
+        let password = environment["PGPASSWORD"]
+        let database = environment["PGDATABASE"] ?? ""
+        let config = ConnectionConfig(
+            name: "CLI diagnose",
+            dbType: .postgresql,
+            host: host,
+            port: port,
+            database: database,
+            username: username,
+            sslMode: SSLMode(rawValue: environment["PGSSLMODE"] ?? "prefer") ?? .prefer,
+            timeout: 10
+        )
+
+        let service = PostgresService(config: config, password: password)
+        do {
+            let info = try await service.connect()
+            var evidence: [DiagnosisEvidence] = []
+            let plan = DiagnosisContextBuilder.evidencePlan(for: sql, dialect: dialect)
+            for (index, item) in plan.enumerated() {
+                let id = DiagnosisContextBuilder.evidenceID(index: index)
+                if item.kind == .statement {
+                    // 语句本身不是"跑出来的"证据，但它同样要有编号（模型要引用它）。
+                    evidence.append(
+                        DiagnosisContextBuilder.makeEvidence(
+                            id: id, kind: .statement, sql: item.sql, rows: []
+                        )
+                    )
+                    continue
+                }
+                do {
+                    let rows = try await runDiagnoseQuery(service: service, sql: item.sql)
+                    evidence.append(
+                        DiagnosisContextBuilder.makeEvidence(
+                            id: id, kind: item.kind, sql: item.sql, rows: rows
+                        )
+                    )
+                } catch {
+                    // 取不到就是取不到：把**服务端说的话**带上（"扩展没装"和"权限不够"要分得开）。
+                    evidence.append(
+                        DiagnosisContextBuilder.makeEvidence(
+                            id: id, kind: item.kind, sql: item.sql, rows: nil,
+                            failureReason: error.localizedDescription
+                        )
+                    )
+                }
+            }
+            await service.disconnect()
+
+            let context = DiagnosisContext(
+                question: question,
+                target: "\(username)@\(host):\(port)/\(database.isEmpty ? "<default>" : database)（\(info.version)）",
+                evidence: evidence
+            )
+
+            var adviceReport: DiagnosisAdviceReport?
+            if let path = value(for: "--advice-file") {
+                guard let reply = try? String(contentsOfFile: path, encoding: .utf8) else {
+                    FileHandle.standardError.write(Data("读不到模型回复文件：\(path)\n".utf8))
+                    return 2
+                }
+                var policy = ExecutionSafetyPolicy(isEnabled: true)
+                if arguments.contains("--read-only") { policy.isReadOnly = true }
+                adviceReport = DiagnosisAdvice.parse(
+                    reply: reply,
+                    context: context,
+                    databaseType: dialect.databaseType,
+                    policy: policy
+                )
+            }
+
+            if isJSON {
+                var json = "{"
+                json += "\"ok\":true"
+                json += ",\"evidence\":["
+                json += evidence.map { item in
+                    let rows = item.rows.map { row in
+                        "[" + row.map { jsonQuoted($0 ?? "NULL") }.joined(separator: ",") + "]"
+                    }.joined(separator: ",")
+                    return "{\"id\":\(jsonQuoted(item.id)),\"kind\":\(jsonQuoted(item.kind.displayName)),"
+                        + "\"available\":\(item.isAvailable),\"truncated\":\(item.isTruncated),"
+                        + "\"note\":\(jsonQuoted(item.note)),\"rows\":[\(rows)]}"
+                }.joined(separator: ",")
+                json += "]"
+                json += ",\"unavailable\":["
+                json += context.unavailable.map { jsonQuoted($0.id) }.joined(separator: ",")
+                json += "]"
+                if let adviceReport {
+                    json += ",\"advice\":["
+                    json += adviceReport.items.map { item in
+                        let decision: String
+                        switch item.decision {
+                        case .allow: decision = "allow"
+                        case .needsConfirmation: decision = "needsConfirmation"
+                        case .refused: decision = "refused"
+                        case nil: decision = "none"
+                        }
+                        let sql = item.suggestedSQL.map(jsonQuoted) ?? "null"
+                        return "{\"conclusion\":\(jsonQuoted(item.conclusion)),"
+                            + "\"citations\":[" + item.citations.map(jsonQuoted).joined(separator: ",") + "],"
+                            + "\"sql\":\(sql),\"decision\":\(jsonQuoted(decision))}"
+                    }.joined(separator: ",")
+                    json += "],\"rejected\":["
+                    json += adviceReport.rejections.map { rejection in
+                        let reason: String
+                        switch rejection.reason {
+                        case .missingCitations: reason = "missingCitations"
+                        case .unknownCitation(let id): reason = "unknownCitation:\(id)"
+                        case .unparsable: reason = "unparsable"
+                        }
+                        return "{\"line\":\(jsonQuoted(rejection.line)),\"reason\":\(jsonQuoted(reason))}"
+                    }.joined(separator: ",")
+                    json += "]"
+                }
+                json += "}"
+                print(json)
+            } else {
+                print(context.boundedPromptText())
+                if let adviceReport {
+                    print("")
+                    print("== 解析结果 ==")
+                    for item in adviceReport.items {
+                        print("· \(item.conclusion)（依据 \(item.citations.joined(separator: ","))）")
+                        if let suggested = item.suggestedSQL {
+                            print("  建议：\(suggested)")
+                        }
+                    }
+                    for rejection in adviceReport.rejections {
+                        print("✗ 已拒绝：\(rejection.line)（\(rejection.reason)）")
+                    }
+                }
+            }
+            return 0
+        } catch {
+            if isJSON {
+                print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
+            } else {
+                print("取证失败：\(error.localizedDescription)")
+            }
+            return 1
+        }
+    }
+
+    /// 跑一条取证查询，把行收成字符串（NULL 保持 nil，"没有值"与"空串"要分得开）。
+    private static func runDiagnoseQuery(service: PostgresService, sql: String) async throws -> [[String?]] {
+        var rows: [[String?]] = []
+        for try await event in service.execute(sql, options: .default) {
+            if case .resultSet(let result) = event {
+                rows.append(contentsOf: result.rows)
+            }
+        }
+        return rows
+    }
+
     /// JSON 字符串字面量（含引号）。**不自己写转义表**：引号 / 反斜杠 / 控制字符的规则
     /// 写错一处就会产出别人解析不了的 JSON，交给 Foundation 最稳。
     private static func jsonQuoted(_ value: String) -> String {

@@ -179,6 +179,20 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case diagnosisTarget
+    case diagnosisQuestion
+    case diagnosisEvidenceHeader
+    case diagnosisEvidenceEmpty
+    case diagnosisEvidenceEmptyNote
+    case diagnosisEvidenceRows
+    case diagnosisEvidenceTruncated
+    case diagnosisEvidenceUnavailable
+    case diagnosisMissingHeader
+    case diagnosisMissingLine
+    case diagnosisFormatHeader
+    case diagnosisFormatConclusion
+    case diagnosisFormatSuggestion
+    case diagnosisTruncatedNotice
     case mysqlHostResolveFailed
     case mysqlInitFailed
     case mysqlNoConnectionID
@@ -1690,6 +1704,20 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .diagnosisTarget: [.simplifiedChinese: "目标：%@", .english: "Target: %@"],
+        .diagnosisQuestion: [.simplifiedChinese: "问题：%@", .english: "Question: %@"],
+        .diagnosisEvidenceHeader: [.simplifiedChinese: "== 证据（编号必须在结论里引用）==", .english: "== Evidence (ids must be cited in every conclusion) =="],
+        .diagnosisEvidenceEmpty: [.simplifiedChinese: "（查到了，但没有行）", .english: " (queried, but no rows)"],
+        .diagnosisEvidenceEmptyNote: [.simplifiedChinese: "查到了，但没有行", .english: "queried, but no rows"],
+        .diagnosisEvidenceRows: [.simplifiedChinese: "共 %@ 行", .english: "%@ rows"],
+        .diagnosisEvidenceTruncated: [.simplifiedChinese: "共 %@ 行，这里给了前 %@ 行", .english: "%@ rows; the first %@ are shown here"],
+        .diagnosisEvidenceUnavailable: [.simplifiedChinese: "未取到：%@", .english: "Not obtained: %@"],
+        .diagnosisMissingHeader: [.simplifiedChinese: "== 没有拿到证据（不许对它们下结论）==", .english: "== Evidence we did not obtain (do not draw conclusions from these) =="],
+        .diagnosisMissingLine: [.simplifiedChinese: "· 编号 %@（%@）：%@", .english: "- %@ (%@): %@"],
+        .diagnosisFormatHeader: [.simplifiedChinese: "== 输出格式（逐行，必须遵守）==", .english: "== Output format (one item per line; follow it exactly) =="],
+        .diagnosisFormatConclusion: [.simplifiedChinese: "结论: <一句话> [依据: e1,e2]", .english: "conclusion: <one sentence> [evidence: e1,e2]"],
+        .diagnosisFormatSuggestion: [.simplifiedChinese: "建议: <一条可直接执行的 SQL，可省略>", .english: "suggestion: <one runnable SQL statement, optional>"],
+        .diagnosisTruncatedNotice: [.simplifiedChinese: "\n\n[已截断：完整资料 %@ 字符，这里只给了前 %@ 字符]", .english: "\n\n[Truncated: the full material is %@ characters; only the first %@ are shown here]"],
         .mysqlHostResolveFailed: [.simplifiedChinese: "无法解析主机 %@：%@", .english: "Could not resolve host %@: %@"],
         .mysqlInitFailed: [.simplifiedChinese: "连接建立后初始化失败：%@", .english: "Initialization after connecting failed: %@"],
         .mysqlNoConnectionID: [.simplifiedChinese: "未取得连接号，无法向服务端发送取消（该查询可能仍在运行）", .english: "No connection id was obtained, so the cancel could not be sent (the query may still be running)"],
