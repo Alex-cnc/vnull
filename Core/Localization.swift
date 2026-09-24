@@ -912,6 +912,28 @@ public enum LKey: String, CaseIterable, Sendable {
     case databaseStatsNoScans
     case databaseStatsLoading
     case databaseStatsFailure
+    // Schema 对比与同步面板（FR-DDL-04）
+    case schemaDiffTitle
+    case schemaDiffHint
+    case schemaDiffSource
+    case schemaDiffTarget
+    case schemaDiffDatabase
+    case schemaDiffSchema
+    case schemaDiffAllowDrop
+    case schemaDiffCompare
+    case schemaDiffIdentical
+    case schemaDiffMissingInTarget
+    case schemaDiffExtraInTarget
+    case schemaDiffChanged
+    case schemaDiffSkipped
+    case schemaDiffStatements
+    case schemaDiffNoStatements
+    case schemaDiffCopied
+    case schemaDiffCopy
+    case schemaDiffOpenInTab
+    case schemaDiffFailed
+    case schemaDiffPickConnections
+    case schemaDiffLoading
     case safetyConfirmRun
     case safetyConfirmCancel
 
@@ -1740,6 +1762,27 @@ public enum LocalizedStrings {
         .databaseStatsNoScans: [.simplifiedChinese: "无扫描数据", .english: "No scan data"],
         .databaseStatsLoading: [.simplifiedChinese: "正在采集…", .english: "Collecting…"],
         .databaseStatsFailure: [.simplifiedChinese: "统计失败：%@", .english: "Could not collect statistics: %@"],
+        .schemaDiffTitle: [.simplifiedChinese: "Schema 对比与同步", .english: "Schema diff and sync"],
+        .schemaDiffHint: [.simplifiedChinese: "源 = 期望结构，目标 = 要被同步的库。默认只做加法与安全修改；删除必须显式打开。生成的脚本只会打开在编辑器里，由你确认后再执行。", .english: "Source is the desired structure, target is the database to be synced. By default only additions and safe changes are made; dropping requires an explicit opt-in. The generated script is only opened in the editor — you decide whether to run it."],
+        .schemaDiffSource: [.simplifiedChinese: "期望结构（源）", .english: "Desired structure (source)"],
+        .schemaDiffTarget: [.simplifiedChinese: "目标库", .english: "Target database"],
+        .schemaDiffDatabase: [.simplifiedChinese: "数据库", .english: "Database"],
+        .schemaDiffSchema: [.simplifiedChinese: "模式（Schema）", .english: "Schema"],
+        .schemaDiffAllowDrop: [.simplifiedChinese: "允许删除（DROP，破坏性）", .english: "Allow drops (destructive)"],
+        .schemaDiffCompare: [.simplifiedChinese: "对比", .english: "Compare"],
+        .schemaDiffIdentical: [.simplifiedChinese: "两边结构一致，没有差异", .english: "Both sides are identical — no differences"],
+        .schemaDiffMissingInTarget: [.simplifiedChinese: "目标缺这张表 → 会 CREATE", .english: "Missing in target → will be created"],
+        .schemaDiffExtraInTarget: [.simplifiedChinese: "目标多这张表（默认不动）", .english: "Extra in target (left alone by default)"],
+        .schemaDiffChanged: [.simplifiedChinese: "结构不同", .english: "Structure differs"],
+        .schemaDiffSkipped: [.simplifiedChinese: "因未允许删除而跳过：%d 处", .english: "Skipped because drops are not allowed: %d"],
+        .schemaDiffStatements: [.simplifiedChinese: "将对目标库执行的语句（%d 条）", .english: "Statements to run against the target (%d)"],
+        .schemaDiffNoStatements: [.simplifiedChinese: "没有需要执行的语句", .english: "No statements to run"],
+        .schemaDiffCopied: [.simplifiedChinese: "已复制", .english: "Copied"],
+        .schemaDiffCopy: [.simplifiedChinese: "复制脚本", .english: "Copy script"],
+        .schemaDiffOpenInTab: [.simplifiedChinese: "在新查询页签打开", .english: "Open in a new query tab"],
+        .schemaDiffFailed: [.simplifiedChinese: "对比失败：%@", .english: "Comparison failed: %@"],
+        .schemaDiffPickConnections: [.simplifiedChinese: "请先选好两侧连接（默认已带上当前连接）", .english: "Pick both connections first (the current connection is pre-selected)"],
+        .schemaDiffLoading: [.simplifiedChinese: "正在抓取两侧结构…", .english: "Reading both structures…"],
         .backupRestoreTitle: [.simplifiedChinese: "备份 / 恢复", .english: "Backup / restore"],
         .backupRestoreHint: [.simplifiedChinese: "封装 `pg_dump` / `pg_restore` / `pg_dumpall`：**执行前先比工具与服务端主版本**，不兼容就提前拦下并说明原因与办法", .english: "Wraps pg_dump / pg_restore / pg_dumpall. Tool and server major versions are compared before running; incompatible pairs are stopped early with a reason and a remedy"],
         .backupRestoreKindDump: [.simplifiedChinese: "单库备份", .english: "Dump one database"],

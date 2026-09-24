@@ -30,6 +30,7 @@ enum AppCommandCatalog {
             item("backupRestore", .backupRestoreTitle, "backup restore dump 备份 恢复 导出", "backup restore", .paletteCategoryServer),
             item("connectionSettings", .connectionSettingsTitle, "keepalive heartbeat settings 保活 心跳 连接 设置 间隔", "keepalive connection settings", .paletteCategoryServer),
             item("databaseStats", .databaseStatsTitle, "stats statistics size index cache connections 统计 表大小 索引 缓存 连接数", "database stats size cache hit", .paletteCategoryServer),
+            item("schemaDiff", .schemaDiffTitle, "schema diff compare sync migration 对比 差异 同步 迁移 结构", "schema diff compare sync", .paletteCategoryObject),
             item("routineCandidates", .routineCandidatesTitle, "routine 例行 候选 记忆 重复", "routine candidates", .paletteCategoryAgent),
             item("objectSearch", .objectSearchTitle, "search 搜索 找 对象 表 视图 列 函数", "search objects find", .paletteCategoryObject),
             item("sessions", .commandSessions, "sessions 会话", "server sessions", .paletteCategoryServer),

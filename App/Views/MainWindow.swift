@@ -122,6 +122,11 @@ struct MainWindow: View {
             DatabaseStatsPanel()
                 .environmentObject(appState)
         }
+        // Schema 对比与同步（FR-DDL-04）：两侧结构差异 + 同步脚本。
+        .sheet(isPresented: $appState.isSchemaDiffPresented) {
+            SchemaDiffPanel()
+                .environmentObject(appState)
+        }
         .alert(
             L(.accountUndecidedTitle),
             isPresented: $appState.isAccountNoticePresented

@@ -109,6 +109,10 @@ struct DoyahStudioCommands: Commands {
                 appState.isDatabaseStatsPresented = true
             }
 
+            Button(L(.schemaDiffTitle)) {
+                appState.isSchemaDiffPresented = true
+            }
+
             Divider()
 
             Button(L(.lowerPaneToggle)) {

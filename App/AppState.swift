@@ -204,6 +204,9 @@ final class AppState: ObservableObject {
     /// 「数据库统计」面板（FR-DIAG-04）。
     @Published var isDatabaseStatsPresented = false
 
+    /// 「Schema 对比与同步」面板（FR-DDL-04）。
+    @Published var isSchemaDiffPresented = false
+
     /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
     @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
         id: UserDefaults.standard.string(forKey: ActivityBarItem.storageKey)
@@ -3031,6 +3034,7 @@ final class AppState: ObservableObject {
         case "backupRestore": isBackupRestorePresented = true
         case "connectionSettings": isConnectionSettingsPresented = true
         case "databaseStats": isDatabaseStatsPresented = true
+        case "schemaDiff": isSchemaDiffPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
@@ -3414,6 +3418,88 @@ final class AppState: ObservableObject {
             cacheHit: await run(.cacheHitRate),
             limit: limit
         )
+    }
+
+    // MARK: - Schema 对比与同步（FR-DDL-04 的界面差异视图）
+
+    /// 抓一张 schema 快照（表 + 列）。界面差异视图的两侧各抓一张，差异计算交给 Core 纯函数。
+    ///
+    /// 为什么快照在 App 侧编排而不是 Core：它要**真的连库跑查询**，而 Core 只管纯逻辑。
+    /// 解析仍复用 Core 的 `MetadataService.columnDefinitions`（既有单测），不另写一套。
+    func schemaSnapshot(
+        connectionID: UUID,
+        database: String,
+        schema: String
+    ) async throws -> SchemaSnapshot {
+        guard let configuration = connections.first(where: { $0.id == connectionID }) else {
+            throw AppError.notConnected
+        }
+        return try await captureSnapshot(configuration: configuration, database: database, schema: schema)
+    }
+
+    /// 两侧对比并生成同步脚本：先各抓一张快照，再走 Core 的 `SchemaDiffer.plan`。
+    ///
+    /// `allowsDrop` **默认 false**：需求原文是"默认不动目标库多出来的表"，
+    /// 删除必须由用户显式打开 —— 这里不做任何"聪明"的默认。
+    func schemaDiffPlan(
+        sourceConnectionID: UUID,
+        sourceDatabase: String,
+        targetConnectionID: UUID,
+        targetDatabase: String,
+        schema: String,
+        allowsDrop: Bool
+    ) async throws -> SchemaSyncPlan {
+        guard let sourceConfiguration = connections.first(where: { $0.id == sourceConnectionID }),
+              let targetConfiguration = connections.first(where: { $0.id == targetConnectionID }) else {
+            throw AppError.notConnected
+        }
+        let expected = try await captureSnapshot(
+            configuration: sourceConfiguration,
+            database: sourceDatabase,
+            schema: schema
+        )
+        let actual = try await captureSnapshot(
+            configuration: targetConfiguration,
+            database: targetDatabase,
+            schema: schema
+        )
+        return SchemaDiffer.plan(
+            left: expected,
+            right: actual,
+            allowDrop: allowsDrop,
+            dialect: SQLDialectFactory.make(for: targetConfiguration.dbType)
+        )
+    }
+
+    private func captureSnapshot(
+        configuration: ConnectionConfig,
+        database: String,
+        schema: String
+    ) async throws -> SchemaSnapshot {
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        let service = try await ensureService(for: configuration, database: database)
+
+        let listResult = try await runSingleQuery(
+            dialect.listTablesQuery(database: database, schema: schema),
+            on: service
+        )
+        let names = listResult.rows
+            .compactMap { row -> String? in row.indices.contains(0) ? row[0] : nil }
+            .sorted()
+
+        var tables: [TableSnapshot] = []
+        for name in names {
+            guard let structureQuery = dialect.tableStructureQuery(table: name, schema: schema) else { continue }
+            let structure = try await runSingleQuery(structureQuery, on: service)
+            tables.append(
+                TableSnapshot(
+                    schema: schema,
+                    name: name,
+                    columns: MetadataService.columnDefinitions(from: structure)
+                )
+            )
+        }
+        return SchemaSnapshot(label: "\(database).\(schema)", tables: tables)
     }
 
     private func makeMetadataService(
