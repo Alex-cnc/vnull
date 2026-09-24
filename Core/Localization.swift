@@ -181,6 +181,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case terminalCursorStyle
     case terminalCursorBlink
     case terminalCursorHint
+    case terminalSandboxNotice
     case terminalCursorBlock
     case terminalCursorBar
     case terminalCursorUnderline
@@ -1530,6 +1531,7 @@ public enum LocalizedStrings {
         .terminalCursorStyle: [.simplifiedChinese: "光标形状", .english: "Cursor shape"],
         .terminalCursorBlink: [.simplifiedChinese: "闪烁", .english: "Blink"],
         .terminalCursorHint: [.simplifiedChinese: "前台程序（vim 等）用 DECSCUSR 要求过形状时以它为准；这里设的是默认，只影响没提要求的程序。", .english: "When a foreground program (vim and friends) requests a shape with DECSCUSR, that wins. This setting is the default for programs that do not ask."],
+        .terminalSandboxNotice: [.simplifiedChinese: "⚠️ 这个构建跑在 macOS 沙箱里：终端里的 shell 也被关进容器 ——\n   ① 看不到你的 /Users 目录（$HOME 变成了 App 容器）；\n   ② PATH 被裁剪（dsh-tui / psql / brew 这类会提示 command not found）；\n   ③ 作业控制（^C）在沙箱下也不可靠。\n   终端实现本身与沙箱无关，去掉沙箱即全功能。要完整终端请用非沙箱构建：\n   DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh\n   （这一条属 SRS 的 R-18 / T-38 分发路线。）", .english: "Warning: this build runs inside the macOS sandbox, so the shell in this terminal is confined too:\n   it cannot see your /Users directory (HOME is the app container), PATH is trimmed\n   (dsh-tui / psql / brew report “command not found”), and job control (^C) is unreliable.\n   The terminal itself is not the problem — build without the sandbox for a full terminal:\n   DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh\n   (Tracked as R-18 / T-38 in the SRS.)"],
         .terminalCursorBlock: [.simplifiedChinese: "块状", .english: "Block"],
         .terminalCursorBar: [.simplifiedChinese: "竖线", .english: "Bar"],
         .terminalCursorUnderline: [.simplifiedChinese: "下划线", .english: "Underline"],

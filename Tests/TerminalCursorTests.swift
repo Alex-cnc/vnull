@@ -146,3 +146,46 @@ final class TerminalCursorTests: XCTestCase {
         XCTAssertTrue(model.visibleLines(offset: 0, height: 3).count == 3)
     }
 }
+
+/// 沙箱构建里的终端提示（FR-EDIT-29 / R-18）。
+///
+/// 这是用户实际会撞上的一件事：沙箱构建里 shell 看不到 /Users、PATH 被裁剪，
+/// 于是任何命令都"找不到" —— 不说清楚的话，用户只会认为终端坏了。
+final class TerminalStartupHintTests: XCTestCase {
+
+    func testSandboxIsDetectedByContainerID() {
+        XCTAssertTrue(TerminalStartupHint.isSandboxed(environment: [
+            "APP_SANDBOX_CONTAINER_ID": "studio.doyah.DoyahStudio",
+            "HOME": "/Users/someone",
+        ]))
+    }
+
+    func testSandboxIsDetectedByContainerHome() {
+        XCTAssertTrue(TerminalStartupHint.isSandboxed(environment: [
+            "HOME": "/Users/someone/Library/Containers/studio.doyah.DoyahStudio/Data",
+        ]), "变量被清掉时，HOME 落在容器里也是证据")
+    }
+
+    func testNormalEnvironmentHasNoNotice() {
+        let environment = ["HOME": "/Users/someone", "PATH": "/opt/homebrew/bin:/usr/bin"]
+        XCTAssertFalse(TerminalStartupHint.isSandboxed(environment: environment))
+        XCTAssertNil(TerminalStartupHint.sandboxNotice(environment: environment))
+    }
+
+    func testNoticeNamesTheThreeConcreteSymptomsAndTheWayOut() throws {
+        let notice = try XCTUnwrap(TerminalStartupHint.sandboxNotice(environment: [
+            "APP_SANDBOX_CONTAINER_ID": "studio.doyah.DoyahStudio",
+        ]))
+        XCTAssertTrue(notice.contains("沙箱"), notice)
+        XCTAssertTrue(notice.contains("dsh-tui"), "要点名「命令找不到」这个直接症状")
+        XCTAssertTrue(notice.contains("DOYAH_NO_SANDBOX=1"), "要给出路（怎么拿到完整终端）")
+        XCTAssertTrue(notice.contains("R-18"), "要能追到已登记的阻塞项")
+
+        let english = try XCTUnwrap(TerminalStartupHint.sandboxNotice(
+            environment: ["APP_SANDBOX_CONTAINER_ID": "x"],
+            language: .english
+        ))
+        XCTAssertTrue(english.contains("sandbox"))
+        XCTAssertTrue(english.contains("DOYAH_NO_SANDBOX=1"))
+    }
+}
