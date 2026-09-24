@@ -155,3 +155,199 @@ final class SSHTunnelTests: XCTestCase {
     }
 
 }
+
+/// 隧道口令的存储键与 `ssh` 可执行文件解析（FR-CONN-18）。
+///
+/// 派生规则是**持久化格式的一部分**：改了它，用户已保存的隧道口令就读不出来 —— 所以要钉死。
+final class SSHTunnelSecretsTests: XCTestCase {
+
+    func testDerivedKeyIsStableAndDistinctFromConnectionID() {
+        let connection = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let first = SSHTunnelSecrets.secretKey(for: connection)
+        let second = SSHTunnelSecrets.secretKey(for: connection)
+        XCTAssertEqual(first, second, "同一连接必须每次都算出同一个键")
+        XCTAssertNotEqual(first, connection, "不能等于连接自己的 ID —— 那会覆盖数据库口令")
+    }
+
+    func testDifferentConnectionsGetDifferentKeys() {
+        let a = SSHTunnelSecrets.secretKey(for: UUID())
+        let b = SSHTunnelSecrets.secretKey(for: UUID())
+        XCTAssertNotEqual(a, b)
+    }
+
+    /// 具体值钉死：这是**跨版本兼容**的锚点（改规则 = 已保存的口令全部失效）。
+    func testDerivedKeyValueIsPinned() {
+        let connection = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+        XCTAssertEqual(
+            SSHTunnelSecrets.secretKey(for: connection).uuidString,
+            "53534854-756E-6E65-6C2D-446F79616821"
+        )
+    }
+
+    func testExecutableDefaultsToSystemSSHAndHonoursOverride() {
+        XCTAssertEqual(SSHTunnelSecrets.executable(environment: [:]), "/usr/bin/ssh")
+        XCTAssertEqual(
+            SSHTunnelSecrets.executable(environment: ["DOYAH_SSH_BINARY": "/tmp/stub-ssh"]),
+            "/tmp/stub-ssh"
+        )
+        XCTAssertEqual(SSHTunnelSecrets.executable(environment: ["DOYAH_SSH_BINARY": ""]), "/usr/bin/ssh")
+    }
+
+    // MARK: - 连接目标改写（界面接线的那一步，最容易静默写错）
+
+    private func sampleConfiguration() -> ConnectionConfig {
+        ConnectionConfig(
+            name: "生产只读",
+            dbType: .postgresql,
+            host: "10.20.30.40",
+            port: 5432,
+            database: "analytics",
+            username: "report",
+            sslMode: .prefer,
+            timeout: 9,
+            environment: .production,
+            colorTag: .amber,
+            isReadOnly: true,
+            startupSQL: "SET statement_timeout = '5s'",
+            group: "内网",
+            sshTunnel: SSHTunnelConfig(host: "jump.example.com", username: "ops")
+        )
+    }
+
+    /// 没配隧道（`localPort == nil`）时必须**一个字段都不变** —— 直连是这个产品的默认路径。
+    func testRewriteWithoutTunnelReturnsOriginal() {
+        let original = sampleConfiguration()
+        let rewritten = SSHTunnelEndpoint.rewrite(original, localPort: nil)
+        XCTAssertEqual(rewritten, original)
+        XCTAssertEqual(rewritten.host, "10.20.30.40")
+        XCTAssertEqual(rewritten.port, 5432)
+    }
+
+    /// 配了隧道：只换 host/port，其余（库名、用户、只读、启动 SQL、分组、隧道参数本身）全部保留。
+    func testRewriteWithTunnelOnlyChangesEndpoint() {
+        let original = sampleConfiguration()
+        let rewritten = SSHTunnelEndpoint.rewrite(original, localPort: 55_777)
+
+        XCTAssertEqual(rewritten.host, "127.0.0.1")
+        XCTAssertEqual(rewritten.port, 55_777)
+        // 不改写本机地址到配置里：原对象必须原封不动（值类型，改写只作用于副本）。
+        XCTAssertEqual(original.host, "10.20.30.40")
+        XCTAssertEqual(original.port, 5432)
+
+        XCTAssertEqual(rewritten.name, original.name)
+        XCTAssertEqual(rewritten.database, "analytics")
+        XCTAssertEqual(rewritten.username, "report")
+        XCTAssertEqual(rewritten.dbType, original.dbType)
+        XCTAssertEqual(rewritten.sslMode, original.sslMode)
+        XCTAssertEqual(rewritten.timeout, original.timeout)
+        XCTAssertEqual(rewritten.environment, .production)
+        XCTAssertEqual(rewritten.colorTag, .amber)
+        XCTAssertTrue(rewritten.isReadOnly)
+        XCTAssertEqual(rewritten.startupSQL, original.startupSQL)
+        XCTAssertEqual(rewritten.group, "内网")
+        // 隧道参数要跟着走：丢了这个，下次保存就把隧道配置抹掉了。
+        XCTAssertEqual(rewritten.sshTunnel, original.sshTunnel)
+        XCTAssertEqual(rewritten.id, original.id)
+    }
+
+    /// 隧道只在本机回环监听 —— 绝不能是 `0.0.0.0`（那等于把内网库暴露给整个局域网）。
+    func testLoopbackHostIsNotWildcard() {
+        XCTAssertEqual(SSHTunnelEndpoint.loopbackHost, "127.0.0.1")
+        XCTAssertNotEqual(SSHTunnelEndpoint.loopbackHost, "0.0.0.0")
+    }
+
+    // MARK: - 隧道参数的合法性并进 ConnectionConfig.isValid（单一事实来源）
+
+    func testConfigurationIsValidRequiresTunnelFieldsWhenEnabled() {
+        var configuration = sampleConfiguration()
+        configuration.sshTunnel = SSHTunnelConfig(isEnabled: true, host: "", username: "")
+        XCTAssertFalse(configuration.isValid, "启用隧道却缺跳板机地址，不该判为可保存")
+    }
+
+    func testDisabledTunnelDoesNotBlockValidity() {
+        var configuration = sampleConfiguration()
+        configuration.sshTunnel = SSHTunnelConfig(isEnabled: false, host: "", username: "")
+        XCTAssertTrue(configuration.isValid, "关掉的隧道不该拦住直连")
+    }
+
+    func testMissingTunnelConfigurationKeepsOldBehaviour() {
+        var configuration = sampleConfiguration()
+        configuration.sshTunnel = nil
+        XCTAssertTrue(configuration.isValid)
+    }
+
+    // MARK: - 隧道配置的持久化（界面把它写进 connections.json，丢字段 = 隧道静默消失）
+
+    /// 三种认证方式都要能原样存取 —— 存不住的症状是"配好了，重启之后隧道没了"。
+    func testTunnelConfigSurvivesJSONRoundTrip() throws {
+        let variants: [SSHTunnelConfig.Authentication] = [
+            .agent,
+            .password,
+            .privateKey(path: "~/.ssh/id_ed25519", isEncrypted: true)
+        ]
+        for authentication in variants {
+            var configuration = sampleConfiguration()
+            configuration.sshTunnel = SSHTunnelConfig(
+                isEnabled: true,
+                host: "jump.example.com",
+                port: 2222,
+                username: "ops",
+                authentication: authentication,
+                hostKeyPolicy: .strict,
+                connectTimeoutSeconds: 42
+            )
+
+            let data = try JSONEncoder().encode(configuration)
+            let restored = try JSONDecoder().decode(ConnectionConfig.self, from: data)
+
+            XCTAssertEqual(restored.sshTunnel, configuration.sshTunnel, "认证方式 \(authentication) 存取后不一致")
+            XCTAssertEqual(restored.sshTunnel?.hostKeyPolicy, .strict)
+            XCTAssertEqual(restored.sshTunnel?.port, 2222)
+            XCTAssertEqual(restored.sshTunnel?.connectTimeoutSeconds, 42)
+        }
+    }
+
+    /// **配置文件里不许出现口令字段**：口令存 `SecretStore`（NFR-SEC-01），
+    /// 配置结构里连字段都不该有 —— 这条用"编码后的 JSON 里没有密码键"来钉。
+    func testTunnelConfigurationHoldsNoSecretInJSON() throws {
+        var configuration = sampleConfiguration()
+        configuration.sshTunnel = SSHTunnelConfig(
+            isEnabled: true,
+            host: "jump.example.com",
+            username: "ops",
+            authentication: .password
+        )
+        let data = try JSONEncoder().encode(configuration)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let tunnel = try XCTUnwrap(json["sshTunnel"] as? [String: Any])
+        XCTAssertNil(tunnel["password"], "隧道配置里不该有口令字段")
+        XCTAssertNil(tunnel["secret"])
+        // 允许出现的键就是这几个（多了说明有人往里塞了别的东西）。
+        XCTAssertEqual(Set(tunnel.keys), Set([
+            "isEnabled", "host", "port", "username", "authentication", "hostKeyPolicy",
+            "connectTimeoutSeconds"
+        ]))
+    }
+
+    /// 老配置（没有 `sshTunnel` 这个键）必须照常读出为"没有隧道"，不触发迁移、不报错。
+    func testLegacyConfigurationWithoutTunnelDecodes() throws {
+        let legacy = """
+        {
+          "id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+          "name": "老连接",
+          "dbType": "postgresql",
+          "host": "10.0.0.5",
+          "port": 5432,
+          "database": "postgres",
+          "username": "postgres",
+          "sslMode": "prefer",
+          "timeout": 5,
+          "schemaVersion": 1
+        }
+        """
+        let decoded = try JSONDecoder().decode(ConnectionConfig.self, from: Data(legacy.utf8))
+        XCTAssertNil(decoded.sshTunnel)
+        XCTAssertEqual(decoded.host, "10.0.0.5")
+        XCTAssertTrue(decoded.isValid)
+    }
+}

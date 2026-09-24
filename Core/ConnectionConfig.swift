@@ -35,6 +35,13 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
     /// （否则会出现一个名字是空格的诡异分组）。
     public var group: String?
 
+    /// SSH 隧道（FR-CONN-18）。`nil` = 直连 —— **默认就是直连**，不给已有连接凭空加一层跳板。
+    ///
+    /// 存的是"怎么连跳板机"，**口令 / 私钥口令不在这里**（走 `SecretStore`，键由
+    /// `SSHTunnelSecrets.secretKey(for:)` 派生）。老配置文件里没有这个字段，解码后就是 `nil`，
+    /// 因此不需要 schemaVersion 迁移。
+    public var sshTunnel: SSHTunnelConfig?
+
     public init(
         id: UUID = UUID(),
         name: String = "",
@@ -50,7 +57,8 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         colorTag: CategoricalTone? = nil,
         isReadOnly: Bool = false,
         startupSQL: String? = nil,
-        group: String? = nil
+        group: String? = nil,
+        sshTunnel: SSHTunnelConfig? = nil
     ) {
         self.id = id
         self.name = name
@@ -67,6 +75,7 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
         self.isReadOnly = isReadOnly
         self.startupSQL = startupSQL
         self.group = group
+        self.sshTunnel = sshTunnel
     }
 
     /// 归一化后的组名：空 / 纯空白 → `nil`（未分组）。
@@ -96,10 +105,15 @@ public struct ConnectionConfig: Codable, Identifiable, Hashable, Sendable {
     }
 
     public var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        // 隧道参数的合法性**并进同一条规则**：表单允许保存、模型判为非法（或反过来）
+        // 是两套规则漂移的经典来源（FR-CONN-06 / R-10 要求单一事实来源）。
+        // 没配隧道、或隧道被关掉时，这条判定是恒真的 —— 直连行为一字未变。
+        let tunnelIsValid = sshTunnel.map { !$0.isEnabled || $0.isValid } ?? true
+        return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         port > 0 && port <= 65535 &&
-        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        tunnelIsValid
     }
 
     public var endpointDescription: String {

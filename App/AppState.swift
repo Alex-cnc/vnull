@@ -920,6 +920,9 @@ final class AppState: ObservableObject {
     @Published private(set) var transactionSessions: [ServiceKey: TransactionSession] = [:]
 
     private var services: [ServiceKey: any DatabaseService] = [:]
+    /// SSH 隧道（FR-CONN-18）：按连接缓存 —— 一条隧道可以被该连接的多个库共用，
+    /// 断开连接时统一收掉（见 `invalidateService`）。
+    private var sshTunnels: [UUID: SSHTunnelProcess] = [:]
     private var serverInfos: [UUID: ServerInfo] = [:]
     private var connectTasks: [ServiceKey: Task<(any DatabaseService, ServerInfo), Error>] = [:]
     private var executionTasks: [UUID: Task<Void, Never>] = [:]
@@ -1007,9 +1010,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    func addConnection(_ configuration: ConnectionConfig, password: String) async {
+    func addConnection(_ configuration: ConnectionConfig, password: String, sshPassword: String? = nil) async {
         do {
             try secretStore.setPassword(password, for: configuration.id)
+            try applySSHPassword(sshPassword, for: configuration.id)
             // 与 deleteConnection 同理：内存变更一次做完再落盘，
             // 否则 await 会把它拆成两轮渲染（列表先更新、选中项再跳）。
             connections.append(configuration)
@@ -1020,11 +1024,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    func updateConnection(_ configuration: ConnectionConfig, password: String?) async {
+    func updateConnection(_ configuration: ConnectionConfig, password: String?, sshPassword: String? = nil) async {
         do {
             if let password, !password.isEmpty {
                 try secretStore.setPassword(password, for: configuration.id)
             }
+            try applySSHPassword(sshPassword, for: configuration.id)
 
             invalidateService(for: configuration.id)
 
@@ -1720,6 +1725,9 @@ final class AppState: ObservableObject {
     func deleteConnection(_ configuration: ConnectionConfig) async {
         do {
             try secretStore.deletePassword(for: configuration.id)
+            // 隧道口令是**另一个键**（由连接 ID 派生，见 `SSHTunnelSecrets`）：不清就会在
+            // 钥匙串里留下一条谁也认不出来的孤儿秘密。
+            try? secretStore.deletePassword(for: SSHTunnelSecrets.secretKey(for: configuration.id))
             invalidateService(for: configuration.id)
 
             // 内存里的两处变更**必须在同一次同步执行里做完**，落盘推到它们之后。
@@ -1736,6 +1744,22 @@ final class AppState: ObservableObject {
             try await store.save(connections)
         } catch {
             errorMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 把表单里的 SSH 口令写进（或清出）钥匙串。
+    ///
+    /// 三种输入对应三种动作，语义写死在注释里，免得以后有人"顺手简化"：
+    ///   · `nil`  → **不改动**已存的口令（编辑已有连接时留空就是这个）；
+    ///   · `""`   → 明确清除（换成 agent / 普通私钥后，旧口令不该再留着）；
+    ///   · 非空   → 写入。
+    private func applySSHPassword(_ sshPassword: String?, for connectionID: UUID) throws {
+        guard let sshPassword else { return }
+        let key = SSHTunnelSecrets.secretKey(for: connectionID)
+        if sshPassword.isEmpty {
+            try secretStore.deletePassword(for: key)
+        } else {
+            try secretStore.setPassword(sshPassword, for: key)
         }
     }
 
@@ -5577,6 +5601,10 @@ final class AppState: ObservableObject {
             return service
         }
 
+        // FR-CONN-18：配了 SSH 隧道就先把它拉起来，再把连接指向本机转发端口。
+        // **直连路径一行没改** —— 没配隧道的连接走到这里就是个 nil。
+        let tunnelEndpoint = try await ensureTunnel(for: configuration)
+
         // 多个页签 / 多个树节点可能几乎同时触发；复用同一个连接 Task，避免重复建立连接。
         let task: Task<(any DatabaseService, ServerInfo), Error>
         if let existing = connectTasks[key] {
@@ -5593,7 +5621,7 @@ final class AppState: ObservableObject {
                 $0.searchedLocations().map(\.path).joined(separator: "、")
             }
 
-            var derived = configuration
+            var derived = SSHTunnelEndpoint.rewrite(configuration, localPort: tunnelEndpoint?.port)
             derived.database = targetDatabase
 
             let newTask = Task<(any DatabaseService, ServerInfo), Error> {
@@ -5667,7 +5695,71 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 按需建/复用 SSH 隧道（FR-CONN-18）；没配隧道时返回 `nil`。
+    ///
+    /// 返回的是**改写后的连接目标**（本机转发端口）——调用方据此把连接指过去。
+    /// 隧道按连接缓存：同一连接的多个库共用一条隧道（跳板机通常只允许少量并发通道）。
+    private func ensureTunnel(for configuration: ConnectionConfig) async throws -> (host: String, port: Int)? {
+        guard let tunnelConfig = configuration.sshTunnel, tunnelConfig.isEnabled else { return nil }
+
+        if let existing = sshTunnels[configuration.id] {
+            if case .ready(let port) = existing.currentState {
+                return (SSHTunnelEndpoint.loopbackHost, port)
+            }
+            // 已经死掉的隧道**不能留在表里**：既占着一个本地端口，又会让下一次连接
+            // 悄悄走一条不存在的转发。收掉它，按新参数重来。
+            existing.stop()
+            sshTunnels.removeValue(forKey: configuration.id)
+        }
+
+        guard let localPort = LocalPort.free() else {
+            throw AppError.invalidConfiguration(L(.sshTunnelNoFreePort))
+        }
+
+        // 口令 / 私钥口令与数据库口令**分开存**（键由连接 ID 派生，见 `SSHTunnelSecrets`）。
+        let storedSecret = (try? secretStore.password(for: SSHTunnelSecrets.secretKey(for: configuration.id))) ?? nil
+        let secret = (storedSecret?.isEmpty == false) ? storedSecret : nil
+
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let knownHosts = base
+            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent("known_hosts", isDirectory: false)
+
+        // 口令（或带口令的私钥）才需要把口令喂给 `ssh`；agent 模式没有口令可喂。
+        let needsPassword: Bool
+        switch tunnelConfig.authentication {
+        case .password: needsPassword = true
+        case .privateKey(_, let isEncrypted): needsPassword = isEncrypted
+        case .agent: needsPassword = false
+        }
+
+        let tunnel = SSHTunnelProcess(
+            config: tunnelConfig,
+            target: SSHTunnelTarget(host: configuration.host, port: configuration.port),
+            localPort: localPort,
+            knownHostsPath: knownHosts.path,
+            password: needsPassword ? secret : nil,
+            executable: SSHTunnelSecrets.executable(),
+            isPortOpen: { host, port in LocalPort.isOpen(host: host, port: port) }
+        )
+        do {
+            _ = try await tunnel.start()
+        } catch {
+            // 隧道起不来就**别继续连**：直接连数据库会给出误导性的网络错误。
+            errorMessage = L(.sshTunnelFailed, tunnelConfig.displayName, error.localizedDescription)
+            throw error
+        }
+        sshTunnels[configuration.id] = tunnel
+        statusMessage = L(.sshTunnelReady, String(localPort))
+        return (SSHTunnelEndpoint.loopbackHost, localPort)
+    }
+
     private func invalidateService(for connectionID: UUID) {
+        // 隧道跟着连接一起收：留着它只是占一个本地端口 + 一条跳板机通道。
+        if let tunnel = sshTunnels.removeValue(forKey: connectionID) {
+            tunnel.stop()
+        }
         for key in Array(connectTasks.keys) where key.connectionID == connectionID {
             connectTasks[key]?.cancel()
             connectTasks[key] = nil

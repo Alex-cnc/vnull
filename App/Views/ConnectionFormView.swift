@@ -7,7 +7,11 @@ struct ConnectionFormView: View {
     let configuration: ConnectionConfig?
     /// 现有连接（用于"已有分组"提示）—— 由调用方传入，表单不去认识 AppState。
     private let existingConnections: [ConnectionConfig]
-    let onSave: (ConnectionConfig, String) -> Void
+    /// 保存回调：配置 + 数据库口令 + SSH 口令（没有隧道或口令留空时为 `nil`）。
+    ///
+    /// 为什么把 SSH 口令单独穿出来而不是塞进 `ConnectionConfig`：口令**不落配置文件**
+    /// （NFR-SEC-01），配置结构里连字段都不该有 —— 存进 `SecretStore` 的动作由 AppState 做。
+    let onSave: (ConnectionConfig, String, String?) -> Void
 
     @State private var name: String
     @State private var dbType: DatabaseType
@@ -33,10 +37,40 @@ struct ConnectionFormView: View {
     private var existingGroups: [String] { ConnectionGrouping.groupNames(existingConnections) }
     @State private var isTesting: Bool = false
 
+    // SSH 隧道（FR-CONN-18）：跳板机参数 + 单独的"测试隧道"状态。
+    @State private var sshEnabled: Bool
+    @State private var sshHost: String
+    @State private var sshPort: String
+    @State private var sshUsername: String
+    @State private var sshAuth: SSHAuthChoice
+    @State private var sshKeyPath: String
+    @State private var sshKeyEncrypted: Bool
+    @State private var sshHostKeyPolicy: SSHTunnelConfig.HostKeyPolicy
+    @State private var sshTimeout: Int
+    @State private var sshPassword: String = ""
+    @State private var sshTestMessage: String?
+    @State private var sshTestIsError = false
+    @State private var isTestingTunnel = false
+
+    /// 认证方式在界面上的三种选择（Core 的 `Authentication` 带关联值，不适合直接绑 Picker）。
+    enum SSHAuthChoice: Hashable, CaseIterable {
+        case agent
+        case password
+        case privateKey
+
+        var labelKey: LKey {
+            switch self {
+            case .agent: return .sshAuthAgent
+            case .password: return .sshAuthPassword
+            case .privateKey: return .sshAuthPrivateKey
+            }
+        }
+    }
+
     init(
         configuration: ConnectionConfig?,
         existingConnections: [ConnectionConfig] = [],
-        onSave: @escaping (ConnectionConfig, String) -> Void
+        onSave: @escaping (ConnectionConfig, String, String?) -> Void
     ) {
         self.configuration = configuration
         self.existingConnections = existingConnections
@@ -56,7 +90,30 @@ struct ConnectionFormView: View {
         _colorTag = State(initialValue: configuration?.colorTag)
         _isReadOnly = State(initialValue: configuration?.isReadOnly ?? false)
         _startupSQL = State(initialValue: configuration?.startupSQL ?? "")
-        _group = State(initialValue: configuration?.group ?? "")    }
+        _group = State(initialValue: configuration?.group ?? "")
+
+        let tunnel = configuration?.sshTunnel
+        _sshEnabled = State(initialValue: tunnel?.isEnabled ?? false)
+        _sshHost = State(initialValue: tunnel?.host ?? "")
+        _sshPort = State(initialValue: String(tunnel?.port ?? SSHTunnelConfig.defaultPort))
+        _sshUsername = State(initialValue: tunnel?.username ?? "")
+        _sshHostKeyPolicy = State(initialValue: tunnel?.hostKeyPolicy ?? .acceptNew)
+        _sshTimeout = State(initialValue: tunnel?.connectTimeoutSeconds ?? SSHTunnelConfig.defaultTimeoutSeconds)
+        switch tunnel?.authentication {
+        case .password:
+            _sshAuth = State(initialValue: .password)
+            _sshKeyPath = State(initialValue: "")
+            _sshKeyEncrypted = State(initialValue: false)
+        case .privateKey(let path, let isEncrypted):
+            _sshAuth = State(initialValue: .privateKey)
+            _sshKeyPath = State(initialValue: path)
+            _sshKeyEncrypted = State(initialValue: isEncrypted)
+        default:
+            _sshAuth = State(initialValue: .agent)
+            _sshKeyPath = State(initialValue: "")
+            _sshKeyEncrypted = State(initialValue: false)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -199,6 +256,8 @@ struct ConnectionFormView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                sshSection
+
                 Picker(L(.connectionFormSSLMode), selection: $sslMode) {
                     ForEach(SSLMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -220,7 +279,7 @@ struct ConnectionFormView: View {
                 Spacer()
 
                 Button(L(.commonSave)) {
-                    onSave(makeConfiguration(), password)
+                    onSave(makeConfiguration(), password, resolvedSSHPassword)
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!isValid)
@@ -228,6 +287,267 @@ struct ConnectionFormView: View {
             .padding()
         }
         .frame(width: 520, height: 600)
+    }
+
+    // MARK: - SSH 隧道（FR-CONN-18）
+
+    /// 表单里的 SSH 隧道区块。
+    ///
+    /// 三种认证方式的**默认是 `ssh-agent`**：私钥不出代理、我们既不读私钥也不存口令，
+    /// 是三种里最安全的一种；口令模式要显式选。
+    @ViewBuilder
+    private var sshSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.s) {
+            Toggle(L(.sshEnableLabel), isOn: $sshEnabled)
+
+            if sshEnabled {
+                Text(L(.sshSectionSubtitle))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if isSandboxed {
+                    Text(L(.sshSandboxNotice))
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.warning))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: Spacing.m) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshHostLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        TextField("", text: $sshHost)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshPortLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        TextField("", text: $sshPort)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                    }
+                }
+
+                HStack(spacing: Spacing.m) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshUserLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        TextField("", text: $sshUsername)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshAuthLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        Picker("", selection: $sshAuth) {
+                            ForEach(SSHAuthChoice.allCases, id: \.self) { choice in
+                                Text(L(choice.labelKey)).tag(choice)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 140)
+                    }
+                }
+
+                if sshAuth == .privateKey {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshKeyPathLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        TextField(L(.sshKeyPathPlaceholder), text: $sshKeyPath)
+                            .textFieldStyle(.roundedBorder)
+                        Toggle(L(.sshKeyEncryptedLabel), isOn: $sshKeyEncrypted)
+                    }
+                }
+
+                if sshAuth == .password || (sshAuth == .privateKey && sshKeyEncrypted) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshPasswordLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        SecureASCIIField(
+                            text: $sshPassword,
+                            placeholder: configuration == nil ? L(.sshPasswordLabel) : L(.sshPasswordPlaceholder)
+                        )
+                        .frame(height: 22)
+                        Text(L(.sshPasswordKeepHint))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                HStack(spacing: Spacing.m) {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(L(.sshHostKeyLabel))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                        Picker("", selection: $sshHostKeyPolicy) {
+                            Text(L(.sshHostKeyAcceptNew)).tag(SSHTunnelConfig.HostKeyPolicy.acceptNew)
+                            Text(L(.sshHostKeyStrict)).tag(SSHTunnelConfig.HostKeyPolicy.strict)
+                        }
+                        .labelsHidden()
+                        .frame(width: 260)
+                    }
+                    Spacer()
+                }
+                Text(L(.sshHostKeyHint))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Stepper(L(.sshTimeoutLabel, sshTimeout), value: $sshTimeout, in: 1...120)
+
+                // 界面层的参数问题：**逐条显示**（Core 给的是枚举，文案在这里）。
+                ForEach(sshIssueMessages, id: \.self) { message in
+                    Text(message)
+                        .font(Theme.font(.caption))
+                        .foregroundStyle(Theme.status(.danger))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: Spacing.s) {
+                    Button(isTestingTunnel ? L(.sshTestRunning) : L(.sshTestButton)) {
+                        testTunnel()
+                    }
+                    .disabled(isTestingTunnel || !sshIssueMessages.isEmpty)
+                    if let sshTestMessage {
+                        Text(sshTestMessage)
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(sshTestIsError ? Theme.status(.danger) : Theme.text(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 当前是不是跑在 macOS 沙箱里。
+    ///
+    /// 沙箱不允许起 `ssh` 子进程，隧道必然失败 —— 提前说清楚，别让用户去查跳板机。
+    /// 这个环境变量是 App Store 沙箱进程的标配标记（`TerminalStartupHint` 用的是同源依据）。
+    private var isSandboxed: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    /// 隧道参数的问题清单（文案化）。
+    /// 注意顺序与 Core `issues()` 一致 —— 用户按字段从上往下修就能清空。
+    private var sshIssueMessages: [String] {
+        guard sshEnabled else { return [] }
+        return makeSSHTunnelConfig().issues().map { issue in
+            switch issue {
+            case .missingHost: return L(.sshIssueMissingHost)
+            case .missingUsername: return L(.sshIssueMissingUsername)
+            case .invalidPort: return L(.sshIssueInvalidPort)
+            case .missingPrivateKeyPath: return L(.sshIssueMissingPrivateKeyPath)
+            case .invalidTimeout: return L(.sshIssueInvalidTimeout)
+            }
+        }
+    }
+
+    /// 表单 → Core 配置。关掉开关就返回 `nil`（配置里不留半个隧道）。
+    private func makeSSHTunnelConfig() -> SSHTunnelConfig {
+        SSHTunnelConfig(
+            isEnabled: sshEnabled,
+            host: sshHost.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: Int(sshPort.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0,
+            username: sshUsername.trimmingCharacters(in: .whitespacesAndNewlines),
+            authentication: {
+                switch sshAuth {
+                case .agent: return .agent
+                case .password: return .password
+                case .privateKey:
+                    return .privateKey(
+                        path: sshKeyPath.trimmingCharacters(in: .whitespacesAndNewlines),
+                        isEncrypted: sshKeyEncrypted
+                    )
+                }
+            }(),
+            hostKeyPolicy: sshHostKeyPolicy,
+            connectTimeoutSeconds: sshTimeout
+        )
+    }
+
+    /// 本次保存要写进钥匙串的 SSH 口令。
+    ///
+    /// 编辑已有连接时留空 = **不改动已存的口令**（与数据库口令同一套语义）；
+    /// 换了认证方式（不再用口令）时返回空串，由 AppState 删掉旧口令，免得留个用不上的秘密。
+    private var resolvedSSHPassword: String? {
+        guard sshEnabled else { return "" }
+        switch sshAuth {
+        case .agent:
+            return ""
+        case .password, .privateKey:
+            if sshPassword.isEmpty { return configuration == nil ? "" : nil }
+            return sshPassword
+        }
+    }
+
+    /// 只测隧道：起一条 `ssh -L`，起来后**真的连一下本机转发端口**（连得通说明
+    /// 跳板机→数据库那一段也通），然后立刻收掉。不碰数据库连接、不改任何状态。
+    private func testTunnel() {
+        let tunnelConfig = makeSSHTunnelConfig()
+        let target = SSHTunnelTarget(
+            host: host.trimmingCharacters(in: .whitespacesAndNewlines),
+            port: Int(port.trimmingCharacters(in: .whitespacesAndNewlines)) ?? dbType.defaultPort
+        )
+        let secret = sshPassword.isEmpty ? nil : sshPassword
+        isTestingTunnel = true
+        sshTestIsError = false
+        sshTestMessage = L(.sshTestRunning)
+
+        Task { @MainActor in
+            defer { isTestingTunnel = false }
+            guard let localPort = LocalPort.free() else {
+                sshTestIsError = true
+                sshTestMessage = L(.sshTestFailed, L(.sshTunnelNoFreePort))
+                return
+            }
+            let knownHosts = Self.knownHostsPath()
+            let tunnel = SSHTunnelProcess(
+                config: tunnelConfig,
+                target: target,
+                localPort: localPort,
+                knownHostsPath: knownHosts,
+                password: secret,
+                executable: SSHTunnelSecrets.executable(),
+                isPortOpen: { host, port in LocalPort.isOpen(host: host, port: port) }
+            )
+            do {
+                _ = try await tunnel.start()
+                // 隧道就绪 ≠ 目标可达：再连一次本机转发端口，把 `ssh → 跳板机 → 数据库` 整条走通。
+                let reachable = LocalPort.isOpen(host: "127.0.0.1", port: localPort)
+                tunnel.stop()
+                if reachable {
+                    sshTestMessage = L(.sshTestSucceeded, String(localPort))
+                } else {
+                    sshTestIsError = true
+                    sshTestMessage = L(
+                        .sshTestTargetUnreachable,
+                        target.host,
+                        String(target.port)
+                    )
+                }
+            } catch {
+                tunnel.stop()
+                sshTestIsError = true
+                sshTestMessage = L(.sshTestFailed, error.localizedDescription)
+            }
+        }
+    }
+
+    /// 我们自己的 known_hosts 路径（与 `AppState.ensureTunnel` 保持一致）。
+    private static func knownHostsPath() -> String {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return base
+            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent("known_hosts", isDirectory: false)
+            .path
     }
 
     /// 把一行连接 URL 映射到表单字段（FR-CONN-19）。
@@ -272,21 +592,55 @@ struct ConnectionFormView: View {
     private func testConnection() {
         let config = makeConfiguration()
         let testPassword = password
+        let tunnelConfig = sshEnabled ? makeSSHTunnelConfig() : nil
+        let secret = sshPassword.isEmpty ? nil : sshPassword
         bannerMessage = L(.connectionFormConnecting, config.endpointDescription)
         isTesting = true
 
         Task { @MainActor in
-            let service = DatabaseServiceFactory.make(for: config, password: testPassword)
+            defer { isTesting = false }
+
+            // 配了隧道就先起隧道、再把测试目标指向本机转发端口。
+            // 不这样做的话，「测试连接」会在隧道还没建立时去连一个**内网地址**，
+            // 失败信息与隧道毫无关系 —— 用户会去查数据库，而问题其实在跳板机。
+            var tunnel: SSHTunnelProcess?
+            var target = config
+            if let tunnelConfig {
+                guard let localPort = LocalPort.free() else {
+                    bannerMessage = L(.connectionFormFailed, L(.sshTunnelNoFreePort))
+                    return
+                }
+                let started = SSHTunnelProcess(
+                    config: tunnelConfig,
+                    target: SSHTunnelTarget(host: config.host, port: config.port),
+                    localPort: localPort,
+                    knownHostsPath: Self.knownHostsPath(),
+                    password: secret,
+                    executable: SSHTunnelSecrets.executable(),
+                    isPortOpen: { host, port in LocalPort.isOpen(host: host, port: port) }
+                )
+                do {
+                    _ = try await started.start()
+                } catch {
+                    bannerMessage = L(.sshTestFailed, error.localizedDescription)
+                    return
+                }
+                tunnel = started
+                target = SSHTunnelEndpoint.rewrite(config, localPort: localPort)
+            }
+            defer { tunnel?.stop() }
+
+            let service = DatabaseServiceFactory.make(for: target, password: testPassword)
             do {
                 let serverInfo = try await service.connect()
                 bannerMessage = L(.connectionFormConnected, serverInfo.version, serverInfo.database, serverInfo.user)
                 await service.disconnect()
             } catch {
+                // 失败信息给人看：`String(reflecting:)` 会带上一堆类型名，先截断再说。
                 let detail = String(reflecting: error)
                 let preview = detail.count > 600 ? String(detail.prefix(600)) + "..." : detail
                 bannerMessage = L(.connectionFormFailed, preview)
             }
-            isTesting = false
         }
     }
 
@@ -318,7 +672,8 @@ struct ConnectionFormView: View {
             startupSQL: startupSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil
                 : startupSQL,
-            group: group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : group
+            group: group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : group,
+            sshTunnel: sshEnabled ? makeSSHTunnelConfig() : nil
         )
     }
 }

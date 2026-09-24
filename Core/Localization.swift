@@ -184,6 +184,43 @@ public enum LKey: String, CaseIterable, Sendable {
     case sshTunnelProcessExitedSilently
     case sshTunnelTimedOut
     case sshTunnelPortInUse
+    case sshTunnelFailed
+    case sshTunnelReady
+    case sshTunnelStopped
+    case sshTunnelNoFreePort
+    case sshSectionTitle
+    case sshSectionSubtitle
+    case sshEnableLabel
+    case sshHostLabel
+    case sshPortLabel
+    case sshUserLabel
+    case sshAuthLabel
+    case sshAuthPassword
+    case sshAuthPrivateKey
+    case sshAuthAgent
+    case sshKeyPathLabel
+    case sshKeyPathPlaceholder
+    case sshKeyEncryptedLabel
+    case sshHostKeyLabel
+    case sshHostKeyAcceptNew
+    case sshHostKeyStrict
+    case sshHostKeyHint
+    case sshTimeoutLabel
+    case sshPasswordLabel
+    case sshPasswordPlaceholder
+    case sshPasswordKeepHint
+    case sshIssueMissingHost
+    case sshIssueMissingUsername
+    case sshIssueInvalidPort
+    case sshIssueMissingPrivateKeyPath
+    case sshIssueInvalidTimeout
+    case sshSandboxNotice
+    case sshTestButton
+    case sshTestRunning
+    case sshTestSucceeded
+    case sshTestFailed
+    case sshTestTargetUnreachable
+    case sshSummary
     // 工作区原生体验（FR-EDIT-35 / 36）：页签、Home 页、打开与保存文件
     case workspaceHomeWelcome
     case workspaceHomeSubtitle
@@ -1648,6 +1685,43 @@ public enum LocalizedStrings {
         .sshTunnelProcessExitedSilently: [.simplifiedChinese: "ssh 已退出（没有任何输出）", .english: "ssh exited without any output"],
         .sshTunnelTimedOut: [.simplifiedChinese: "等隧道就绪超时（%@ 秒）", .english: "Timed out waiting for the tunnel to become ready (%@ s)"],
         .sshTunnelPortInUse: [.simplifiedChinese: "本地端口 %@ 已被占用", .english: "Local port %@ is already in use"],
+        .sshTunnelFailed: [.simplifiedChinese: "SSH 隧道建立失败（%@）：%@", .english: "Could not bring up the SSH tunnel (%@): %@"],
+        .sshTunnelReady: [.simplifiedChinese: "SSH 隧道已就绪，本机端口 %@", .english: "SSH tunnel is ready on local port %@"],
+        .sshTunnelStopped: [.simplifiedChinese: "SSH 隧道已断开（%@）", .english: "SSH tunnel closed (%@)"],
+        .sshTunnelNoFreePort: [.simplifiedChinese: "找不到空闲的本地端口给 SSH 隧道用", .english: "No free local port is available for the SSH tunnel"],
+        .sshSectionTitle: [.simplifiedChinese: "SSH 隧道", .english: "SSH tunnel"],
+        .sshSectionSubtitle: [.simplifiedChinese: "数据库只允许内网访问时，先连跳板机，再由跳板机转发到数据库。", .english: "When the database is only reachable from inside, connect to a jump host first and let it forward to the database."],
+        .sshEnableLabel: [.simplifiedChinese: "通过 SSH 隧道连接", .english: "Connect through an SSH tunnel"],
+        .sshHostLabel: [.simplifiedChinese: "跳板机地址", .english: "Jump host"],
+        .sshPortLabel: [.simplifiedChinese: "跳板机端口", .english: "Jump host port"],
+        .sshUserLabel: [.simplifiedChinese: "登录用户", .english: "User name"],
+        .sshAuthLabel: [.simplifiedChinese: "认证方式", .english: "Authentication"],
+        .sshAuthPassword: [.simplifiedChinese: "口令", .english: "Password"],
+        .sshAuthPrivateKey: [.simplifiedChinese: "私钥文件", .english: "Private key file"],
+        .sshAuthAgent: [.simplifiedChinese: "ssh-agent（代理，推荐）", .english: "ssh-agent"],
+        .sshKeyPathLabel: [.simplifiedChinese: "私钥路径", .english: "Private key path"],
+        .sshKeyPathPlaceholder: [.simplifiedChinese: "例如 ~/.ssh/id_ed25519", .english: "For example ~/.ssh/id_ed25519"],
+        .sshKeyEncryptedLabel: [.simplifiedChinese: "私钥有口令", .english: "The key has a passphrase"],
+        .sshHostKeyLabel: [.simplifiedChinese: "主机指纹", .english: "Host key"],
+        .sshHostKeyAcceptNew: [.simplifiedChinese: "首次信任，之后变了就拒（accept-new）", .english: "Trust on first use, reject later changes (accept-new)"],
+        .sshHostKeyStrict: [.simplifiedChinese: "必须已信任（strict）", .english: "Must already be trusted (strict)"],
+        .sshHostKeyHint: [.simplifiedChinese: "我们只写自己的 known_hosts 文件，不动你 ~/.ssh/known_hosts，也不动 ssh-agent。", .english: "We only write our own known_hosts file; your ~/.ssh/known_hosts and ssh-agent are left untouched."],
+        .sshTimeoutLabel: [.simplifiedChinese: "连接超时（秒）", .english: "Connect timeout (seconds)"],
+        .sshPasswordLabel: [.simplifiedChinese: "口令", .english: "Password"],
+        .sshPasswordPlaceholder: [.simplifiedChinese: "留空表示不改动已保存的口令", .english: "Leave empty to keep the stored password"],
+        .sshPasswordKeepHint: [.simplifiedChinese: "口令存在系统钥匙串，与数据库口令分开保存。", .english: "The password is kept in the system keychain, stored separately from the database password."],
+        .sshIssueMissingHost: [.simplifiedChinese: "请填跳板机地址", .english: "Enter the jump host"],
+        .sshIssueMissingUsername: [.simplifiedChinese: "请填登录用户", .english: "Enter the user name"],
+        .sshIssueInvalidPort: [.simplifiedChinese: "端口要在 1 到 65535 之间", .english: "The port must be between 1 and 65535"],
+        .sshIssueMissingPrivateKeyPath: [.simplifiedChinese: "选私钥文件时，请填私钥路径", .english: "Enter the private key path when using a key file"],
+        .sshIssueInvalidTimeout: [.simplifiedChinese: "超时要大于 0 秒", .english: "The timeout must be greater than 0 seconds"],
+        .sshSandboxNotice: [.simplifiedChinese: "当前是沙箱构建：沙箱不允许启动 ssh 子进程，隧道会失败。请用非沙箱构建（DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh）。", .english: "This is the sandboxed build: the sandbox does not allow spawning ssh, so tunnels will fail. Use the unsandboxed build (DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh)."],
+        .sshTestButton: [.simplifiedChinese: "测试隧道", .english: "Test tunnel"],
+        .sshTestRunning: [.simplifiedChinese: "正在建立隧道…", .english: "Bringing up the tunnel…"],
+        .sshTestSucceeded: [.simplifiedChinese: "隧道可用，本机端口 %@", .english: "Tunnel works, local port %@"],
+        .sshTestFailed: [.simplifiedChinese: "隧道不可用：%@", .english: "Tunnel is not usable: %@"],
+        .sshTestTargetUnreachable: [.simplifiedChinese: "隧道通了，但跳板机连不到数据库 %@:%@（检查数据库地址是否只在内网、以及跳板机到它的连通性）", .english: "The tunnel is up, but the jump host cannot reach the database at %@:%@ (check that the address is internal-only and that the jump host can reach it)"],
+        .sshSummary: [.simplifiedChinese: "经 %@@%@:%@ → %@:%@", .english: "Via %@@%@:%@ → %@:%@"],
         .workspaceHomeWelcome: [.simplifiedChinese: "欢迎回来", .english: "Welcome back"],
         .workspaceHomeSubtitle: [.simplifiedChinese: "左边选工作区，点文件就能在编辑器里打开；配色与补全按文件类型自动匹配。", .english: "Pick a workspace on the left, then click a file to open it here. Highlighting and completion follow the file type."],
         .workspaceHomeBuildLine: [.simplifiedChinese: "版本 %@（构建 %@）", .english: "Version %@ (build %@)"],

@@ -94,6 +94,9 @@ extension ConnectionConfig {
     enum CodingKeys: String, CodingKey {
         case id, name, dbType, host, port, database, username, sslMode, timeout, schemaVersion
         case environment, colorTag, isReadOnly, startupSQL, group
+        // FR-CONN-18 的 SSH 隧道：同样**纯新增且可选**，老文件读出来是 nil，
+        // 因此不提升 schemaVersion（理由同 environment / colorTag）。
+        case sshTunnel
     }
 
     public init(from decoder: Decoder) throws {
@@ -119,5 +122,6 @@ extension ConnectionConfig {
         // 给可选字段升版本只会让老版本应用把文件误判成"来自更新版本"而拒绝改写。
         environment = try container.decodeIfPresent(ConnectionEnvironment.self, forKey: .environment)
         colorTag = try container.decodeIfPresent(CategoricalTone.self, forKey: .colorTag)
+        sshTunnel = try container.decodeIfPresent(SSHTunnelConfig.self, forKey: .sshTunnel)
     }
 }

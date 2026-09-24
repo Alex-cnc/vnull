@@ -173,3 +173,26 @@ public enum SSHTunnelArguments {
         return arguments
     }
 }
+
+/// 隧道就绪之后，**连接目标怎么改写**（FR-CONN-18）。
+///
+/// 单列成一个纯函数，是因为这件事最容易写错、又最难在界面上发现：
+/// 改写漏了就是"直连数据库失败"（症状跟隧道没关系），改写多了就是把本机地址写回了配置。
+/// 纯函数可以直接断言，不必起进程、不必有跳板机。
+public enum SSHTunnelEndpoint {
+
+    /// 把连接指向本机转发端口。
+    ///
+    /// - `localPort == nil`（没配隧道）→ **原样返回**，直连路径一个字节都不动。
+    /// - 其余字段（名称 / 库名 / 凭据模式 / 超时 …）保持不变 —— 隧道只换"怎么到那儿"。
+    public static func rewrite(_ configuration: ConnectionConfig, localPort: Int?) -> ConnectionConfig {
+        guard let localPort else { return configuration }
+        var derived = configuration
+        derived.host = loopbackHost
+        derived.port = localPort
+        return derived
+    }
+
+    /// 本机回环地址：隧道只在 `127.0.0.1` 上监听（不是 `0.0.0.0`，局域网里别的机器连不上）。
+    public static let loopbackHost = "127.0.0.1"
+}

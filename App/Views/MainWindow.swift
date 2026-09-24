@@ -78,14 +78,19 @@ struct MainWindow: View {
             ConnectionFormView(
                 configuration: mode.configuration,
                 existingConnections: appState.connections
-            ) { configuration, password in
+            ) { configuration, password, sshPassword in
                 Task {
                     if mode.isNew {
-                        await appState.addConnection(configuration, password: password)
+                        await appState.addConnection(
+                            configuration,
+                            password: password,
+                            sshPassword: sshPassword
+                        )
                     } else {
                         await appState.updateConnection(
                             configuration,
-                            password: password.isEmpty ? nil : password
+                            password: password.isEmpty ? nil : password,
+                            sshPassword: sshPassword
                         )
                     }
                     formMode = nil
