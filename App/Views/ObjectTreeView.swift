@@ -19,6 +19,8 @@ struct ObjectTreeView: View {
     @State private var expandedIDs: Set<String> = []
     @State private var loadingIDs: Set<String> = []
     @State private var errors: [String: String] = [:]
+    /// 鼠标当前在哪一行（右键菜单按它决定内容，见 `hoveredMenuObject`）。
+    @State private var hoveredRowID: String?
     @State private var isLoadingRoot = false
     @State private var rootError: String?
     // 注：所有「弹出面板」的目标与开关都**不在这里** —— 它们住在 `AppState`
@@ -85,6 +87,15 @@ struct ObjectTreeView: View {
                     refreshRow
                     ForEach(visibleRows) { row in
                         rowView(row)
+                    }
+                }
+                .contextMenuIf(hoveredMenuObject != nil) {
+                    if let object = hoveredMenuObject {
+                        if object.kind == .server {
+                            serverContextMenu
+                        } else {
+                            objectContextMenu(for: object)
+                        }
                     }
                 }
             }
@@ -293,11 +304,15 @@ struct ObjectTreeView: View {
                 guard row.isExpandable else { return }
                 toggle(row.object)
             }
-            .contextMenuIf(treeMenuKinds.contains(row.object.kind) && !row.isGroupHeader) {
-                if row.object.kind == .server {
-                    serverContextMenu
-                } else {
-                    objectContextMenu(for: row.object)
+            // 右键菜单**不再挂在每一行上**（原因见 `hoveredMenuObject`）：整棵树现在是一个 `List` 行，
+            // AppKit 按 List 行解析右键菜单、只会用找到的第一个 —— 那会让"点数据库弹出服务器菜单"。
+            // 这里只负责记下"鼠标在哪一行"，菜单由整块挂的那一个按它决定内容。
+            .onHover { hovering in
+                guard !row.isGroupHeader else { return }
+                if hovering {
+                    hoveredRowID = row.object.id
+                } else if hoveredRowID == row.object.id {
+                    hoveredRowID = nil
                 }
             }
 
@@ -329,9 +344,27 @@ struct ObjectTreeView: View {
         .frame(height: Metrics.listRowHeight)
     }
 
-    /// 挂右键菜单的节点类型（服务器节点见 FR-META-11，其余见 FR-META-14）。
-    private var treeMenuKinds: Set<DatabaseObject.Kind> {
-        [.server, .table, .view, .column]
+    /// 右键菜单作用在**鼠标底下那一行**上。
+    ///
+    /// 为什么不是"每行各挂一个"（2026-09-24 实测缺陷）：为了让行距变紧，整棵树现在是**一个 `List` 行**
+    /// （见 `body` 里那个 `VStack` 的说明）。而 AppKit 的右键菜单是**按 List 行**解析的 ——
+    /// 一个行里挂若干 `.contextMenu` 时它只会用找到的第一个，于是右键点数据库弹出来的是
+    /// **服务器**那份菜单（需求提出者实测：「行距调整后，右键点击数据库菜单出错了，
+    /// 显示的是整个数据库服务器对象的右键菜单」）。
+    /// 现在整块只挂一个，内容由**悬停行**决定：鼠标在哪一行，菜单就是那一行的 ——
+    /// 与"每行自己挂"结果等价，但没有歧义。
+    private var hoveredMenuObject: DatabaseObject? {
+        if let hoveredRowID,
+           let row = visibleRows.first(where: { $0.object.id == hoveredRowID }),
+           !row.isGroupHeader,
+           ObjectTreeActions.hasContextMenu(row.object.kind) {
+            return row.object
+        }
+        // 兜底：拿不到悬停信息（例如鼠标是从别的窗口直接移进来就右键）时用当前选中项 ——
+        // 总比"右键没反应"好，而且仍然只在菜单可用的节点类型上给。
+        guard let selected = appState.selectedTreeObject,
+              ObjectTreeActions.hasContextMenu(selected.kind) else { return nil }
+        return selected
     }
 
     /// 表 / 视图 / 列节点的右键菜单（FR-META-14）。
@@ -340,6 +373,17 @@ struct ObjectTreeView: View {
     /// 不在视图里再写一份类型判断 —— 否则两处规则迟早不一致。
     @ViewBuilder
     private func objectContextMenu(for object: DatabaseObject) -> some View {
+        // 「新建表」（FR-DDL-03）：入口挂在**数据库 / schema** 节点上。
+        // 它原来嵌在下面"表相关动作"那一块里，而那一块整体被 `truncateTable` 的可用性挡着
+        // （只对 `.table` 为真）—— 于是这个按钮**从来没出现过**（2026-09-24 排查右键菜单时抓到）。
+        if object.kind == .database || object.kind == .schema {
+            Button(L(.tableDesignTitle)) {
+                appState.createTableTarget = object
+            }
+
+            Divider()
+        }
+
         if ObjectTreeActions.isAvailable(.browseRows, for: object.kind) {
             Button(L(.treeActionBrowseRows, ObjectTreeActions.defaultBrowseLimit)) {
                 runTreeAction(.browseRows, on: object)
@@ -396,14 +440,6 @@ struct ObjectTreeView: View {
 
         if ObjectTreeActions.isAvailable(.truncateTable, for: object.kind) {
             Divider()
-
-            // 只生成语句、不执行；真要跑还会被 Safe Mode 拦一次。
-            if object.kind == .database || object.kind == .schema {
-                Divider()
-                Button(L(.tableDesignTitle)) {
-                    appState.createTableTarget = object
-                }
-            }
 
             if object.kind == .table {
                 Divider()

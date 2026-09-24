@@ -71,6 +71,24 @@ public enum ObjectTreeActions {
     /// 「浏览前 N 行」的默认行数（与需求一致）。
     public static let defaultBrowseLimit = 200
 
+    /// 哪些节点类型应该有**右键菜单**（FR-META-14 / FR-META-11）。
+    ///
+    /// 为什么放进 Core：这是"菜单的适用面"，属于规则而不是画法；而且它踩过一次坑 ——
+    /// 2026-09-24 需求提出者实测「右键点数据库弹出的是**服务器**菜单」，
+    /// 排查时才发现两件事：① 视图里这份集合漏了 `database` / `schema`（新建表的入口就死在
+    /// `objectContextMenu` 里那段够不到的分支上）；② 漏了 `function`（而 `viewDDL` 对 function 是
+    /// 可用的，于是"函数看 DDL"也点不到）。放进 Core 并由单测钉住，漏一个就会红。
+    ///
+    /// 注意 `column` 也在内：列节点有「复制列名」。
+    public static let menuKinds: Set<DatabaseObject.Kind> = [
+        .server, .database, .schema, .table, .view, .function, .column
+    ]
+
+    /// 该节点类型是否该有右键菜单。
+    public static func hasContextMenu(_ kind: DatabaseObject.Kind) -> Bool {
+        menuKinds.contains(kind)
+    }
+
     /// 该动作对该类节点是否可用 —— 界面据此决定菜单项的呈现与禁用。
     public static func isAvailable(_ action: ObjectTreeAction, for kind: DatabaseObject.Kind) -> Bool {
         switch action {

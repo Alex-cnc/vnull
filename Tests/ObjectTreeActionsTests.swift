@@ -212,4 +212,21 @@ final class ObjectTreeActionsTests: XCTestCase {
         let insert = try XCTUnwrap(ObjectTreeActions.sql(for: .insertTemplate, target: target, dialect: pg))
         XCTAssertTrue(insert.contains("(\"id\", \"total\")"))
     }
+    /// 哪些节点该有右键菜单（FR-META-14 / FR-META-11）—— 漏一个就有一项点不到。
+    ///
+    /// 这条规则的来源是一次实测缺陷：需求提出者「右键点数据库弹出的是服务器菜单」，
+    /// 排查时发现 `database` / `schema`（新建表的入口）与 `function`（查看 DDL）都没在这份集合里，
+    /// 于是那两个功能**在界面上根本点不到**。
+    func testMenuKindsCoverEveryActionableNode() {
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.server))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.database))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.schema))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.table))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.view))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.function))
+        XCTAssertTrue(ObjectTreeActions.hasContextMenu(.column))
+        // 反向：没有动作可做的类型不该有菜单（空菜单比没有菜单更让人困惑）。
+        XCTAssertFalse(ObjectTreeActions.hasContextMenu(.sequence))
+    }
+
 }
