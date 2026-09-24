@@ -337,3 +337,50 @@ private extension String {
         trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+
+// MARK: - SGR 2 / 22：暗淡与「恢复正常强度」（FR-EDIT-29）
+
+/// 单独一个类，避免与 `TerminalScreenTests` 的私有 helper 同名相撞。
+final class TerminalDimAttributeTests: XCTestCase {
+
+    private func screen(_ text: String) -> TerminalScreen {
+        let screen = TerminalScreen(columns: 20, rows: 4)
+        screen.feed(text: text)
+        return screen
+    }
+
+    private func cell(_ terminal: TerminalScreen, _ column: Int) -> TerminalCell {
+        terminal.line(0)[column]
+    }
+
+    /// SGR 2 = 暗淡（渲染时由 `TerminalPalette.dimmed` 把前景混向底色）。
+    func testSGRTwoMarksDim() {
+        let terminal = screen("\u{1B}[2mA\u{1B}[0mB")
+        XCTAssertTrue(cell(terminal, 0).isDim)
+        XCTAssertFalse(cell(terminal, 1).isDim)
+    }
+
+    /// SGR 22 = 恢复正常强度：粗体**与暗淡一起清**（标准如此，只清一半就会留下"暗的粗体"）。
+    func testSGRTwentyTwoClearsBoldAndDimTogether() {
+        let terminal = screen("\u{1B}[1;2mA\u{1B}[22mB")
+        XCTAssertTrue(cell(terminal, 0).bold)
+        XCTAssertTrue(cell(terminal, 0).isDim)
+        XCTAssertFalse(cell(terminal, 1).bold)
+        XCTAssertFalse(cell(terminal, 1).isDim)
+    }
+
+    /// `1;2` 并存：粗体与暗淡不是互斥开关。
+    func testBoldAndDimCoexist() {
+        let cell = self.cell(screen("\u{1B}[1;2mX"), 0)
+        XCTAssertTrue(cell.bold)
+        XCTAssertTrue(cell.isDim)
+    }
+
+    /// 复位（SGR 0）要把暗淡一起清掉。
+    func testResetClearsDim() {
+        let terminal = screen("\u{1B}[2mA\u{1B}[0mB")
+        XCTAssertTrue(cell(terminal, 0).isDim)
+        XCTAssertFalse(cell(terminal, 1).isDim)
+    }
+}

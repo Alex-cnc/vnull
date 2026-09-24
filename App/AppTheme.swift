@@ -114,6 +114,41 @@ enum Theme {
         NSAppearance.current.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
+    // MARK: 终端（FR-EDIT-29）
+    //
+    // 终端的色值全部来自 `Core/TerminalPalette`（可单测的纯数据），这里只做
+    // "外观 → 色板 → NSColor" 的绑定。视图里不再出现裸色值：
+    // 深 / 浅两套色板的对比度由 `TerminalPaletteTests` 守着。
+
+    /// 当前外观对应的终端色板。
+    static func terminalPalette(isDark: Bool? = nil) -> TerminalPalette {
+        TerminalPalette.standard(dark: isDark ?? isDarkAppearance)
+    }
+
+    static func nsColor(_ rgb: TerminalPalette.RGB) -> NSColor {
+        NSColor(
+            srgbRed: CGFloat(rgb.red) / 255,
+            green: CGFloat(rgb.green) / 255,
+            blue: CGFloat(rgb.blue) / 255,
+            alpha: 1
+        )
+    }
+
+    static func terminalColor(_ rgb: TerminalPalette.RGB) -> Color {
+        Color(nsColor: nsColor(rgb))
+    }
+
+    /// 一格文字的前景色（粗体提亮 / 暗淡 / 反显都在 Core 里算好）。
+    static func terminalForeground(for cell: TerminalCell, isDark: Bool) -> NSColor {
+        nsColor(terminalPalette(isDark: isDark).resolvedForeground(for: cell))
+    }
+
+    /// 一格文字的背景色；`nil` 表示"就是终端底色"（不必铺底，省一次填充）。
+    static func terminalBackground(for cell: TerminalCell, isDark: Bool) -> NSColor? {
+        guard let rgb = terminalPalette(isDark: isDark).resolvedBackground(for: cell) else { return nil }
+        return nsColor(rgb)
+    }
+
     // MARK: 底层
 
     // AppKit 视图（编辑器 / 结果网格 / 终端）需要 NSColor，这里给三个语义重载。

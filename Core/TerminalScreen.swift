@@ -20,6 +20,8 @@ public struct TerminalCell: Equatable, Sendable {
 
     public var content: Content
     public var bold: Bool
+    /// 暗淡（SGR 2）。渲染时把前景按比例混进底色 —— 见 `TerminalPalette.dimmed`。
+    public var isDim: Bool
     public var underline: Bool
     public var inverse: Bool
     public var foreground: TerminalColor
@@ -28,6 +30,7 @@ public struct TerminalCell: Equatable, Sendable {
     public init(
         content: Content = .empty,
         bold: Bool = false,
+        isDim: Bool = false,
         underline: Bool = false,
         inverse: Bool = false,
         foreground: TerminalColor = .default,
@@ -35,6 +38,7 @@ public struct TerminalCell: Equatable, Sendable {
     ) {
         self.content = content
         self.bold = bold
+        self.isDim = isDim
         self.underline = underline
         self.inverse = inverse
         self.foreground = foreground
@@ -677,12 +681,18 @@ public final class TerminalScreen {
                 attributes = .blank
             case 1:
                 attributes.bold = true
+            case 2:
+                // 暗淡（SGR 2）。**与粗体可以并存**：xterm 里 `1;2` 是"粗而暗"，
+                // 我们按"先提亮再压暗"渲染，不把两者当成互斥开关。
+                attributes.isDim = true
             case 4:
                 attributes.underline = true
             case 7:
                 attributes.inverse = true
             case 22:
+                // SGR 22 是"恢复正常强度"：粗体**与暗淡一起清**（标准如此）。
                 attributes.bold = false
+                attributes.isDim = false
             case 24:
                 attributes.underline = false
             case 27:

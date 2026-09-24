@@ -125,6 +125,13 @@ struct DoyahCLI {
             exit(runSpecsCommand(arguments: Array(arguments.dropFirst())))
         }
 
+        // terminal-palette：打印内嵌终端的深 / 浅两套色板与实测对比度（FR-EDIT-29）。
+        // 为什么要有它：配色不该只存在于代码里 —— 这个出口让**设计稿、文档与代码同源**，
+        // 也让"某个槽位对底色的对比度是多少"这句话可以被脚本复算，而不是靠肉眼估。
+        if arguments.first == "terminal-palette" {
+            exit(runTerminalPaletteCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -806,6 +813,68 @@ struct DoyahCLI {
     ///
     /// 保存走 `DataTaskStore.save` —— 版本化挂在那里（唯一收口点），所以这条命令
     /// 与界面改定义走的是**同一条历史**。
+    /// `terminal-palette [--json]`：打印终端色板（FR-EDIT-29 的配色证据出口）。
+    private static func runTerminalPaletteCommand(arguments: [String]) -> Int32 {
+        let names = [
+            "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+            "bright black", "bright red", "bright green", "bright yellow",
+            "bright blue", "bright magenta", "bright cyan", "bright white"
+        ]
+        let palettes = [TerminalPalette.deepSeaDark, TerminalPalette.deepSeaLight]
+
+        if arguments.contains("--json") {
+            var payload: [[String: Any]] = []
+            for palette in palettes {
+                payload.append([
+                    "name": palette.name,
+                    "isDark": palette.isDark,
+                    "background": palette.background.hexString,
+                    "foreground": palette.foreground.hexString,
+                    "cursor": palette.cursor.hexString,
+                    "selection": palette.selectionBackground.hexString,
+                    "foregroundContrast": round(TerminalPalette.contrastRatio(palette.foreground, palette.background) * 100) / 100,
+                    "ansi": palette.ansi.enumerated().map { index, color in
+                        [
+                            "index": index,
+                            "name": names[index],
+                            "hex": color.hexString,
+                            "contrast": round(TerminalPalette.contrastRatio(color, palette.background) * 100) / 100,
+                            "backgroundSlot": TerminalPalette.isBackgroundSlot(index: index, isDark: palette.isDark)
+                        ] as [String: Any]
+                    }
+                ])
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) {
+                print(String(decoding: data, as: UTF8.self))
+                return 0
+            }
+            return 2
+        }
+
+        for palette in palettes {
+            print("=== \(palette.name)（\(palette.isDark ? "深色" : "浅色")）===")
+            print("  背景 \(palette.background.hexString)   前景 \(palette.foreground.hexString)"
+                  + "（对比度 \(format(TerminalPalette.contrastRatio(palette.foreground, palette.background)))）")
+            print("  光标 \(palette.cursor.hexString)（对底色 \(format(TerminalPalette.contrastRatio(palette.cursor, palette.background)))）"
+                  + "   选中底 \(palette.selectionBackground.hexString)"
+                  + "（选中底上的字 \(format(TerminalPalette.contrastRatio(palette.foreground, palette.selectionBackground)))）")
+            print("  槽位  名称             色值       对底色对比度")
+            for (index, color) in palette.ansi.enumerated() {
+                let ratio = TerminalPalette.contrastRatio(color, palette.background)
+                let note = TerminalPalette.isBackgroundSlot(index: index, isDark: palette.isDark) ? "（背景槽）" : ""
+                let label = names[index].padding(toLength: 15, withPad: " ", startingAt: 0)
+                print(String(format: "  %2d    %@  %@    %@%@", index, label as NSString, color.hexString as NSString, format(ratio) as NSString, note))
+            }
+            print("")
+        }
+        print("口径：当正文用的槽位对底色 ≥ 4.5（WCAG AA）；前景对底色 ≥ 7；四个背景槽按各自的设计要求（见 Core/TerminalPalette 注释）。")
+        return 0
+
+        func format(_ value: Double) -> String {
+            String(format: "%.2f", value)
+        }
+    }
+
     private static func runSpecsCommand(arguments: [String]) -> Int32 {
         func value(for flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }

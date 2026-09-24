@@ -1,5 +1,6 @@
-// token-ok-file: 终端 ANSI 16 色板是**终端语义**（由 PTY 输出与 shell 期望决定），不是界面设计令牌；
-// 它必须与真实终端一致，不能改写成主题色。界面自身的颜色仍走 Theme。
+// 终端配色（FR-EDIT-29）：色值**全部**来自 `Core/TerminalPalette`（深 / 浅两套 ANSI 色板，
+// 可单测、有对比度与可区分性门槛），视图只做「外观 → 色板 → NSColor」的绑定。
+// 这里不再有裸色值：曾经那 16 个手写 NSColor 已经搬进 Core 并换成有门槛的调色板。
 import AppKit
 import SwiftUI
 import DoyahCore
@@ -189,7 +190,8 @@ final class TerminalModel: ObservableObject {
 final class TerminalHostView: NSView {
 
     private let model: TerminalModel
-    private let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// 终端字体：字号取自排版刻度（`TypeScale.monoSize`），视图里不写裸字号。
+    private let font = Theme.nsFont(.mono)
     private lazy var cellSize: CGSize = {
         let width = ("W" as NSString).size(withAttributes: [.font: font]).width
         let height = ceil(font.ascender - font.descender + font.leading)
@@ -204,7 +206,7 @@ final class TerminalHostView: NSView {
         self.model = model
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        layer?.backgroundColor = Theme.nsColor(palette.background).cgColor
     }
 
     @available(*, unavailable)
@@ -212,6 +214,27 @@ final class TerminalHostView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+
+    // MARK: 配色（全部来自 Core/TerminalPalette）
+
+    /// 当前外观是否深色。终端**跟随系统外观**：浅色下用浅色色板，深色下用深色色板 ——
+    /// 只有一套色板时，另一套外观里必然有一半的 ANSI 色不可读（旧实现就是这个毛病）。
+    private var isDarkTerminal: Bool {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    private var palette: TerminalPalette {
+        Theme.terminalPalette(isDark: isDarkTerminal)
+    }
+
+    /// 换外观（深浅切换）时：清掉按行缓存并重画 —— 缓存里存着**属性串**，
+    /// 不清会拿旧色板画的字继续显示。
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        runCache.removeAll()
+        layer?.backgroundColor = Theme.nsColor(palette.background).cgColor
+        needsDisplay = true
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -245,7 +268,7 @@ final class TerminalHostView: NSView {
     // MARK: 绘制
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.textBackgroundColor.setFill()
+        Theme.nsColor(palette.background).setFill()
         bounds.fill()
 
         let lines = model.displayLines()
@@ -263,7 +286,7 @@ final class TerminalHostView: NSView {
     /// 选区高亮：按格填，与背景层同一套坐标（列号 × 格子宽度）。
     private func drawSelection(_ cells: [TerminalCell], at origin: CGPoint, rowIndex: Int) {
         guard let selection = model.selection, !selection.isEmpty else { return }
-        NSColor.selectedTextBackgroundColor.withAlphaComponent(0.55).setFill()
+        Theme.nsColor(palette.selectionBackground).setFill()
         for column in cells.indices where selection.contains(row: rowIndex, column: column) {
             NSRect(
                 x: origin.x + CGFloat(column) * cellSize.width,
@@ -283,9 +306,9 @@ final class TerminalHostView: NSView {
         guard offset > 0 else { return }
         let text = "↑ \(offset)/\(model.maxScrollOffset)"
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
-            .foregroundColor: NSColor.labelColor,
-            .backgroundColor: NSColor.controlBackgroundColor.withAlphaComponent(0.85)
+            .font: NSFont.monospacedDigitSystemFont(ofSize: TypeScale.monoSmallSize, weight: .medium),
+            .foregroundColor: Theme.nsColor(TextTone.secondary),
+            .backgroundColor: Theme.nsColor(Surface.raised).withAlphaComponent(0.85)
         ]
         let size = (text as NSString).size(withAttributes: attributes)
         (text as NSString).draw(
@@ -299,7 +322,7 @@ final class TerminalHostView: NSView {
         guard !markedText.isEmpty else { return }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.textColor,
+            .foregroundColor: Theme.nsColor(palette.foreground),
             .underlineStyle: NSUnderlineStyle.single.rawValue
         ]
         NSAttributedString(string: markedText, attributes: attributes).draw(at: cursorCellRect.origin)
@@ -371,21 +394,15 @@ final class TerminalHostView: NSView {
         return attributes
     }
 
-    /// 前景色：反显时用背景当字色。
+    /// 前景色（粗体提亮 / 暗淡 / 反显都在 Core 的色板里算好）。
     private func foreground(for cell: TerminalCell) -> NSColor {
-        if cell.inverse {
-            return Self.color(for: cell.background, isBackground: true)
-        }
-        return Self.color(for: cell.foreground, isBackground: false)
+        Theme.terminalForeground(for: cell, isDark: isDarkTerminal)
     }
 
-    /// 需要画的背景块（反显时画前景色）；默认背景不画。
+    /// 需要画的背景块；等于终端底色时不画（省一次整屏填充）。
     private func backgroundFill(for cell: TerminalCell) -> NSColor? {
-        if cell.inverse {
-            return Self.color(for: cell.foreground, isBackground: false)
-        }
-        if cell.background == .default { return nil }
-        return Self.color(for: cell.background, isBackground: true)
+        guard let rgb = palette.resolvedBackground(for: cell), rgb != palette.background else { return nil }
+        return Theme.nsColor(rgb)
     }
 
     /// 光标所在的格子（视图坐标）。
@@ -401,68 +418,35 @@ final class TerminalHostView: NSView {
     private func drawCursor() {
         guard model.screen.isCursorVisible else { return }
         let rect = cursorCellRect
-        if window?.firstResponder === self {
-            NSColor.selectedTextBackgroundColor.withAlphaComponent(0.6).setFill()
-            rect.fill()
-        } else {
-            NSColor.secondaryLabelColor.setStroke()
+        guard window?.firstResponder === self else {
+            // 失焦时只描一个空心框：块状光标在失焦窗口里会显得"这里还能打字"。
+            Theme.nsColor(palette.cursor).withAlphaComponent(0.55).setStroke()
             let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
             path.lineWidth = 1
             path.stroke()
+            return
         }
+
+        // 块状光标 + **把光标下的字用底色重画**（反白）。
+        // 半透明块会让字符看起来发脏，而真正终端里块光标下就是反白的。
+        Theme.nsColor(palette.cursor).setFill()
+        rect.fill()
+
+        let line = model.screen.line(model.screen.cursorRow)
+        let column = model.screen.cursorColumn
+        guard line.indices.contains(column) else { return }
+        let text = line[column].displayText
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        NSAttributedString(
+            string: text,
+            attributes: [
+                .font: font,
+                .foregroundColor: Theme.nsColor(palette.background)
+            ]
+        ).draw(at: rect.origin)
     }
 
     // MARK: 颜色
-
-    private static let palette: [NSColor] = [
-        NSColor(calibratedRed: 0.00, green: 0.00, blue: 0.00, alpha: 1),
-        NSColor(calibratedRed: 0.80, green: 0.14, blue: 0.15, alpha: 1),
-        NSColor(calibratedRed: 0.20, green: 0.65, blue: 0.24, alpha: 1),
-        NSColor(calibratedRed: 0.80, green: 0.62, blue: 0.11, alpha: 1),
-        NSColor(calibratedRed: 0.16, green: 0.36, blue: 0.78, alpha: 1),
-        NSColor(calibratedRed: 0.68, green: 0.25, blue: 0.72, alpha: 1),
-        NSColor(calibratedRed: 0.16, green: 0.63, blue: 0.69, alpha: 1),
-        NSColor(calibratedRed: 0.80, green: 0.80, blue: 0.80, alpha: 1),
-        NSColor(calibratedRed: 0.45, green: 0.45, blue: 0.45, alpha: 1),
-        NSColor(calibratedRed: 0.94, green: 0.36, blue: 0.36, alpha: 1),
-        NSColor(calibratedRed: 0.42, green: 0.85, blue: 0.42, alpha: 1),
-        NSColor(calibratedRed: 0.96, green: 0.80, blue: 0.28, alpha: 1),
-        NSColor(calibratedRed: 0.36, green: 0.58, blue: 0.98, alpha: 1),
-        NSColor(calibratedRed: 0.86, green: 0.48, blue: 0.90, alpha: 1),
-        NSColor(calibratedRed: 0.36, green: 0.84, blue: 0.88, alpha: 1),
-        NSColor(calibratedRed: 0.95, green: 0.95, blue: 0.95, alpha: 1)
-    ]
-
-    static func color(for terminalColor: TerminalColor, isBackground: Bool) -> NSColor {
-        switch terminalColor {
-        case .default:
-            return isBackground ? .textBackgroundColor : .textColor
-        case .rgb(let red, let green, let blue):
-            return NSColor(
-                calibratedRed: CGFloat(red) / 255,
-                green: CGFloat(green) / 255,
-                blue: CGFloat(blue) / 255,
-                alpha: 1
-            )
-        case .indexed(let index):
-            switch index {
-            case 0...15:
-                return palette[Int(index)]
-            case 16...231:
-                let value = Int(index) - 16
-                let steps: [CGFloat] = [0, 95, 135, 175, 215, 255]
-                return NSColor(
-                    calibratedRed: steps[value / 36] / 255,
-                    green: steps[(value % 36) / 6] / 255,
-                    blue: steps[value % 6] / 255,
-                    alpha: 1
-                )
-            default:
-                let level = CGFloat(8 + (Int(index) - 232) * 10) / 255
-                return NSColor(calibratedRed: level, green: level, blue: level, alpha: 1)
-            }
-        }
-    }
 
     // MARK: 输入
 
