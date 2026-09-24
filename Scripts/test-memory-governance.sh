@@ -115,7 +115,86 @@ echo "$PROMOTE" | grep -q "‹标识符›" && check "标识符被替换成占�
 echo "$PROMOTE" | grep -q "orders" && check "通用写法里不许留下表名" 1 || check "通用写法里没有表名" 0
 echo "$PROMOTE" | grep -q "paid" && check "通用写法里不许留下数据值" 1 || check "通用写法里没有数据值" 0
 echo "$PROMOTE" | grep -q "脱敏闸：通过" && check "脱敏闸判定通过" 0 || check "脱敏闸应通过" 1
-rm -rf "$DIR2"
+
+# ④ 落盘：通用层提升**不再只打印**
+[ -f "$DIR2/general-memory.json" ] && check "提升后落盘 general-memory.json" 0 \
+    || { check "应落盘通用层文件" 1; ls "$DIR2"; }
+GENERAL="$("$CLI" memory --dir "$DIR2" --general 2>&1)"
+echo "$GENERAL" | grep -q "通用层共 1 条" && check "--general 能列出通用层" 0 || { check "应列出通用层" 1; echo "$GENERAL" | head -3; }
+GENERAL_ID="$("$CLI" memory --dir "$DIR2" --general --json 2>/dev/null | python3 -c '
+import json, sys
+text = sys.stdin.read()
+print(json.loads(text[text.index("{"):])["memories"][0]["id"])
+')"
+[ -n "$GENERAL_ID" ] && check "--general --json 给出稳定 id" 0 || check "应给出 id" 1
+
+# 重复提升同一条 → 计数 +1，而不是存两条
+"$CLI" memory --dir "$DIR2" --promote "$FP2" 2>&1 | grep -q "第 2 次提升" \
+    && check "重复提升计入 useCount（去重，不存两条）" 0 || check "应计数" 1
+COUNT2="$("$CLI" memory --dir "$DIR2" --general --json 2>/dev/null | python3 -c '
+import json, sys
+text = sys.stdin.read()
+print(len(json.loads(text[text.index("{"):])["memories"]))
+')"
+[ "$COUNT2" = "1" ] && check "通用层仍是 1 条" 0 || check "不该变成两条" 1
+
+# --dry-run：只判定，不落盘（对新目录验证）
+DIR3="$(mktemp -d -t doyah-governance-3)"
+"$CLI" archive-add --dir "$DIR3" --sql "SELECT count(*) FROM orders2 WHERE status = 'paid'" --connection 生产库 --runs 3 --at "$NEW_AT" >/dev/null
+FP3="$("$CLI" memory --dir "$DIR3" --json 2>/dev/null | python3 -c '
+import json, sys
+text = sys.stdin.read()
+print(json.loads(text[text.index("["):])[0]["fingerprint"])
+')"
+"$CLI" memory --dir "$DIR3" --promote "$FP3" --dry-run >/dev/null 2>&1
+[ -f "$DIR3/general-memory.json" ] && check "--dry-run 不该落盘" 1 || check "--dry-run 只判定不落盘" 0
+
+# 删除一条通用经验：只影响通用层
+"$CLI" memory --dir "$DIR2" --general-remove "$GENERAL_ID" 2>&1 | grep -q "已从通用层删除" \
+    && check "可按 id 删除通用经验" 0 || check "应能删除" 1
+"$CLI" memory --dir "$DIR2" --general 2>&1 | grep -q "通用层为空" \
+    && check "删除后通用层为空（记忆层与归档未受影响）" 0 || check "删除后应为空" 1
+rm -rf "$DIR2" "$DIR3"
+
+echo ""
+echo "== ⑤ 生命周期执行者：默认不删，确认后才删（FR-AI-15 的「谁执行」）=="
+DIR4="$(mktemp -d -t doyah-governance-4)"
+# 一条 400 天前的排障记录（只跑过 1 次、只在一天里出现）→ 判定为可遗忘
+"$CLI" archive-add --dir "$DIR4" --sql "SELECT * FROM tmp_diag WHERE id = 7" --connection 生产库 --runs 1 --at "$OLD_AT" >/dev/null
+ARCHIVE_FILE="$(ls "$DIR4"/*.sql | head -1)"
+BEFORE_BYTES="$(shasum -a 256 "$ARCHIVE_FILE" | awk '{print $1}')"
+
+PLAN="$("$CLI" memory --dir "$DIR4" --retention 2>&1)"
+echo "$PLAN" | sed 's/^/  /' | head -8
+echo "$PLAN" | grep -q "将被删除 1 条" && check "计划里指出 1 条将被遗忘" 0 \
+    || { check "应指出可遗忘条目" 1; echo "$PLAN" | head -5; }
+echo "$PLAN" | grep -q "默认只打印计划" && check "默认只打印计划（没有 --apply）" 0 || check "应提示确认方式" 1
+AFTER_BYTES="$(shasum -a 256 "$ARCHIVE_FILE" | awk '{print $1}')"
+[ "$BEFORE_BYTES" = "$AFTER_BYTES" ] && check "只打印计划时归档**一个字节都没动**" 0 || check "不该改动归档" 1
+
+"$CLI" memory --dir "$DIR4" --retention --apply >/dev/null 2>&1
+APPLY_CODE=$?
+[ "$APPLY_CODE" -eq 64 ] && check "只加 --apply（无 --yes）被拒，退出码 64" 0 || check "应拒绝执行" 1
+[ "$BEFORE_BYTES" = "$(shasum -a 256 "$ARCHIVE_FILE" | awk '{print $1}')" ] \
+    && check "被拒时归档仍然毫发无损" 0 || check "被拒时不该改动归档" 1
+
+# 预演：--now 指定未来时刻（不动归档，只是换个评估时刻）
+FUTURE="$("$CLI" memory --dir "$DIR4" --retention --now 2027-12-31 2>&1)"
+echo "$FUTURE" | grep -q "将被删除 1 条" && check "--now 可按指定时刻预演" 0 || check "--now 应生效" 1
+
+"$CLI" memory --dir "$DIR4" --retention --apply --yes 2>&1 | sed 's/^/  /'
+# 注意：`memory` 在"没有任何记忆"时**按设计返回 1**（脚本里通常只有当有结果才算成功）；
+# 所以这里取数字来判，而不是拿管道退出码 —— 否则会把"删干净了"误判成失败。
+REMAINING_MEM="$("$CLI" memory --dir "$DIR4" --json 2>/dev/null | python3 -c '
+import json, sys
+text = sys.stdin.read()
+start = text.find("[")
+print(0 if start < 0 else len(json.loads(text[start:])))
+' || true)"
+[ "$REMAINING_MEM" = "0" ] && check "确认后按计划删除：重建索引 0 条（实际 $REMAINING_MEM）" 0 \
+    || check "删除应生效（实际 $REMAINING_MEM 条）" 1
+grep -q "tmp_diag" "$ARCHIVE_FILE" && check "被忘的那条不该还在归档里" 1 || check "被忘的那条已从归档删除" 0
+rm -rf "$DIR4"
 
 echo ""
 if [ "$fail" -eq 0 ]; then

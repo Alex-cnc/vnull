@@ -938,6 +938,22 @@ struct DoyahCLI {
         return 0
     }
 
+    /// 解析「时刻」参数：接受 `yyyy-MM-dd`（按当天 0 点）与 ISO 8601。
+    ///
+    /// 只给天数时按 **0 点**算而不是当天结束：生命周期判据本来就是按**自然日**差的，
+    /// 差半天不该改变结论（用 23:59 会让人以为"多算了今天"）。
+    static func parseMoment(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        if let date = iso.date(from: trimmed) { return date }
+        let dayOnly = DateFormatter()
+        dayOnly.locale = Locale(identifier: "en_US_POSIX")
+        dayOnly.timeZone = .current
+        dayOnly.dateFormat = "yyyy-MM-dd"
+        return dayOnly.date(from: trimmed)
+    }
+
     /// 把字节渲染成可读形式（ESC → `ESC`、控制字符 → `\xNN`），便于脚本 grep 与人工核对。
     private static func visible(_ bytes: [UInt8]) -> String {
         var text = ""
@@ -1197,7 +1213,7 @@ struct DoyahCLI {
         }
 
         guard let directory = value(for: "--dir") else {
-            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect …]] [--routines] [--show 指纹] [--delete 指纹] [--clear --yes] [--promote 指纹] [--veto 指纹] [--unveto 指纹] [--keep-literal 指纹 字面量] [--json]")
+            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect …]] [--routines] [--show 指纹] [--delete 指纹] [--clear --yes] [--promote 指纹] [--general] [--general-remove id] [--retention [--apply --yes]] [--veto 指纹] [--unveto 指纹] [--keep-literal 指纹 字面量] [--json]")
             return 64
         }
 
@@ -1295,15 +1311,15 @@ struct DoyahCLI {
             }
         }
 
-        // `--promote`：通用层提升 + 脱敏闸（只打印，不落盘存储通用层）
+        // `--promote`：通用层提升 + 脱敏闸 + **落盘**（FR-AI-15 验收④）。
+        // `--dry-run` 只打印判定（脱敏闸不过时**绝不落盘**）。
         if let fingerprint = value(for: "--promote") {
             guard let memory = index.memories.first(where: { $0.fingerprint == fingerprint }) else {
                 print("没有这条记忆：\(fingerprint)")
                 return 1
             }
-            let dialect = SQLDialectFactory.make(
-                for: value(for: "--dialect") == "gbase8a" ? .gbase8a : .postgresql
-            )
+            let dialectName = value(for: "--dialect") == "gbase8a" ? "gbase8a" : "postgresql"
+            let dialect = SQLDialectFactory.make(for: dialectName == "gbase8a" ? .gbase8a : .postgresql)
             guard let generalized = MemoryPromotion.generalize(sql: memory.latestSQL, dialect: dialect) else {
                 print("这条语句不适合提升到通用层")
                 return 1
@@ -1315,8 +1331,144 @@ struct DoyahCLI {
             )
             print("通用写法：\(generalized)")
             print("脱敏闸：\(verdict.reason)")
-            print("（本轮只打印判定，**不落盘存储通用层** —— 通用层的存储与检视属后续）")
-            return verdict.isAllowed ? 0 : 1
+            if !verdict.isAllowed {
+                print("拒绝落盘：通用写法里仍带着具体标识符或取值（\(verdict.leakedTerms.joined(separator: "、"))）")
+                return 1
+            }
+            if arguments.contains("--dry-run") {
+                print("（--dry-run：只打印判定，未写 \(GeneralMemoryLayer.fileName)）")
+                return 0
+            }
+            var layer = GeneralMemoryStore.load(from: decisionsDirectory).layer
+            let promoted = layer.promote(
+                template: generalized,
+                dialect: dialectName,
+                sourceFingerprint: fingerprint
+            )
+            do {
+                try GeneralMemoryStore.save(layer, to: decisionsDirectory)
+            } catch {
+                print("通用层写入失败：\(error.localizedDescription)")
+                return 1
+            }
+            print("已落盘：\(GeneralMemoryLayer.fileName)（第 \(promoted.useCount) 次提升同一条写法，共 \(layer.memories.count) 条通用经验）")
+            return 0
+        }
+
+        // `--general`：列出通用层（可检视）
+        if arguments.contains("--general") {
+            let loaded = GeneralMemoryStore.load(from: decisionsDirectory)
+            for warning in loaded.warnings { print("⚠️ 通用层：\(warning)") }
+            if arguments.contains("--json") {
+                let payload: [String: Any] = [
+                    "count": loaded.layer.memories.count,
+                    "memories": loaded.layer.memories.map { memory -> [String: Any] in
+                        [
+                            "id": memory.id,
+                            "template": memory.template,
+                            "dialect": memory.dialect,
+                            "useCount": memory.useCount,
+                            "sources": memory.sourceFingerprints
+                        ]
+                    }
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .prettyPrinted]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                }
+                return 0
+            }
+            if loaded.layer.isEmpty {
+                print("通用层为空（还没提升过任何写法；用 --promote <指纹> 提升一条）")
+                return 0
+            }
+            print("通用层共 \(loaded.layer.memories.count) 条（文件：\(GeneralMemoryLayer.fileName)，可检视 / 可删除）")
+            for memory in loaded.layer.memories {
+                print("  · \(memory.id)  [\(memory.dialect)]  提升 \(memory.useCount) 次")
+                print("      \(memory.template)")
+            }
+            return 0
+        }
+
+        // `--general-remove`：删掉一条通用经验（**只影响通用层**，不动归档与记忆）
+        if let id = value(for: "--general-remove") {
+            var layer = GeneralMemoryStore.load(from: decisionsDirectory).layer
+            guard layer.remove(id: id) else {
+                print("通用层没有这条：\(id)")
+                return 1
+            }
+            do {
+                try GeneralMemoryStore.save(layer, to: decisionsDirectory)
+            } catch {
+                print("通用层写入失败：\(error.localizedDescription)")
+                return 1
+            }
+            print("已从通用层删除：\(id)（剩余 \(layer.memories.count) 条；归档与记忆层未受影响）")
+            return 0
+        }
+
+        // `--retention`：生命周期**执行者**（FR-AI-15）。
+        // 默认只打印计划；`--apply --yes` 才真删归档 —— 与 `--clear` / `--delete` 同一条纪律。
+        if arguments.contains("--retention") {
+            // `--now`：按指定时刻评估（**预演**用：想看看"再过半年哪些会被忘"）。
+            // 不传就按当前时间；只写到天时按当天 0 点算。
+            let now = value(for: "--now").flatMap(Self.parseMoment) ?? Date()
+            let plan = MemoryGovernance.plan(memories: index.memories, now: now)
+            if arguments.contains("--json") {
+                let payload: [String: Any] = [
+                    "policy": ["idleDays": plan.policy.idleDays, "lowUseRunCount": plan.policy.lowUseRunCount],
+                    "forgettable": plan.forgettable.map { item -> [String: Any] in
+                        [
+                            "fingerprint": item.fingerprint,
+                            "kind": item.kind.rawValue,
+                            "reason": item.verdict.reason,
+                            "classification": item.classificationReason,
+                            "runCount": item.runCount,
+                            "dayCount": item.dayCount
+                        ]
+                    },
+                    "retainedCount": plan.retained.count
+                ]
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .prettyPrinted]),
+                   let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                }
+                return 0
+            }
+            for line in plan.describe() { print(line) }
+
+            guard arguments.contains("--apply") else {
+                print("")
+                print("（默认只打印计划。确认要删就加 `--apply --yes`；删的是**归档记录**，不可撤销）")
+                return plan.forgettable.isEmpty ? 0 : 0
+            }
+            guard arguments.contains("--yes") else {
+                print("")
+                print("拒绝：按计划删除归档不可撤销，请确认后加 `--yes`（当前未改动任何文件）")
+                return 64
+            }
+            guard !plan.forgettable.isEmpty else {
+                print("没有可遗忘的条目，未改动任何文件")
+                return 0
+            }
+
+            var removed = 0
+            var changed: [String] = []
+            for item in plan.forgettable {
+                do {
+                    let report = try SQLArchiveEditor.removeEntries(
+                        matchingFingerprint: item.fingerprint,
+                        in: decisionsDirectory
+                    )
+                    removed += report.removedEntryCount
+                    changed.append(contentsOf: report.changedFiles)
+                } catch {
+                    print("删除失败（\(item.fingerprint)）：\(error.localizedDescription)")
+                    return 1
+                }
+            }
+            print("已按计划删除 \(removed) 条归档记录（改动文件：\(Array(Set(changed)).sorted().joined(separator: "、"))）")
+            return 0
         }
 
         // ── 例行候选（FR-AI-14）──
