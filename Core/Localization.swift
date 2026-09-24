@@ -181,6 +181,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case terminalCursorStyle
     case terminalCursorBlink
     case terminalCursorHint
+    case terminalShortcutHint
     case terminalSandboxNotice
     case terminalCursorBlock
     case terminalCursorBar
@@ -1528,6 +1529,7 @@ public enum LocalizedStrings {
         .commonPaste: [.simplifiedChinese: "粘贴", .english: "Paste"],
         .commonSelectAll: [.simplifiedChinese: "全选", .english: "Select All"],
         .terminalClearScrollback: [.simplifiedChinese: "清除回滚区", .english: "Clear Scrollback"],
+        .terminalShortcutHint: [.simplifiedChinese: "拖选文字 → ⌘C 复制 · ⌘V 粘贴 · ⌘A 全选 · ⌥+拖动 = 在接管鼠标的 TUI 里选字 · 右键 = 菜单", .english: "Drag to select, then ⌘C copies · ⌘V pastes · ⌘A selects all · ⌥-drag selects inside a mouse-capturing TUI · right-click for the menu"],
         .terminalCursorStyle: [.simplifiedChinese: "光标形状", .english: "Cursor shape"],
         .terminalCursorBlink: [.simplifiedChinese: "闪烁", .english: "Blink"],
         .terminalCursorHint: [.simplifiedChinese: "前台程序（vim 等）用 DECSCUSR 要求过形状时以它为准；这里设的是默认，只影响没提要求的程序。", .english: "When a foreground program (vim and friends) requests a shape with DECSCUSR, that wins. This setting is the default for programs that do not ask."],

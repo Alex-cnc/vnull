@@ -209,4 +209,33 @@ public enum TerminalInput {
         // ST 用 C1 的 8 位形式 `ESC \`（0x1B 0x5C），与 ctlseqs 一致。
         Array("\u{1B}P>|\(name)\u{1B}\\".utf8)
     }
+
+    // MARK: - 鼠标归属（本机 / 转发给前台程序）
+
+    /// 一次鼠标手势归谁处理。
+    public enum MouseRoute: String, Sendable {
+        /// 本机：选字 / 滚动 / 弹上下文菜单。
+        case local
+        /// 转发给前台程序（TUI 自己处理）。
+        case program
+    }
+
+    /// 拖动 / 滚轮这类手势的归属：前台程序接管了鼠标就**转发**，按住 **⌥** 强制归本机。
+    ///
+    /// ⌥ 这条通行键是终端惯例（VS Code、PuTTY 同）—— TUI 一接管鼠标，本机就一个字都选不了，
+    /// 必须留一个「还给我」的出口。
+    public static func route(mouseReportingActive: Bool, optionHeld: Bool) -> MouseRoute {
+        mouseReportingActive && !optionHeld ? .program : .local
+    }
+
+    /// **右键**的归属：与拖动 / 滚轮**反向** —— 默认归本机（弹上下文菜单），
+    /// 只有「前台程序接管鼠标 **且** 按住 ⌥」才转发给它。
+    ///
+    /// 为什么反过来：右键是这套界面里唯一的**图形化**入口（复制 / 粘贴 / 全选 / 清回滚区 /
+    /// 重开 shell）。实测反馈「能粘贴，但不知道复制按什么，而且没有右键菜单」，根因就是
+    /// `dsh-tui` 这类 TUI 会开鼠标上报（`?1002` / `?1006`），而旧规则把右键一起转发走了 ——
+    /// 菜单永远不会出现。TUI 里真正需要右键（button 2）的场合很少，需要时按 ⌥。
+    public static func rightClickRoute(mouseReportingActive: Bool, optionHeld: Bool) -> MouseRoute {
+        mouseReportingActive && optionHeld ? .program : .local
+    }
 }

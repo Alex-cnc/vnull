@@ -152,12 +152,16 @@ struct LowerPaneView: View {
             )
 
         case .terminal:
-            TerminalView(
-                model: terminal,
-                appearance: appState.terminalAppearance,
-                fontSize: appState.terminalFontSize,
-                cursor: appState.terminalCursorPreference.appearance
-            )
+            VStack(spacing: 0) {
+                TerminalView(
+                    model: terminal,
+                    appearance: appState.terminalAppearance,
+                    fontSize: appState.terminalFontSize,
+                    cursor: appState.terminalCursorPreference.appearance
+                )
+                Divider()
+                terminalShortcutBar
+            }
 
         case .debugConsole:
             placeholder(
@@ -165,6 +169,27 @@ struct LowerPaneView: View {
                 text: L(.lowerPaneDebugPlaceholder)
             )
         }
+    }
+
+    /// 终端页签底部的**快捷键提示条**。
+    ///
+    /// 为什么必须摆在台面上：终端里"只能用键盘"对不熟快捷键的人是个死结 —— 实测反馈就是
+    /// 「能粘贴，但不知道复制按什么，也没有右键菜单」。菜单里虽然带了快捷键显示，
+    /// 但得先知道"右键能弹菜单"才看得到；所以把三件事直接写在终端下面：
+    /// 复制 / 粘贴 / 全选，以及 ⌥（在接管鼠标的 TUI 里选字）与右键（菜单）。
+    private var terminalShortcutBar: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: "keyboard")
+            Text(L(.terminalShortcutHint))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .font(Theme.font(.caption))
+        .foregroundStyle(Theme.text(.secondary))
+        .padding(.horizontal, Spacing.s)
+        .padding(.vertical, Spacing.xs)
+        .help(L(.terminalShortcutHint))
     }
 
     private var problemsContent: some View {

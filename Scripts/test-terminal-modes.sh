@@ -48,6 +48,16 @@ grep -q '拖动 (12,6)：旧式 ESC\[M@,& ｜ SGR ESC\[<32;12;6M' /tmp/terminal-
 grep -q 'DECRQM ?1000 已置位 → ESC\[?1000;1\$y' /tmp/terminal-modes.txt \
     && check "DECRQM 回 ?1000;1\$y" 0 || check "DECRQM 回 ?1000;1\$y" 1
 
+# 鼠标路由：拖动 / 滚轮跟 ⌥ 走，右键反向（默认归本机）—— 「没有右键菜单」这条实测反馈的根因。
+grep -q '前台未接管鼠标：拖动 → 本机选字 · 滚轮 → 本机滚动 · 右键 → 本机菜单' /tmp/terminal-modes.txt \
+    && check "未接管鼠标：三项全归本机" 0 || check "未接管鼠标：三项全归本机" 1
+grep -q '前台接管鼠标（?1002 / ?1006）：拖动 → 转发给程序 · 滚轮 → 转发给程序 · 右键 → 本机菜单' /tmp/terminal-modes.txt \
+    && check "接管鼠标：拖动 / 滚轮转发，右键仍归本机（菜单永远能弹出来）" 0 \
+    || check "接管鼠标：拖动 / 滚轮转发，右键仍归本机（菜单永远能弹出来）" 1
+grep -q '前台接管鼠标 + ⌥：拖动 → 本机选字 · 滚轮 → 本机滚动 · 右键 → 转发给程序' /tmp/terminal-modes.txt \
+    && check "⌥：三项全部反向（拖动还给本机、右键交给程序）" 0 \
+    || check "⌥：三项全部反向（拖动还给本机、右键交给程序）" 1
+
 grep -q 'up：普通 ESC\[A ｜ 应用模式 ESCOA' /tmp/terminal-modes.txt \
     && check "DECCKM：方向键普通走 CSI、应用模式走 SS3" 0 \
     || check "DECCKM：方向键普通走 CSI、应用模式走 SS3" 1

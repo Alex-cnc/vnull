@@ -124,4 +124,34 @@ final class TerminalInputTests: XCTestCase {
     func testTerminalVersionUsesDCSString() {
         XCTAssertEqual(string(TerminalInput.terminalVersion(name: "DoyahStudio 1.0")), "\u{1B}P>|DoyahStudio 1.0\u{1B}\\")
     }
+
+    // MARK: 鼠标归属（FR-EDIT-29）
+
+    /// 拖动 / 滚轮：前台接管鼠标就转发，⌥ 强制归本机。
+    func testDragAndWheelRouteFollowsOptionKey() {
+        XCTAssertEqual(TerminalInput.route(mouseReportingActive: false, optionHeld: false), .local)
+        // 没接管鼠标时 ⌥ 不该有副作用（否则"按住 ⌥ 拖动"会莫名失效）。
+        XCTAssertEqual(TerminalInput.route(mouseReportingActive: false, optionHeld: true), .local)
+        XCTAssertEqual(TerminalInput.route(mouseReportingActive: true, optionHeld: false), .program)
+        XCTAssertEqual(TerminalInput.route(mouseReportingActive: true, optionHeld: true), .local)
+    }
+
+    /// 右键**反向**：默认归本机（弹菜单），只有「接管鼠标 + ⌥」才交给程序。
+    ///
+    /// 这条钉住的是实测反馈「没有鼠标右键菜单」的根因 —— 只要 TUI 开了 `?1002` / `?1006`
+    /// 就把右键也转发走，用户就只剩键盘一条路，而菜单正是给不熟快捷键的人准备的。
+    func testRightClickRouteIsInverted() {
+        XCTAssertEqual(TerminalInput.rightClickRoute(mouseReportingActive: false, optionHeld: false), .local)
+        XCTAssertEqual(TerminalInput.rightClickRoute(mouseReportingActive: true, optionHeld: false), .local)
+        XCTAssertEqual(TerminalInput.rightClickRoute(mouseReportingActive: true, optionHeld: true), .program)
+    }
+
+    /// 两条规则在"接管鼠标"这一档上必须给出**相反**的结论（否则不是"反向"了）。
+    func testRightClickIsTheMirrorOfDragWhenProgramOwnsMouse() {
+        for option in [false, true] {
+            let drag = TerminalInput.route(mouseReportingActive: true, optionHeld: option)
+            let right = TerminalInput.rightClickRoute(mouseReportingActive: true, optionHeld: option)
+            XCTAssertNotEqual(drag, right, "接管鼠标时（⌥=\(option)）拖动与右键必须走相反的路")
+        }
+    }
 }

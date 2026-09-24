@@ -855,7 +855,7 @@ struct DoyahCLI {
     /// `terminal-modes [--json] [--feed <转义串>]`
     ///
     /// 不带参数：打印各模式的**编码对照表**（鼠标按下 / 松开 / 拖动 / 滚轮、两种编码；
-    /// DECCKM 两种键序；四类查询应答）。
+    /// **鼠标路由**（本机 / 转发，含 ⌥ 与右键的反向规则）；DECCKM 两种键序；四类查询应答）。
     /// 带 `--feed`：把这段字节喂进真实的屏幕模型，打印**模式位与回给 PTY 的字节** ——
     /// 也就是说，验的是解析器而不是纯函数（两者都要对）。
     private static func runTerminalModesCommand(arguments: [String]) -> Int32 {
@@ -922,6 +922,22 @@ struct DoyahCLI {
             let motion = TerminalInput.MouseEvent(action: .motion, button: .left, column: 1, row: 1)
             print("    \(mode.displayName)：按下 \(TerminalInput.shouldReport(press, mode: mode) ? "报" : "不报")"
                   + " · 移动 \(TerminalInput.shouldReport(motion, mode: mode) ? "报" : "不报")")
+        }
+        print("")
+        print("鼠标路由（FR-EDIT-29：⌥ = 强制本地；右键**反向**，默认归本机）")
+        let routes: [(String, Bool, Bool)] = [
+            ("前台未接管鼠标", false, false),
+            ("前台接管鼠标（?1002 / ?1006）", true, false),
+            ("前台接管鼠标 + ⌥", true, true),
+        ]
+        for (label, reporting, option) in routes {
+            let drag = TerminalInput.route(mouseReportingActive: reporting, optionHeld: option) == .program
+                ? "转发给程序" : "本机选字"
+            let wheel = TerminalInput.route(mouseReportingActive: reporting, optionHeld: option) == .program
+                ? "转发给程序" : "本机滚动"
+            let right = TerminalInput.rightClickRoute(mouseReportingActive: reporting, optionHeld: option) == .program
+                ? "转发给程序" : "本机菜单"
+            print("  \(label)：拖动 → \(drag) · 滚轮 → \(wheel) · 右键 → \(right)")
         }
         print("")
         print("光标键（xterm ctlseqs：DECCKM ?1）")

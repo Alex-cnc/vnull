@@ -649,20 +649,26 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     /// 为什么要有它：终端里"只能用键盘"对不熟快捷键的人不友好，而 `⌘C/⌘V` 已经在
     /// **菜单栏**有了入口 —— 这里复用同一批动作（`copy:` / `paste:` / `selectAll:` 与模型的公开方法），
     /// 不新造第二条会分叉的实现。
+    ///
+    /// 每一项都**带上快捷键显示**（`⌘C` / `⌘V` / `⌘A`）：实测反馈就是「能粘贴，但不知道
+    /// 复制按什么」—— 菜单是唯一不用猜的地方，顺手把快捷键教给用户。
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         let hasSelection = model.selection != nil && model.selection?.isEmpty == false
 
-        let copyItem = NSMenuItem(title: L(.commonCopy), action: #selector(copy(_:)), keyEquivalent: "")
+        let copyItem = NSMenuItem(title: L(.commonCopy), action: #selector(copy(_:)), keyEquivalent: "c")
+        copyItem.keyEquivalentModifierMask = .command
         copyItem.target = self
         copyItem.isEnabled = hasSelection
         menu.addItem(copyItem)
 
-        let pasteItem = NSMenuItem(title: L(.commonPaste), action: #selector(paste(_:)), keyEquivalent: "")
+        let pasteItem = NSMenuItem(title: L(.commonPaste), action: #selector(paste(_:)), keyEquivalent: "v")
+        pasteItem.keyEquivalentModifierMask = .command
         pasteItem.target = self
         menu.addItem(pasteItem)
 
-        let selectAllItem = NSMenuItem(title: L(.commonSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
+        let selectAllItem = NSMenuItem(title: L(.commonSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "a")
+        selectAllItem.keyEquivalentModifierMask = .command
         selectAllItem.target = self
         menu.addItem(selectAllItem)
 
@@ -698,12 +704,26 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     /// 窗口焦点通知的观察者（`?1004` 焦点上报用；换窗口时先摘掉旧的）。
     private var focusObservers: [NSObjectProtocol] = []
 
-    /// 前台程序是否接管了鼠标，且这次事件**不是**"强制本地选中"。
+    /// 拖动 / 滚轮这类手势要不要**转发给前台程序**（判定在 `TerminalInput.route`）。
     ///
     /// 惯例（VS Code / PuTTY 等）：按住 **⌥** 时把鼠标还给本地 —— 否则在 vim / tmux 里
     /// 一个字都选不了。代价是这类事件里不报 Meta 修饰键，这一点写在 `help` 与文档里。
     private func isReportingMouse(_ event: NSEvent) -> Bool {
-        model.screen.isMouseReportingActive && !event.modifierFlags.contains(.option)
+        TerminalInput.route(
+            mouseReportingActive: model.screen.isMouseReportingActive,
+            optionHeld: event.modifierFlags.contains(.option)
+        ) == .program
+    }
+
+    /// **右键单独一条规则**：默认归本机（弹上下文菜单），只有接管鼠标的 TUI 才在按住 ⌥ 时拿到它。
+    ///
+    /// 规则与拖动 / 滚轮**反向**的原因见 `TerminalInput.rightClickRoute` —— 实测反馈
+    /// 「没有鼠标右键菜单」正是旧规则把右键一起转发走造成的。
+    private func forwardsRightClick(_ event: NSEvent) -> Bool {
+        TerminalInput.rightClickRoute(
+            mouseReportingActive: model.screen.isMouseReportingActive,
+            optionHeld: event.modifierFlags.contains(.option)
+        ) == .program
     }
 
     private func mouseModifiers(for event: NSEvent) -> TerminalInput.MouseModifiers {
@@ -764,12 +784,13 @@ final class TerminalHostView: NSView, NSMenuItemValidation {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        guard isReportingMouse(event) else { return super.rightMouseDown(with: event) }
+        // 归本机时走 `super` —— AppKit 的默认实现就是"弹出 `menu(for:)` 的菜单"。
+        guard forwardsRightClick(event) else { return super.rightMouseDown(with: event) }
         sendMouse(.press, button: .right, event: event)
     }
 
     override func rightMouseUp(with event: NSEvent) {
-        guard isReportingMouse(event) else { return super.rightMouseUp(with: event) }
+        guard forwardsRightClick(event) else { return super.rightMouseUp(with: event) }
         sendMouse(.release, button: .right, event: event)
     }
 
