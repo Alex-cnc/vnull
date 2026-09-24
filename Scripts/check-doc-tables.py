@@ -104,6 +104,21 @@ def check(path: pathlib.Path) -> list[str]:
                     f"{path}:{start + offset + 1}: 出现 '||'（疑似两行被合并）-> {row.strip()[:80]}"
                 )
 
+        # 表格行被**硬换行**拆成多个物理行：续行落到表格外，单元格文字被截断，
+        # 而按行数 / 列数都发现不了（2026-09-23 FR-EDIT-34 那一行就是这样躺了很久）。
+        #
+        # 判据取"表格块紧跟一行非表格、非空、且不像新块开头" —— 先用窄判据（末格以
+        # `；，、：（` 结尾或反引号未闭合）试过，结果**负例都抓不住**（等于摆设）。
+        # 改宽后实测全仓 7 份文档只命中 1 处，且那处是合法的 `<!-- … -->` 标记，
+        # 于是把 `<` 开头的行也排除掉 —— 误报为 0，而真事故能抓住。
+        if index < len(lines):
+            following = lines[index].lstrip()
+            if following and not following.startswith(("|", "#", ">", "-", "*", "`", "<")):
+                problems.append(
+                    f"{path}:{index + 1}: 疑似**表格续行**（上一行单元格没写完就被换行）"
+                    f" -> 上一行末尾 {block[-1].strip()[-30:]!r}，本行开头 {following[:40]!r}"
+                )
+
     return problems
 
 
