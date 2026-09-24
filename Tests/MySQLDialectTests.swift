@@ -82,15 +82,16 @@ final class MySQLDialectTests: XCTestCase {
         )
     }
 
-    /// GBase 8a 仍走"未实现"占位 —— **不要在没做之前把它顺手接上 MySQL 驱动**：
-    /// 同一个协议族不代表同一个产品（方言、权限模型、`SHOW GRANTS` 的解析都还要各自验）。
-    func testGBaseStillUsesNotImplementedService() {
-        XCTAssertTrue(
-            DatabaseServiceFactory.make(
-                for: ConnectionConfig(name: "g", dbType: .gbase8a, username: "root"),
-                password: nil
-            ) is NotImplementedDatabaseService
+    /// GBase 8a 走**自己的** service（`GBaseService`，内部组合 MySQL 驱动 + `GBaseDialect`），
+    /// 而不是 MySQL 那个直接实例 —— 同一个协议族不等于同一个产品（方言、权限模型、
+    /// `SHOW GRANTS` 的解析都还要各自验）。这条把它钉住，免得有人图省事直接 `MySQLService`。
+    func testGBaseUsesItsOwnService() {
+        let service = DatabaseServiceFactory.make(
+            for: ConnectionConfig(name: "g", dbType: .gbase8a, username: "root"),
+            password: nil
         )
+        XCTAssertTrue(service is GBaseService)
+        XCTAssertFalse(service is MySQLService)
     }
 
     /// 会话心跳语句：MySQL 协议族用 `SELECT 1`（与 PG 一样轻，但走的是各自的方言入口）。

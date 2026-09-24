@@ -52,6 +52,10 @@ public struct MySQLDialect: SQLDialect {
     public func currentDatabaseQuery() -> String { shared.currentDatabaseQuery() }
     public func parseServerVersion(_ raw: String) -> DatabaseVersion { shared.parseServerVersion(raw) }
     public func serverActivityQuery() -> String? { shared.serverActivityQuery() }
+
+    /// MySQL 的影响行数 / 自增 ID 会话函数（`ROW_COUNT()` / `LAST_INSERT_ID()`）。
+    /// GBase 8a **不覆盖这条**（默认 nil）—— 它在 GBase 上的语义未实测（FR-DRV-08），宁可显示"未知"。
+    public func sessionMetadataQuery() -> String? { "SELECT ROW_COUNT(), LAST_INSERT_ID()" }
     public func cancelSessionStatement(pid: Int) -> String? { shared.cancelSessionStatement(pid: pid) }
     public func terminateSessionStatement(pid: Int) -> String? { shared.terminateSessionStatement(pid: pid) }
     public func objectPrivilegeQuery(role: String) -> String? { shared.objectPrivilegeQuery(role: role) }

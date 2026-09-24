@@ -13,6 +13,9 @@ public actor MySQLService: DatabaseService {
     public nonisolated let config: ConnectionConfig
 
     private let password: String?
+    /// 方言**可注入**：GBase 8a 与 MySQL 同属一个协议族，驱动只差方言与少数自省查询，
+    /// 所以这里不复制一份 service，而是把方言当参数（`GBaseService` 就是这么组合出来的）。
+    private let dialect: any SQLDialect
     private let logger = Logger(label: "MySQLService")
     private var connection: MySQLConnection?
     /// 连接归我们自己管（MySQLNIO 要求调用方给 EventLoop）。
@@ -26,9 +29,10 @@ public actor MySQLService: DatabaseService {
     /// 执行注册表：「谁在跑、谁被取消过」的唯一事实源（R-29 / R-30），与 PG 侧共用同一个类型。
     private let registry = ExecutionRegistryBox()
 
-    public init(config: ConnectionConfig, password: String?) {
+    public init(config: ConnectionConfig, password: String?, dialect: (any SQLDialect)? = nil) {
         self.config = config
         self.password = password
+        self.dialect = dialect ?? SQLDialectFactory.make(for: config.dbType)
     }
 
     deinit {
@@ -84,8 +88,6 @@ public actor MySQLService: DatabaseService {
 
     /// 建连后的自省：版本 / 当前库 / 当前用户 / 连接号。
     private func finishConnect(on connection: MySQLConnection) async throws -> ServerInfo {
-        let dialect = MySQLDialect()
-
         let version = try await firstString(on: connection, sql: dialect.serverVersionQuery()) ?? "unknown"
         let database = try await firstString(on: connection, sql: dialect.currentDatabaseQuery()) ?? config.database
         let user = try await firstString(on: connection, sql: "SELECT CURRENT_USER()") ?? config.username
@@ -330,7 +332,7 @@ public actor MySQLService: DatabaseService {
             logger.warning("\(reason)")
             return .failed(reason: reason)
         }
-        guard let statement = MySQLDialect().cancelSessionStatement(pid: serverConnectionID) else {
+        guard let statement = dialect.cancelSessionStatement(pid: serverConnectionID) else {
             return .failed(reason: LocalizedStrings.text(.mysqlCancelStatementMissing, language: .simplifiedChinese))
         }
 
@@ -394,7 +396,10 @@ public actor MySQLService: DatabaseService {
 
     /// 上一条语句的影响行数与自增 ID（`ROW_COUNT()` / `LAST_INSERT_ID()` 作用于**本连接的上一条语句**）。
     private func sessionMetadata(on connection: MySQLConnection) async throws -> (affectedRows: Int?, lastInsertID: UInt64?) {
-        let rows = try await connection.simpleQuery("SELECT ROW_COUNT(), LAST_INSERT_ID()").get()
+        // 方言给不出这条查询就**如实返回"拿不到"**（GBase 8a 的 `ROW_COUNT()` 语义未实测，
+        // 见 FR-DRV-08）：宁可显示"影响行数未知"，也不用客户端自己数的数字冒充服务端的。
+        guard let sql = dialect.sessionMetadataQuery() else { return (nil, nil) }
+        let rows = try await connection.simpleQuery(sql).get()
         guard let row = rows.first, row.values.count >= 2 else { return (nil, nil) }
         let affected = Self.stringValue(
             column: row.columnDefinitions[0], value: row.values[0], format: row.format

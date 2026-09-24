@@ -68,7 +68,9 @@ public enum DatabaseServiceFactory {
         case .mysql:
             return MySQLService(config: config, password: password)
         case .gbase8a:
-            return NotImplementedDatabaseService(config: config, driverName: "MySQLNIO")
+            // GBase 8a 与 MySQL 同族：驱动委托给方言可注入的 `MySQLService`（见 `GBaseService`）。
+            // **注意这不等于"GBase 已验证"** —— 无实例，端到端 0 次，如实登记在 FR-DRV-08。
+            return GBaseService(config: config, password: password)
         }
     }
 }

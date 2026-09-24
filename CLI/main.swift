@@ -158,8 +158,9 @@ struct DoyahCLI {
         // 为什么单开一个子命令而不是往 PG 那条默认路径里塞分支：默认路径从环境变量到
         // `--tree` 全是 PostgreSQL 专用的（`PostgresService` 写死在里面），
         // 硬塞会让"哪条路径走哪个驱动"变成靠读代码才知道的事。这里给 MySQL 一条**自己的**路。
-        if arguments.first == "mysql" {
-            let code = await runMySQLCommand(arguments: Array(arguments.dropFirst()))
+        if arguments.first == "mysql" || arguments.first == "gbase8a" {
+            let type = arguments.first == "gbase8a" ? "gbase8a" : "mysql"
+            let code = await runMySQLCommand(arguments: Array(arguments.dropFirst()), defaultType: type)
             exit(code)
         }
 
@@ -902,7 +903,7 @@ struct DoyahCLI {
     ///
     /// 存在的理由与 `tunnel` 一样：界面里"能不能连上"只能靠眼睛，**命令行能给出一条可断言的路径** ——
     /// 本机没有 MySQL 实例时，脚本用**假 MySQL 服务器**（真跑 MySQL 线协议）把整条链路验一遍。
-    private static func runMySQLCommand(arguments: [String]) async -> Int32 {
+    private static func runMySQLCommand(arguments: [String], defaultType: String = "mysql") async -> Int32 {
         func value(for flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
             return arguments[index + 1]
@@ -919,9 +920,14 @@ struct DoyahCLI {
         let database = value(for: "--database") ?? ""
         let sslMode = SSLMode(rawValue: value(for: "--ssl-mode") ?? "prefer") ?? .prefer
         let isJSON = arguments.contains("--json")
+        let typeName = value(for: "--type") ?? defaultType
+        guard let dbType = DatabaseType(rawValue: typeName), dbType != .postgresql else {
+            FileHandle.standardError.write(Data("--type 只支持 mysql / gbase8a\n".utf8))
+            return 2
+        }
         let config = ConnectionConfig(
-            name: "MySQL CLI",
-            dbType: .mysql,
+            name: "\(dbType.displayName) CLI",
+            dbType: dbType,
             host: host,
             port: port,
             database: database,
@@ -930,7 +936,7 @@ struct DoyahCLI {
             timeout: Int(value(for: "--timeout") ?? "10") ?? 10
         )
 
-        let service = MySQLService(config: config, password: value(for: "--password"))
+        let service = DatabaseServiceFactory.make(for: config, password: value(for: "--password"))
 
         let info: ServerInfo
         do {

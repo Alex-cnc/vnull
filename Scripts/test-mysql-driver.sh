@@ -121,6 +121,27 @@ grep -q "query: SELECT ROW_COUNT(), LAST_INSERT_ID()" "$LOG" && s3=0 || s3=1
 check "影响行数是问服务端要的（ROW_COUNT()）" "$s3"
 
 echo ""
+echo "== 8) GBase 8a 走同族驱动（FR-DRV-08） =="
+# GBase 8a 与 MySQL 同属一个协议族：驱动委托给方言可注入的 MySQLService，方言换成 GBase。
+# **这里验的是"我们的接线"**（GBaseService 真的把 GBase 方言用上了、驱动路径真的通），
+# **不是"能连上 GBase"** —— 那需要一台真实 GBase 8a 实例，本机没有，如实登记为阻塞。
+GBASE_JSON="$("$CLI" gbase8a --host 127.0.0.1 --port "$PORT" --user gbase --password secret \
+    --database testdb --ssl-mode disable --json --sql "SELECT id FROM t")"
+echo "$GBASE_JSON" | grep -q '"ok":true' && check "GBase 8a 档也能连上（同一套协议接线）" 0 || check "GBase 8a 档也能连上（同一套协议接线）" 1
+echo "$GBASE_JSON" | grep -q '"columns":\["id","name","note","amount"\]' && check "GBase 档结果集解码正常" 0 || check "GBase 档结果集解码正常" 1
+run_gbase_sql() { "$CLI" gbase8a --host 127.0.0.1 --port "$PORT" --user gbase --password secret \
+    --database testdb --ssl-mode disable --json --sql "$1"; }
+ROWCOUNT_BEFORE="$(grep -c "query: SELECT ROW_COUNT()" "$LOG" 2>/dev/null || echo 0)"
+GBASE_DML="$(run_gbase_sql "INSERT INTO t VALUES (1)")"
+echo "$GBASE_DML" | grep -q '"affectedRows":null' \
+    && check "GBase 的影响行数如实留空（未实测，不用客户端自己数的数字冒充）" 0 \
+    || check "GBase 的影响行数如实留空（未实测，不用客户端自己数的数字冒充）" 1
+grep -q "query: SELECT VERSION()" "$LOG" && check "GBase 档的自省查询也真的发出去了" 0 || check "GBase 档的自省查询也真的发出去了" 1
+ROWCOUNT_AFTER="$(grep -c "query: SELECT ROW_COUNT()" "$LOG" 2>/dev/null || echo 0)"
+if [ "$ROWCOUNT_BEFORE" = "$ROWCOUNT_AFTER" ]; then rc_ok=0; else rc_ok=1; fi
+check "GBase 档没有多发 MySQL 专用的元信息查询（影响行数如实留空）" "$rc_ok"
+
+echo ""
 if [ "$fail" -eq 0 ]; then
     echo "✅ MySQL 驱动链路全部通过（假服务器真跑线协议）"
 else

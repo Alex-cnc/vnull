@@ -89,6 +89,12 @@ public protocol SQLDialect: Sendable {
     /// 结果约定：第 1 列约束名、第 2 列类型代码（p/u/f/c）、第 3 列定义文本。
     func tableConstraintsQuery(table: String, schema: String?) -> String?
 
+    /// 「上一条语句的影响行数 / 自增 ID」的自省查询（MySQL 协议族用 `ROW_COUNT()` / `LAST_INSERT_ID()`）。
+    ///
+    /// **默认 nil = 拿不到就如实说拿不到**：不猜、也不想当然地自己数行数 ——
+    /// 自己数在触发器 / 级联 / `ON DUPLICATE KEY` 上会给出很确定的错数字，那比没有数字更糟。
+    func sessionMetadataQuery() -> String?
+
     /// 取消某个后端会话上**正在执行的语句**（FR-SESS-02）；nil = 不支持。
     func cancelSessionStatement(pid: Int) -> String?
     /// **终止**某个后端会话（FR-SESS-02）；nil = 不支持。
@@ -107,6 +113,7 @@ public protocol SQLDialect: Sendable {
 /// 这样第三方方言实现不必为了编译通过而写空方法。
 public extension SQLDialect {
     func serverActivityQuery() -> String? { nil }
+    func sessionMetadataQuery() -> String? { nil }
     func cancelSessionStatement(pid: Int) -> String? { nil }
     func terminateSessionStatement(pid: Int) -> String? { nil }
     func objectPrivilegeQuery(role: String) -> String? { nil }
