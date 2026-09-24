@@ -127,6 +127,11 @@ struct MainWindow: View {
             SchemaDiffPanel()
                 .environmentObject(appState)
         }
+        // 外键跳转目标选择（FR-DATA-06）：一列被多条外键引用时才出现。
+        .sheet(item: $appState.pendingForeignKeyJump) { request in
+            ForeignKeyJumpSheet(request: request)
+                .environmentObject(appState)
+        }
         .alert(
             L(.accountUndecidedTitle),
             isPresented: $appState.isAccountNoticePresented

@@ -20,6 +20,8 @@ struct ResultTableView: View {
     var onExport: ((ResultExportFormat) -> Void)?
     /// R-21：把筛选条件生成的 WHERE 交给编辑器（为 nil 时不显示该入口）。
     var onGenerateWhere: ((String) -> Void)?
+    /// 右键「跳到被引用行…」回调：`(列名, 单元格值)`（FR-DATA-06）。
+    var onJumpToReferencedRow: ((String, String?) -> Void)?
 
     /// 表头排序 / 筛选条 / 分页条的状态。
     @State private var gridState = ResultGridState()
@@ -238,7 +240,8 @@ struct ResultTableView: View {
                     // 选中回调给的是**分页内索引**，原样存下；取行的地方统一走
                     // `selectedDetailRow(in:)`，那里会丢掉越界索引。
                     selectedRows = selection
-                }
+                },
+                onJumpToReferencedRow: onJumpToReferencedRow
             )
 
             // **只要结果里有行就给出分页条**，包括"每页 = 全部"这一档。

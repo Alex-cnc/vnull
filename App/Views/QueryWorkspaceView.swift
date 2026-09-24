@@ -309,6 +309,9 @@ struct QueryEditorView: View {
                 },
                 onGenerateWhere: { clause in
                     appState.applyClientFilterWhere(clause, for: tab.id)
+                },
+                onJumpToReferencedRow: { column, value in
+                    appState.jumpToReferencedRow(column: column, value: value)
                 }
             )
         }

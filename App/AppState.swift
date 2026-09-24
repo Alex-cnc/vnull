@@ -13,6 +13,11 @@ struct QueryTab: Identifiable {
     var results: [QueryResult]
     var selectedResultIndex: Int
     var isExecuting: Bool
+    /// 这张结果是从哪张表浏览出来的（FR-DATA-06 的跳转要它来判外键）。
+    ///
+    /// 只由「浏览数据」这类**明确知道表名**的入口写入；手写 SQL 的结果没有它 ——
+    /// 靠解析 SQL 猜表名会把跳转指向错表，宁可说"不知道"。
+    var sourceTable: DatabaseObjectRef?
 
     /// 是否有**可展示的表格结果** —— 决定结果区要不要出现。
     ///
@@ -143,6 +148,19 @@ struct PendingDataTaskRun {
     let writeSQL: String
 }
 
+/// 一列被多条外键引用时，等用户选一个目标（FR-DATA-06）。
+///
+/// 为什么要一个显式的"待选择"对象而不是把选项塞进某个数组：面板用 `.sheet(item:)` 呈现，
+/// 需要 `Identifiable`；用 `Bool` 开关 + 另一个数组会出现"开关还在、选项已被清空"的中间态。
+struct ForeignKeyJumpRequest: Identifiable {
+
+    let id = UUID()
+    var options: [ForeignKeyNavigation.Option]
+    var value: String
+    var source: DatabaseObjectRef
+    var column: String
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var connections: [ConnectionConfig] = []
@@ -206,6 +224,9 @@ final class AppState: ObservableObject {
 
     /// 「Schema 对比与同步」面板（FR-DDL-04）。
     @Published var isSchemaDiffPresented = false
+
+    /// 多个外键目标时的待选择请求（FR-DATA-06）。
+    @Published var pendingForeignKeyJump: ForeignKeyJumpRequest?
 
     /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
     @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
@@ -2258,10 +2279,18 @@ final class AppState: ObservableObject {
     }
 
     /// 把生成的 SQL 放进**新页签**的编辑器：不覆盖用户正在写的内容，也不执行（FR-META-14）。
-    func openSQLInNewTab(_ sql: String, status: String? = nil, execute: Bool = false) {
+    func openSQLInNewTab(
+        _ sql: String,
+        status: String? = nil,
+        execute: Bool = false,
+        source: DatabaseObjectRef? = nil
+    ) {
         newQueryTab()
         guard let tabID = selectedTabID else { return }
         updateSQL(sql, for: tabID)
+        if let source, let index = tabs.firstIndex(where: { $0.id == tabID }) {
+            tabs[index].sourceTable = source
+        }
         statusMessage = status ?? L(.objectTreeOpenedInNewTab)
         // `execute: true` 只用于"用户刚刚在面板上确认过语句"的入口（浏览 / 计数）：
         // 语句在面板里已经**实时预览**过，且仍然走 Safe Mode 那一关。
@@ -2279,7 +2308,7 @@ final class AppState: ObservableObject {
         let dialect = SQLDialectFactory.make(for: configuration.dbType)
         switch RowBrowsingQuery.browse(table: object.name, schema: object.schema, filter: filter, dialect: dialect) {
         case .success(let sql):
-            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true)
+            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true, source: DatabaseObjectRef(schema: object.schema, name: object.name))
         case .failure(let error):
             errorMessage = L(.browseSheetRefused, error.identifier)
         }
@@ -2360,7 +2389,7 @@ final class AppState: ObservableObject {
         case .success(let sql):
             // `execute: true`：语句完全由搜索结果决定（没有用户输入），
             // 而且用户点这个按钮就是想看数据 —— 只往编辑器里塞一句等于没反应。
-            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true)
+            openSQLInNewTab(sql, status: L(.browseSheetBrowsing), execute: true, source: DatabaseObjectRef(schema: schema, name: name))
         case .failure(let error):
             errorMessage = L(.browseSheetRefused, error.identifier)
         }
@@ -3418,6 +3447,131 @@ final class AppState: ObservableObject {
             cacheHit: await run(.cacheHitRate),
             limit: limit
         )
+    }
+
+
+    // MARK: - 外键引用导航的界面入口（FR-DATA-06）
+
+    /// 结果表格里点了「跳到被引用行」：先判这张结果的来源表与这一列的外键，
+    /// 再把跳转语句送到新页签（**真的执行**，因为用户点的就是"看被引用的那一行"）。
+    ///
+    /// 三条"宁可说不知道"的口径：
+    /// ① 结果不是从某张表浏览出来的（手写 SQL）→ 不猜表名；
+    /// ② 这一列没有外键 → 直说，不生成一条必然查不到的语句；
+    /// ③ 单元格是 NULL → 直说，`WHERE id = NULL` 永远查不到任何行。
+    func jumpToReferencedRow(column: String, value: String?) {
+        guard let tab = selectedTab, let source = tab.sourceTable else {
+            statusMessage = L(.fkJumpUnknownTable)
+            return
+        }
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else {
+            statusMessage = L(.fkJumpNullValue, column)
+            return
+        }
+        Task { await resolveForeignKeyJump(source: source, column: column, value: trimmed) }
+    }
+
+    private func resolveForeignKeyJump(source: DatabaseObjectRef, column: String, value: String) async {
+        do {
+            let edges = try await foreignKeyEdges(table: source)
+            let options = ForeignKeyNavigation.options(
+                table: source.name,
+                column: column,
+                edges: edges,
+                schema: source.schema
+            )
+            guard !options.isEmpty else {
+                statusMessage = L(.fkJumpNoForeignKey, column)
+                return
+            }
+            if options.count == 1 {
+                await openReferencedRow(options[0], value: value, source: source, column: column)
+            } else {
+                // 多个目标（同一列被多条外键引用）时让用户选，而不是替他按字母序挑一个。
+                pendingForeignKeyJump = ForeignKeyJumpRequest(
+                    options: options,
+                    value: value,
+                    source: source,
+                    column: column
+                )
+            }
+        } catch {
+            statusMessage = L(.fkJumpFailed, error.localizedDescription)
+        }
+    }
+
+    /// 选中某个目标后的跳转（面板与单选路径共用）。
+    func performForeignKeyJump(_ request: ForeignKeyJumpRequest, option: ForeignKeyNavigation.Option) async {
+        await openReferencedRow(option, value: request.value, source: request.source, column: request.column)
+    }
+
+    private func openReferencedRow(
+        _ option: ForeignKeyNavigation.Option,
+        value: String,
+        source: DatabaseObjectRef,
+        column: String
+    ) async {
+        guard let configuration = selectedConnection else { return }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        // 类型名从**源表结构**取：数字列写成 `'42'` 会让数据库做隐式转换，
+        // 索引可能用不上（而且 PG 上某些类型直接报错）。
+        let typeName = await columnTypeName(schema: source.schema, table: source.name, column: column)
+        let sql = ForeignKeyNavigation.query(option: option, value: value, typeName: typeName, dialect: dialect)
+        openSQLInNewTab(
+            sql,
+            status: L(.fkJumpStatus, option.targetTable, column, value),
+            execute: true
+        )
+    }
+
+    /// 读一张表的外键边。
+    ///
+    /// 现状（写进需求行的"仍未做"里，不假装有缓存）：每次跳转读一次该表的约束，
+    /// 不缓存也不扫全库 —— 大库上的外键图缓存仍属后续。
+    private func foreignKeyEdges(table source: DatabaseObjectRef) async throws -> [ForeignKeyNavigation.Edge] {
+        guard let configuration = selectedConnection else {
+            throw AppError.notConnected
+        }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.tableConstraintsQuery(table: source.name, schema: source.schema) else {
+            return []
+        }
+        let database = currentDatabaseName(for: configuration)
+        let service = try await ensureService(for: configuration, database: database)
+        let result = try await runSingleQuery(query, on: service)
+
+        var edges: [ForeignKeyNavigation.Edge] = []
+        for row in result.rows {
+            let constraintName = row.indices.contains(0) ? row[0] : nil
+            let kind = (row.indices.contains(1) ? row[1] : nil) ?? ""
+            let definition = (row.indices.contains(2) ? row[2] : nil) ?? ""
+            if let edge = ForeignKeyNavigation.parseEdge(
+                constraintName: constraintName,
+                kind: kind,
+                definition: definition,
+                table: source.name,
+                schema: source.schema,
+                // 同 schema 的引用在 `pg_get_constraintdef` 里不带 schema，这里让它继承源表 schema
+                defaultSchema: source.schema
+            ) {
+                edges.append(edge)
+            }
+        }
+        return edges
+    }
+
+    private func columnTypeName(schema: String?, table: String, column: String) async -> String {
+        guard let configuration = selectedConnection else { return "text" }
+        let dialect = SQLDialectFactory.make(for: configuration.dbType)
+        guard let query = dialect.tableStructureQuery(table: table, schema: schema) else { return "text" }
+        let database = currentDatabaseName(for: configuration)
+        guard let service = try? await ensureService(for: configuration, database: database),
+              let structure = try? await runSingleQuery(query, on: service) else {
+            return "text"
+        }
+        let definitions = MetadataService.columnDefinitions(from: structure)
+        return definitions.first { $0.name.caseInsensitiveCompare(column) == .orderedSame }?.typeName ?? "text"
     }
 
     // MARK: - Schema 对比与同步（FR-DDL-04 的界面差异视图）

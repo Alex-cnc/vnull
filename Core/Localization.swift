@@ -934,6 +934,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case schemaDiffFailed
     case schemaDiffPickConnections
     case schemaDiffLoading
+    // 外键引用导航的界面入口（FR-DATA-06）
+    case resultJumpToReferencedRow
+    case fkJumpTitle
+    case fkJumpSource
+    case fkJumpPickTarget
+    case fkJumpNoForeignKey
+    case fkJumpUnknownTable
+    case fkJumpNullValue
+    case fkJumpStatus
+    case fkJumpFailed
     case safetyConfirmRun
     case safetyConfirmCancel
 
@@ -1783,6 +1793,15 @@ public enum LocalizedStrings {
         .schemaDiffFailed: [.simplifiedChinese: "对比失败：%@", .english: "Comparison failed: %@"],
         .schemaDiffPickConnections: [.simplifiedChinese: "请先选好两侧连接（默认已带上当前连接）", .english: "Pick both connections first (the current connection is pre-selected)"],
         .schemaDiffLoading: [.simplifiedChinese: "正在抓取两侧结构…", .english: "Reading both structures…"],
+        .resultJumpToReferencedRow: [.simplifiedChinese: "跳到被引用行…", .english: "Jump to referenced row…"],
+        .fkJumpTitle: [.simplifiedChinese: "跳到被引用行", .english: "Jump to referenced row"],
+        .fkJumpSource: [.simplifiedChinese: "来源：%@ 的 %@ = %@", .english: "From: %@ . %@ = %@"],
+        .fkJumpPickTarget: [.simplifiedChinese: "这一列被多条外键引用，选一个目标：", .english: "This column is referenced by more than one foreign key — pick a target:"],
+        .fkJumpNoForeignKey: [.simplifiedChinese: "这一列没有外键（%@），没有可跳转的目标", .english: "Column %@ has no foreign key — nothing to jump to"],
+        .fkJumpUnknownTable: [.simplifiedChinese: "这张结果不是从某张表浏览出来的（手写 SQL），无法判断外键；请先用对象树的「浏览数据」打开表", .english: "This result did not come from browsing a table (it is ad-hoc SQL), so foreign keys cannot be resolved. Open the table with Browse data first"],
+        .fkJumpNullValue: [.simplifiedChinese: "单元格 %@ 是 NULL，没有可跳转的值", .english: "Cell %@ is NULL — there is no value to jump with"],
+        .fkJumpStatus: [.simplifiedChinese: "跳到 %@（%@ = %@）", .english: "Jumped to %@ (%@ = %@)"],
+        .fkJumpFailed: [.simplifiedChinese: "读取外键失败：%@", .english: "Could not read foreign keys: %@"],
         .backupRestoreTitle: [.simplifiedChinese: "备份 / 恢复", .english: "Backup / restore"],
         .backupRestoreHint: [.simplifiedChinese: "封装 `pg_dump` / `pg_restore` / `pg_dumpall`：**执行前先比工具与服务端主版本**，不兼容就提前拦下并说明原因与办法", .english: "Wraps pg_dump / pg_restore / pg_dumpall. Tool and server major versions are compared before running; incompatible pairs are stopped early with a reason and a remedy"],
         .backupRestoreKindDump: [.simplifiedChinese: "单库备份", .english: "Dump one database"],

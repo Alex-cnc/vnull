@@ -32,6 +32,11 @@ struct ResultGrid: NSViewRepresentable {
     /// 做了 `guard !changed.isEmpty` 早退，而"选择被清空 / 没有列可重画"恰恰是必须传出去的变化 ——
     /// 早退会把它吞掉，行详情侧栏就会继续显示上一行的值（欺骗性显示）。
     var onSelectionChange: ((Set<Int>) -> Void)?
+    /// 右键「跳到被引用行…」回调：`(列名, 单元格值)`（FR-DATA-06）。
+    ///
+    /// 为什么传**列名与值**而不是行列下标：跳转只需要「这一列的值」这个事实，
+    /// 而下标在分页 / 排序 / 筛选之后有「显示下标 vs 原始下标」两套语义 —— 传下标迟早错位。
+    var onJumpToReferencedRow: ((String, String?) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -76,6 +81,17 @@ struct ResultGrid: NSViewRepresentable {
         }
         copyAsItem.submenu = copyAsMenu
         menu.addItem(copyAsItem)
+
+        // 外键引用导航（FR-DATA-06）：跳转目标不在这里猜 —— 点下去由 AppState 判
+        // 「是不是从表浏览来的 / 这一列有没有外键 / 值是不是 NULL」，逐条给人话。
+        menu.addItem(NSMenuItem.separator())
+        let jumpItem = NSMenuItem(
+            title: L(.resultJumpToReferencedRow),
+            action: #selector(CopyableTableView.jumpToReferencedRow(_:)),
+            keyEquivalent: ""
+        )
+        jumpItem.target = tableView
+        menu.addItem(jumpItem)
         tableView.menu = menu
 
         let scrollView = NSScrollView()
@@ -92,6 +108,7 @@ struct ResultGrid: NSViewRepresentable {
             sortDescriptors: sortDescriptors,
             onToggleSort: onToggleSort,
             onSelectionChange: onSelectionChange,
+            onJumpToReferencedRow: onJumpToReferencedRow,
             tableView: tableView
         )
         return scrollView
@@ -105,6 +122,7 @@ struct ResultGrid: NSViewRepresentable {
             sortDescriptors: sortDescriptors,
             onToggleSort: onToggleSort,
             onSelectionChange: onSelectionChange,
+            onJumpToReferencedRow: onJumpToReferencedRow,
             tableView: tableView
         )
     }
@@ -123,6 +141,8 @@ struct ResultGrid: NSViewRepresentable {
         private var onToggleSort: ((Int, Bool) -> Void)?
         /// 选中行变化回调（同上，每次更新时刷新）。
         private var onSelectionChange: ((Set<Int>) -> Void)?
+        /// 外键跳转回调（同上）。
+        private var onJumpToReferencedRow: ((String, String?) -> Void)?
         /// 正在**程序化**作废选中态：此时的 `tableViewSelectionDidChange` 不发回调。
         ///
         /// 因为这条路径是 `updateNSView` 里触发的，同步回调等于把"改状态"插进 SwiftUI
@@ -148,12 +168,14 @@ struct ResultGrid: NSViewRepresentable {
             sortDescriptors: [ResultSortDescriptor],
             onToggleSort: ((Int, Bool) -> Void)?,
             onSelectionChange: ((Set<Int>) -> Void)?,
+            onJumpToReferencedRow: ((String, String?) -> Void)?,
             tableView: NSTableView
         ) {
             self.result = result
             self.rows = rows
             self.onToggleSort = onToggleSort
             self.onSelectionChange = onSelectionChange
+            self.onJumpToReferencedRow = onJumpToReferencedRow
             syncSortDescriptors(sortDescriptors, tableView: tableView)
 
             // 换结果集：选中态作废（旧的行号对新数据没有意义）。
@@ -344,6 +366,22 @@ struct ResultGrid: NSViewRepresentable {
             copySelection(from: tableView, as: ResultClipboard.defaultFormat)
         }
 
+        /// 右键「跳到被引用行…」（FR-DATA-06）：取**点击位置**那一格的列名与值。
+        ///
+        /// 用 `clickedRow` / `clickedColumn` 而不是选中态：右键点在哪一格，用户要的就是那一格。
+        /// 值拿不到（越界）时不猜、不传空串 —— 上层会按"没有值"给可读提示。
+        func jumpToReferencedRow(from tableView: NSTableView) {
+            guard let result else { return }
+            let row = tableView.clickedRow
+            let column = tableView.clickedColumn
+            guard row >= 0, column >= 0,
+                  rows.indices.contains(row),
+                  result.columns.indices.contains(column) else { return }
+            let values = rows[row]
+            let value = values.indices.contains(column) ? values[column] : nil
+            onJumpToReferencedRow?(result.columns[column].name, value)
+        }
+
         /// 按指定格式复制选中的行（FR-RES-12）。
         ///
         /// **行为变化（有意，已记进变更记录）**：TSV 里的 NULL 以前写成字面量 `NULL`，
@@ -453,6 +491,8 @@ private final class ResultHeaderCell: NSTableHeaderCell {
 private protocol ResultGridCopying: AnyObject {
     func copySelection(from tableView: NSTableView)
     func copySelection(from tableView: NSTableView, as format: ResultClipboard.Format)
+    /// 右键「跳到被引用行…」（FR-DATA-06）。
+    func jumpToReferencedRow(from tableView: NSTableView)
 }
 
 /// 让 ⌘C 与右键菜单能复制选中的单元格（TSV 格式）。
@@ -469,5 +509,11 @@ private final class CopyableTableView: NSTableView {
               let format = ResultClipboard.Format(rawValue: raw)
         else { return }
         (dataSource as? ResultGridCopying)?.copySelection(from: self, as: format)
+    }
+
+    /// 右键「跳到被引用行…」：用**点击位置**（不是选中行）取值 ——
+    /// 用户右键点的那一格才是他想要的那一格，选中态可能停在别处。
+    @objc func jumpToReferencedRow(_ sender: Any?) {
+        (dataSource as? ResultGridCopying)?.jumpToReferencedRow(from: self)
     }
 }
