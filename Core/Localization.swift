@@ -963,6 +963,19 @@ public enum LKey: String, CaseIterable, Sendable {
     case databaseStatsNoScans
     case databaseStatsLoading
     case databaseStatsFailure
+    // 终端偏好（FR-EDIT-29 的后续）
+    case appearanceTerminalSection
+    case terminalAppearanceFollowSystem
+    case terminalAppearanceAlwaysDark
+    case terminalAppearanceAlwaysLight
+    case terminalFontSizeLabel
+    case terminalFontSizeHint
+    case terminalPreviewHint
+    case terminalPreviewNormal
+    case terminalPreviewBright
+    case terminalPreviewDim
+    case terminalPreviewSelection
+    case terminalAppearanceHint
     // 服务器级对象管理面板（FR-SESS-03）
     case menuServerObjects
     case serverObjectsTitle
@@ -1973,6 +1986,18 @@ public enum LocalizedStrings {
         .databaseStatsNoScans: [.simplifiedChinese: "无扫描数据", .english: "No scan data"],
         .databaseStatsLoading: [.simplifiedChinese: "正在采集…", .english: "Collecting…"],
         .databaseStatsFailure: [.simplifiedChinese: "统计失败：%@", .english: "Could not collect statistics: %@"],
+        .appearanceTerminalSection: [.simplifiedChinese: "终端", .english: "Terminal"],
+        .terminalAppearanceFollowSystem: [.simplifiedChinese: "跟随系统", .english: "Follow system"],
+        .terminalAppearanceAlwaysDark: [.simplifiedChinese: "总是深色", .english: "Always dark"],
+        .terminalAppearanceAlwaysLight: [.simplifiedChinese: "总是浅色", .english: "Always light"],
+        .terminalFontSizeLabel: [.simplifiedChinese: "终端字号：%d pt", .english: "Terminal font size: %d pt"],
+        .terminalFontSizeHint: [.simplifiedChinese: "字号独立于界面设置；改动会重建字符网格，并让 shell 按新列数重新分栏。", .english: "Independent of the UI font size. Changing it rebuilds the character grid and tells the shell to re-wrap at the new column count."],
+        .terminalPreviewHint: [.simplifiedChinese: "预览（真实色板，随上面的选择立即变化）", .english: "Preview (the real palette — updates as you choose)"],
+        .terminalPreviewNormal: [.simplifiedChinese: "常规色", .english: "Normal"],
+        .terminalPreviewBright: [.simplifiedChinese: "亮色", .english: "Bright"],
+        .terminalPreviewDim: [.simplifiedChinese: "暗淡", .english: "Dim"],
+        .terminalPreviewSelection: [.simplifiedChinese: "选中", .english: "Selected"],
+        .terminalAppearanceHint: [.simplifiedChinese: "终端可以独立于界面外观：浅色界面里配深色终端是常见偏好。", .english: "The terminal can differ from the app appearance — a dark terminal inside a light UI is a common preference."],
         .menuServerObjects: [.simplifiedChinese: "服务器级对象…", .english: "Server-level Objects…"],
         .serverObjectsTitle: [.simplifiedChinese: "服务器级对象", .english: "Server-level objects"],
         .serverObjectsHint: [.simplifiedChinese: "浏览与管理服务器级对象（角色 / 表空间 / 扩展）。写操作一律先出语句、再确认。", .english: "Browse and manage server-level objects (roles, tablespaces, extensions). Every write shows its statement first."],

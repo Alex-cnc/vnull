@@ -253,6 +253,41 @@ final class AppState: ObservableObject {
     /// 保活是**应用级**策略，所以开关不放连接表单 —— 放那儿会让人以为它是逐连接的属性。
     @Published var isConnectionSettingsPresented = false
 
+    // MARK: - 终端偏好（FR-EDIT-29）
+
+    /// 终端外观：跟随系统 / 总是深色 / 总是浅色。
+    ///
+    /// 未知值回落「跟随系统」（`TerminalAppearance.resolve`）：偏好被手改、或版本降级读到新值，
+    /// 都不该让终端起不来 —— 与强调色、活动栏同一条纪律。
+    @Published var terminalAppearance: TerminalAppearance =
+        TerminalAppearance.resolve(rawValue: UserDefaults.standard.string(forKey: "terminal.appearance")) {
+        didSet { UserDefaults.standard.set(terminalAppearance.rawValue, forKey: "terminal.appearance") }
+    }
+
+    /// 终端字号（pt）。**夹取逻辑在 Core**（`TerminalFontSize`），这里只负责持久化：
+    /// 写进来的越界值会被夹回区间，且夹回后的值才落盘 —— 偏好里不留非法值。
+    @Published var terminalFontSize: Int =
+        TerminalFontSize.resolve(rawValue: UserDefaults.standard.object(forKey: "terminal.fontSize")) {
+        didSet {
+            let clamped = TerminalFontSize.clamped(terminalFontSize)
+            if clamped != terminalFontSize {
+                terminalFontSize = clamped
+                return
+            }
+            UserDefaults.standard.set(terminalFontSize, forKey: "terminal.fontSize")
+        }
+    }
+
+    /// 终端当前该用深色还是浅色：偏好解析 + 系统外观。视图据此取色板。
+    var terminalIsDark: Bool {
+        terminalAppearance.resolvesToDark(systemIsDark: Self.systemIsDarkAppearance)
+    }
+
+    /// 系统当前是否为深色外观（AppKit 口径；界面其余部分走 SwiftUI 的 `colorScheme`）。
+    static var systemIsDarkAppearance: Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     /// 「数据库统计」面板（FR-DIAG-04）。
     @Published var isDatabaseStatsPresented = false
 

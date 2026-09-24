@@ -152,7 +152,11 @@ struct LowerPaneView: View {
             )
 
         case .terminal:
-            TerminalView(model: terminal)
+            TerminalView(
+                model: terminal,
+                appearance: appState.terminalAppearance,
+                fontSize: appState.terminalFontSize
+            )
 
         case .debugConsole:
             placeholder(

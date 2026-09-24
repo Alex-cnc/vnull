@@ -45,7 +45,7 @@ python3 - <<'PY' > /tmp/terminal-palette-check.txt 2>&1
 import json
 data = json.load(open('/tmp/terminal-palette.json'))
 problems = []
-for palette in data:
+for palette in [entry for entry in data if 'foregroundContrast' in entry]:
     name = palette['name']
     if palette['foregroundContrast'] < 7.0:
         problems.append(f"{name}: 前景对底色只有 {palette['foregroundContrast']}")
@@ -64,6 +64,39 @@ else
     check "两套色板的正文槽位全部 ≥ 4.5、前景 ≥ 7" 1
     cat /tmp/terminal-palette-check.txt
 fi
+
+echo ""
+echo "== 2b) 外观三态与字号夹取（用命令行复算，与 App 同一份 Core 逻辑）=="
+# 每个用例都同时看两样东西：解析结果（实际使用 深色/浅色）与最终色板名（深海·夜/深海·昼）。
+appearance_case() {
+    local label="$1" want_resolved="$2" want_palette="$3"
+    shift 3
+    local out
+    out="$("$CLI" terminal-palette "$@" 2>&1)"
+    if printf '%s' "$out" | grep -q "实际使用 ${want_resolved}" && printf '%s' "$out" | grep -q "${want_palette}"; then
+        check "${label}" 0
+    else
+        check "${label}（得到：$(printf '%s' "$out" | head -1)）" 1
+    fi
+}
+appearance_case "跟随系统 + 系统深色 → 深海·夜" "深色" "深海·夜" --appearance follow --system dark
+appearance_case "跟随系统 + 系统浅色 → 深海·昼" "浅色" "深海·昼" --appearance follow --system light
+appearance_case "总是深色（系统是浅色）→ 深海·夜" "深色" "深海·夜" --appearance alwaysDark --system light
+appearance_case "总是浅色（系统是深色）→ 深海·昼" "浅色" "深海·昼" --appearance alwaysLight --system dark
+
+font_case() {
+    local label="$1" want="$2" size="$3"
+    local out
+    out="$("$CLI" terminal-palette --font-size "$size" 2>&1 | head -1)"
+    if printf '%s' "$out" | grep -q "字号 ${want} pt"; then
+        check "${label}" 0
+    else
+        check "${label}（得到：${out}）" 1
+    fi
+}
+font_case "字号 100 被夹到上限 20" 20 100
+font_case "字号 1 被夹到下限 9" 9 1
+font_case "字号 14 原样保留" 14 14
 
 echo ""
 echo "== 3) 自动化门槛（单测）=="

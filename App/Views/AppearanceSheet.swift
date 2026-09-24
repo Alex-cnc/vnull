@@ -14,13 +14,17 @@ import SwiftUI
 struct AppearanceSheet: View {
 
     @EnvironmentObject private var accent: AccentManager
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
             accentSection
+            Divider()
+            terminalSection
             Divider()
             footer
         }
@@ -61,6 +65,115 @@ struct AppearanceSheet: View {
         }
         .padding(.horizontal, Spacing.l)
         .padding(.vertical, Spacing.m)
+    }
+
+    // MARK: 终端（FR-EDIT-29）
+
+    /// 终端的**配色与字号**：终端可以独立于界面外观 —— 浅色界面里配深色终端是很多人的偏好
+    /// （长时间看 shell 输出，浅底更刺眼）。两套色板各有对比度门槛，所以这里只是"选哪一套"。
+    private var terminalSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.m) {
+            Text(L(.appearanceTerminalSection))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+
+            Picker("", selection: $appState.terminalAppearance) {
+                ForEach(TerminalAppearance.allCases, id: \.self) { value in
+                    Text(L(Self.label(for: value))).tag(value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Stepper(
+                L(.terminalFontSizeLabel, appState.terminalFontSize),
+                value: $appState.terminalFontSize,
+                in: TerminalFontSize.minimum...TerminalFontSize.maximum
+            )
+
+            Text(L(.terminalFontSizeHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
+
+            terminalPreview
+
+            Text(L(.terminalAppearanceHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, Spacing.l)
+        .padding(.vertical, Spacing.m)
+    }
+
+    private static func label(for appearance: TerminalAppearance) -> LKey {
+        switch appearance {
+        case .followSystem: return .terminalAppearanceFollowSystem
+        case .alwaysDark: return .terminalAppearanceAlwaysDark
+        case .alwaysLight: return .terminalAppearanceAlwaysLight
+        }
+    }
+
+    /// 配色预览：**用真实色板画**，选完立刻变 —— 不让用户凭想象选配色。
+    private var terminalPreview: some View {
+        let palette = appState.terminalAppearance.palette(systemIsDark: AppState.systemIsDarkAppearance)
+        return VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(L(.terminalPreviewHint))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("doyah@studio ~ % ls --color")
+                    .font(Theme.font(.mono))
+                    .foregroundStyle(Theme.terminalColor(palette.foreground))
+
+                swatches(palette, indices: Array(0..<8), tone: .terminalPreviewNormal)
+                swatches(palette, indices: Array(8..<16), tone: .terminalPreviewBright)
+
+                HStack(spacing: Spacing.s) {
+                    Text(L(.terminalPreviewDim))
+                        .font(Theme.font(.mono))
+                        .foregroundStyle(Theme.terminalColor(palette.dimmed(palette.foreground)))
+                    Text(L(.terminalPreviewSelection))
+                        .font(Theme.font(.mono))
+                        .foregroundStyle(Theme.terminalColor(palette.foreground))
+                        .padding(.horizontal, Spacing.xs)
+                        .background(Theme.terminalColor(palette.selectionBackground))
+                    Text("▌")
+                        .font(Theme.font(.mono))
+                        .foregroundStyle(Theme.terminalColor(palette.cursor))
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(Spacing.s)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.terminalColor(palette.background))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                    .strokeBorder(Theme.hairline(scheme), lineWidth: Metrics.hairline)
+            )
+        }
+    }
+
+    private func swatches(
+        _ palette: TerminalPalette,
+        indices: [Int],
+        tone: LKey
+    ) -> some View {
+        HStack(spacing: Spacing.s) {
+            Text(L(tone))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.tertiary))
+                .frame(width: 52, alignment: .leading)
+            ForEach(indices, id: \.self) { index in
+                Text("●")
+                    .font(Theme.font(.mono))
+                    .foregroundStyle(Theme.terminalColor(palette.ansi[index]))
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: 底部

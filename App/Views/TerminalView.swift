@@ -190,23 +190,65 @@ final class TerminalModel: ObservableObject {
 final class TerminalHostView: NSView {
 
     private let model: TerminalModel
-    /// 终端字体：字号取自排版刻度（`TypeScale.monoSize`），视图里不写裸字号。
-    private let font = Theme.nsFont(.mono)
-    private lazy var cellSize: CGSize = {
+    /// 外观偏好（可覆盖系统外观；解析在 Core 的 `TerminalAppearance`）。
+    ///
+    /// 名字不叫 `appearance`：那会和 `NSView.appearance`（`NSAppearance?`）撞名。
+    private var appearancePreference: TerminalAppearance
+    /// 当前字号（pt）。夹取在 Core 的 `TerminalFontSize`，视图不自己定上下限。
+    private var fontSize: Int
+    private var font: NSFont
+    private var cellSize: CGSize
+
+    /// 造字体：唯一一处"字号 → NSFont"的翻译。
+    private static func makeFont(size: Int) -> NSFont {
+        .monospacedSystemFont(ofSize: CGFloat(size), weight: .regular)
+    }
+
+    /// 量格子：等宽字体的 advance 与行高都按当前字号实测，不查表。
+    private static func measure(_ font: NSFont) -> CGSize {
         let width = ("W" as NSString).size(withAttributes: [.font: font]).width
         let height = ceil(font.ascender - font.descender + font.leading)
         return CGSize(width: max(1, width), height: max(1, height))
-    }()
+    }
 
     /// 输入法正在组字的「未上屏文本」（如拼音串）。非空时画在光标处。
     private var markedText = ""
     private var markedSelection = NSRange(location: 0, length: 0)
 
-    init(model: TerminalModel) {
+    init(model: TerminalModel, appearance: TerminalAppearance, fontSize: Int) {
         self.model = model
+        self.appearancePreference = appearance
+        let clamped = TerminalFontSize.clamped(fontSize)
+        self.fontSize = clamped
+        let font = Self.makeFont(size: clamped)
+        self.font = font
+        self.cellSize = Self.measure(font)
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = Theme.nsColor(palette.background).cgColor
+    }
+
+    /// 应用偏好（外观 / 字号）。
+    ///
+    /// 字号变化必须**重建字体与格子尺寸并重新布局**：`layout()` 用格子宽度反算列数发给 PTY，
+    /// 拿旧格子去算就会把一个 120 列的窗口报成 80 列，TUI 的第一帧就排错了。
+    func apply(appearance: TerminalAppearance, fontSize: Int) {
+        if self.appearancePreference != appearance {
+            self.appearancePreference = appearance
+            runCache.removeAll()
+            layer?.backgroundColor = Theme.nsColor(palette.background).cgColor
+            needsDisplay = true
+        }
+
+        let clamped = TerminalFontSize.clamped(fontSize)
+        guard self.fontSize != clamped else { return }
+        self.fontSize = clamped
+        let font = Self.makeFont(size: clamped)
+        self.font = font
+        self.cellSize = Self.measure(font)
+        runCache.removeAll()
+        needsDisplay = true
+        needsLayout = true
     }
 
     @available(*, unavailable)
@@ -220,6 +262,11 @@ final class TerminalHostView: NSView {
     /// 当前外观是否深色。终端**跟随系统外观**：浅色下用浅色色板，深色下用深色色板 ——
     /// 只有一套色板时，另一套外观里必然有一半的 ANSI 色不可读（旧实现就是这个毛病）。
     private var isDarkTerminal: Bool {
+        appearancePreference.resolvesToDark(systemIsDark: systemIsDarkAppearance)
+    }
+
+    /// 系统当前是否深色（只有"跟随系统"这一档会用到它）。
+    private var systemIsDarkAppearance: Bool {
         effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
@@ -306,7 +353,7 @@ final class TerminalHostView: NSView {
         guard offset > 0 else { return }
         let text = "↑ \(offset)/\(model.maxScrollOffset)"
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: TypeScale.monoSmallSize, weight: .medium),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: max(9, CGFloat(fontSize) - 1), weight: .medium),
             .foregroundColor: Theme.nsColor(TextTone.secondary),
             .backgroundColor: Theme.nsColor(Surface.raised).withAlphaComponent(0.85)
         ]
@@ -691,9 +738,13 @@ extension TerminalHostView: NSTextInputClient {
 
 struct TerminalView: NSViewRepresentable {
     @ObservedObject var model: TerminalModel
+    /// 外观偏好（跟随系统 / 总是深色 / 总是浅色），来自用户在「外观」面板里的选择。
+    var appearance: TerminalAppearance = .followSystem
+    /// 终端字号（pt）。
+    var fontSize: Int = TerminalFontSize.default
 
     func makeNSView(context: Context) -> TerminalHostView {
-        let view = TerminalHostView(model: model)
+        let view = TerminalHostView(model: model, appearance: appearance, fontSize: fontSize)
         model.attach { [weak view] in
             view?.needsDisplay = true
         }
@@ -701,6 +752,7 @@ struct TerminalView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TerminalHostView, context: Context) {
-        nsView.needsDisplay = true
+        // 设置改了要**真的应用**（重建字体 / 换色板），不是只重画一次。
+        nsView.apply(appearance: appearance, fontSize: fontSize)
     }
 }

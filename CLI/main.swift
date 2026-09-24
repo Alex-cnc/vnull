@@ -813,6 +813,17 @@ struct DoyahCLI {
     ///
     /// 保存走 `DataTaskStore.save` —— 版本化挂在那里（唯一收口点），所以这条命令
     /// 与界面改定义走的是**同一条历史**。
+    /// 把命令行里的外观偏好写法解成枚举（宽容：`follow` / `system` 都认）。
+    private static func terminalAppearance(from raw: String?) -> TerminalAppearance {
+        guard let raw = raw?.lowercased() else { return .followSystem }
+        switch raw {
+        case "follow", "followsystem", "system", "auto": return .followSystem
+        case "dark", "alwaysdark": return .alwaysDark
+        case "light", "alwayslight": return .alwaysLight
+        default: return .followSystem
+        }
+    }
+
     /// `terminal-palette [--json]`：打印终端色板（FR-EDIT-29 的配色证据出口）。
     private static func runTerminalPaletteCommand(arguments: [String]) -> Int32 {
         let names = [
@@ -820,10 +831,36 @@ struct DoyahCLI {
             "bright black", "bright red", "bright green", "bright yellow",
             "bright blue", "bright magenta", "bright cyan", "bright white"
         ]
-        let palettes = [TerminalPalette.deepSeaDark, TerminalPalette.deepSeaLight]
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        // 外观偏好与字号：与 App 里那两项设置**同源**（Core 的 `TerminalAppearance` / `TerminalFontSize`）。
+        // `--system` 模拟系统当前外观，用来证明"覆盖态不受系统影响"这件事真的成立。
+        let appearance = Self.terminalAppearance(from: value(for: "--appearance"))
+        let systemIsDark = (value(for: "--system") ?? "dark").lowercased() != "light"
+        let requestedFontSize = Int(value(for: "--font-size") ?? "") ?? TerminalFontSize.default
+        let fontSize = TerminalFontSize.clamped(requestedFontSize)
+
+        // 不带任何外观参数时**两套都打**（给人看色板用）；一旦指定了偏好 / 系统外观 / 字号，
+        // 就只打**解析出来的那一套** —— 否则"我选的到底生效没有"要在一堆输出里找。
+        let selected = arguments.contains("--appearance")
+            || arguments.contains("--system")
+            || arguments.contains("--font-size")
+        let palettes = selected
+            ? [appearance.palette(systemIsDark: systemIsDark)]
+            : [TerminalPalette.deepSeaDark, TerminalPalette.deepSeaLight]
 
         if arguments.contains("--json") {
             var payload: [[String: Any]] = []
+            payload.append([
+                "appearance": appearance.rawValue,
+                "systemIsDark": systemIsDark,
+                "resolvedIsDark": appearance.resolvesToDark(systemIsDark: systemIsDark),
+                "fontSize": fontSize,
+                "fontSizeClamped": fontSize != requestedFontSize
+            ])
             for palette in palettes {
                 payload.append([
                     "name": palette.name,
@@ -851,6 +888,10 @@ struct DoyahCLI {
             return 2
         }
 
+        print("外观偏好 \(appearance.rawValue) · 系统外观 \(systemIsDark ? "深色" : "浅色")"
+              + " → 实际使用 \(appearance.resolvesToDark(systemIsDark: systemIsDark) ? "深色" : "浅色")"
+              + " · 字号 \(fontSize) pt\(fontSize != requestedFontSize ? "（请求 \(requestedFontSize)，已夹到区间）" : "")")
+        print("")
         for palette in palettes {
             print("=== \(palette.name)（\(palette.isDark ? "深色" : "浅色")）===")
             print("  背景 \(palette.background.hexString)   前景 \(palette.foreground.hexString)"
