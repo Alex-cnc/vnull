@@ -1476,6 +1476,26 @@ struct DoyahCLI {
             .filter { !$0.isEmpty }
     }
 
+    /// 按**已保存连接的名字**取配置与口令（FR-CONN-02 + NFR-SEC-01 的脚本化用法）。
+    ///
+    /// 为什么要有它：口令最安全的传递方式不是"命令行参数"也不是"贴进聊天"，而是
+    /// **在界面上输入一次、存进本机凭据库**，脚本按名字取用。于是：
+    ///   · 仓库里没有口令、命令行历史里没有口令、脚本里没有口令；
+    ///   · 界面上的"测试连接"与脚本连的是**同一份配置**（少一处漂移）。
+    /// 取不到就如实返回 nil，由调用方给清楚的话（不静默回退到别的连接）。
+    static func savedConnection(named name: String) async -> (config: ConnectionConfig, password: String?)? {
+        let home = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let directory = home.appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+        let store = ConnectionStore(directoryURL: directory)
+        guard let configs = try? await store.load(),
+              let config = configs.first(where: { $0.name == name }) else {
+            return nil
+        }
+        let password = (try? FileSecretStore().password(for: config.id)) ?? nil
+        return (config, password)
+    }
+
     /// 从环境变量造一份连接配置（与默认路径同一口径）。
     private static func makeEnvironmentConfig(name: String) -> ConnectionConfig {
         let environment = ProcessInfo.processInfo.environment
@@ -1691,8 +1711,30 @@ struct DoyahCLI {
             return arguments[index + 1]
         }
 
+        // `--connection <名字>`：host / port / user / 库 / 口令全部取自已保存的连接
+        // （口令在界面上输过一次就够，脚本与命令历史里都不出现）。
+        if let name = value(for: "--connection") {
+            guard let saved = await savedConnection(named: name) else {
+                FileHandle.standardError.write(Data("找不到名为 \(name) 的已保存连接（先在上面的界面里建一条）\n".utf8))
+                return 2
+            }
+            guard saved.config.dbType == .mysql || saved.config.dbType == .gbase8a else {
+                FileHandle.standardError.write(Data("连接 \(name) 的类型是 \(saved.config.dbType.displayName)，不是 MySQL 协议族\n".utf8))
+                return 2
+            }
+            var arguments = arguments
+            arguments.append(contentsOf: ["--host", saved.config.host])
+            arguments.append(contentsOf: ["--port", String(saved.config.port)])
+            arguments.append(contentsOf: ["--user", saved.config.username])
+            arguments.append(contentsOf: ["--database", saved.config.database])
+            if let password = saved.password, !password.isEmpty {
+                arguments.append(contentsOf: ["--password", password])
+            }
+            return await runMySQLCommand(arguments: arguments)
+        }
+
         guard let host = value(for: "--host"), let username = value(for: "--user") else {
-            FileHandle.standardError.write(Data(("用法：mysql --host <h> [--port 3306] --user <u> "
+            FileHandle.standardError.write(Data(("用法：mysql --connection <已保存连接名> 或 --host <h> [--port 3306] --user <u> "
                 + "[--password <口令>] [--database <库>] [--ssl-mode disable|prefer|require] "
                 + "[--sql <语句>] [--timeout 秒] [--json]\n").utf8))
             return 2
