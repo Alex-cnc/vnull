@@ -360,6 +360,14 @@ public enum LKey: String, CaseIterable, Sendable {
     case commandPaletteHint
     // 全库对象搜索（FR-META-12 界面）
     case objectSearchTitle
+    // 例行候选面板（FR-AI-14 的界面入口）
+    case routineCandidatesTitle
+    case routineCandidatesHint
+    case routineCandidatesEmpty
+    case routineCandidatesBlockedTitle
+    case routineCandidatesVeto
+    case routineCandidatesVetoed
+    case routineCandidatesInsert
     case objectSearchPlaceholder
     case objectSearchHint
     case objectSearchNoMatch
@@ -1315,6 +1323,13 @@ public enum LocalizedStrings {
         .commandPalettePlaceholder: [.simplifiedChinese: "输入命令名…（支持首字母缩写与中文）", .english: "Type a command…(acronyms and Chinese work)"],
         .commandPaletteNoMatch: [.simplifiedChinese: "没有匹配的命令", .english: "No matching command"],
         .commandPaletteHint: [.simplifiedChinese: "↑↓ 选择 · ↩ 执行 · esc 关闭", .english: "↑↓ select · ↩ run · esc close"],
+        .routineCandidatesTitle: [.simplifiedChinese: "例行候选", .english: "Routine candidates"],
+        .routineCandidatesHint: [.simplifiedChinese: "从查询归档里看「你反复在做什么」。**四条判据全满足**才列进候选：跨天频次、跨越天数、时刻集中度、只改参数 —— 这里**只给建议，不会自动建任务**", .english: "What you keep doing, derived from your query archive. A candidate needs all four: frequency, day span, time-of-day concentration, and parameter-only variation. Suggestions only — nothing is scheduled automatically"],
+        .routineCandidatesEmpty: [.simplifiedChinese: "还没有符合四条判据的候选。下面列出「差在哪」，比只给一个空列表有用", .english: "No candidate meets all four criteria yet — below is what is missing"],
+        .routineCandidatesBlockedTitle: [.simplifiedChinese: "未达标（差在哪）", .english: "Not yet (what is missing)"],
+        .routineCandidatesVeto: [.simplifiedChinese: "不再建议", .english: "Never suggest"],
+        .routineCandidatesVetoed: [.simplifiedChinese: "已否决", .english: "Vetoed"],
+        .routineCandidatesInsert: [.simplifiedChinese: "插入编辑器", .english: "Insert into editor"],
         .objectSearchTitle: [.simplifiedChinese: "全库对象搜索", .english: "Search objects"],
         .objectSearchPlaceholder: [.simplifiedChinese: "输入名称片段（表 / 视图 / 列 / 函数）…", .english: "Type a name fragment (table / view / column / function)…"],
         .objectSearchHint: [.simplifiedChinese: "跨 schema 匹配表 / 视图 / 列 / 函数；**空输入不列结果**（全库对象上万条，列前几条只会误导）", .english: "Matches tables / views / columns / functions across schemas; an empty query lists nothing (thousands of objects would only mislead)"],

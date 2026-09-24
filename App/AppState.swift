@@ -2140,6 +2140,51 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// 例行候选面板（FR-AI-14 的界面入口）。
+    @Published var isRoutineCandidatesPresented = false
+
+    /// 最近一次评估结果（`nil` = 还没算过）。
+    @Published private(set) var routineReport: RoutineCandidate.Report?
+
+    /// 重算例行候选。
+    ///
+    /// 与索引重建同一套目录解析（`openQueriesDirectory`），决定文件与 `memory` 子命令共用 ——
+    /// 界面里否决掉的东西，CLI 再查也不会冒出来（同一份 `memory-decisions.json`）。
+    func refreshRoutineCandidates() async {
+        guard let opened = try? await openQueriesDirectory() else {
+            routineReport = nil
+            return
+        }
+        defer { opened.grant?.stopAccessing() }
+        let directory = opened.url
+        let loaded = MemoryDecisionsStore.load(from: directory)
+        let index = await Task.detached(priority: .utility) {
+            QueryMemory.buildIndex(directory: directory)
+        }.value
+        routineReport = RoutineCandidate.evaluate(index: index, decisions: loaded.decisions)
+        for warning in loaded.warnings { statusMessage = L(.routineCandidatesHint) + "（\(warning)）" }
+    }
+
+    /// 否决一条候选：**只写人工决定**，不动归档（归档是事实源，决定是人的选择）。
+    func vetoRoutineCandidate(fingerprint: String) async {
+        guard let opened = try? await openQueriesDirectory() else { return }
+        defer { opened.grant?.stopAccessing() }
+        var loaded = MemoryDecisionsStore.load(from: opened.url)
+        loaded.decisions.veto(fingerprint: fingerprint)
+        do {
+            try MemoryDecisionsStore.save(loaded.decisions, to: opened.url)
+            await refreshRoutineCandidates()
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    /// 把候选模板放进新页签（**不自动执行** —— 它是"建议"，跑不跑由人决定）。
+    func insertRoutineTemplate(_ template: String) {
+        openSQLInNewTab(template)
+        isRoutineCandidatesPresented = false
+    }
+
     /// 对象搜索结果 → 「浏览数据」：在新页签里打开前 N 行（FR-META-12 的界面动作）。
     ///
     /// 复用 `RowBrowsingQuery`，不在这里手拼 `SELECT * FROM …` ——
@@ -2825,6 +2870,7 @@ final class AppState: ObservableObject {
         case "egressLog": isEgressLogPresented = true
         case "help": isShortcutHelpCommandPresented = true
         case "objectSearch": isObjectSearchPresented = true
+        case "routineCandidates": isRoutineCandidatesPresented = true
         default:
             // 未知 id 不静默：说一句，免得"点了没反应"变成悬案。
             statusMessage = L(.commandPaletteNoMatch)
