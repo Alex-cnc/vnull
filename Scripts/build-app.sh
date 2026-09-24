@@ -6,6 +6,14 @@ set -euo pipefail
 #   ./Scripts/build-app.sh            # Debug
 #   ./Scripts/build-app.sh release    # Release
 #
+#   DOYAH_ARCH=x86_64 ./Scripts/build-app.sh    # 单架构 Intel
+#   DOYAH_ARCH=universal ./Scripts/build-app.sh # 通用二进制（arm64 + x86_64）
+#
+# 为什么需要架构选项（NFR-COMP-02）：默认产物是**单架构 arm64**，
+# 实测 `lipo -info` 为 `Non-fat file … arm64` —— 在 Intel 机上**根本起不来**。
+# 需求要求"支持 Apple Silicon 与 Intel"，所以构建侧必须能产出 x86_64 / universal。
+# Intel 实机与 Rosetta 的启动验证仍需真机（构建通过 ≠ 真机可跑）。
+#
 # 产物：dist/DoyahStudio.app
 #
 # 说明：ad-hoc 签名 + entitlements 足以在本机运行（App Sandbox + 网络客户端）。
@@ -16,35 +24,86 @@ CONFIGURATION="${1:-debug}"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 SWIFT="${DEVELOPER_DIR}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
 SCRATCH="${ROOT}/.build"
+SCRATCH_X86="${ROOT}/.build-x86"
 CACHE="${ROOT}/.build-cache"
 APP="${ROOT}/dist/DoyahStudio.app"
+DOYAH_ARCH="${DOYAH_ARCH:-}"
 
 export DEVELOPER_DIR
 export CLANG_MODULE_CACHE_PATH="${SCRATCH}/clang-module-cache"
 export SWIFT_MODULE_CACHE_PATH="${SCRATCH}/swift-module-cache"
 mkdir -p "${SCRATCH}" "${CACHE}" "${CLANG_MODULE_CACHE_PATH}" "${SWIFT_MODULE_CACHE_PATH}"
 
-echo "==> 编译 DoyahStudioApp (${CONFIGURATION})"
-"${SWIFT}" build \
-  --product DoyahStudioApp \
-  --configuration "${CONFIGURATION}" \
-  --disable-sandbox \
-  --package-path "${ROOT}" \
-  --cache-path "${CACHE}" \
-  --scratch-path "${SCRATCH}" \
-  --manifest-cache local \
-  -Xswiftc -disable-sandbox
+# 独立 scratch 需要自己那份依赖检出。沙箱里没有网络，让 SwiftPM 现拉会**卡死**
+# （实测：新 scratch 里 checkouts 一直是空的）。所以从主 scratch 复制一份检出。
+seed_scratch() {
+  local scratch="$1"
+  if [ -d "${scratch}/checkouts" ] && [ -n "$(ls -A "${scratch}/checkouts" 2>/dev/null)" ]; then
+    return
+  fi
+  if [ -d "${SCRATCH}/checkouts" ]; then
+    mkdir -p "${scratch}"
+    cp -R "${SCRATCH}/checkouts" "${scratch}/" 2>/dev/null || true
+    cp -R "${SCRATCH}/repositories" "${scratch}/" 2>/dev/null || true
+  fi
+}
 
-BIN_DIR="$("${SWIFT}" build \
-  --configuration "${CONFIGURATION}" \
-  --disable-sandbox \
-  --package-path "${ROOT}" \
-  --cache-path "${CACHE}" \
-  --scratch-path "${SCRATCH}" \
-  --manifest-cache local \
-  --show-bin-path)"
+# 编译并回显可执行文件路径。`$2` 为空表示本机原生架构（保持历史行为）。
+#
+# 注意 `${arch_args[@]+…}` 这个写法：macOS 自带的是 bash 3.2，在 `set -u` 下
+# 展开**空数组**会报 `unbound variable` —— 原生架构那条路径正是空数组（踩过一次）。
+build_product() {
+  local scratch="$1" arch="$2"
+  seed_scratch "${scratch}"
+  local arch_args=()
+  if [ -n "${arch}" ]; then arch_args=(--arch "${arch}"); fi
+  echo "==> 编译 DoyahStudioApp (${CONFIGURATION}${arch:+, ${arch}})" >&2
+  "${SWIFT}" build \
+    --product DoyahStudioApp \
+    --configuration "${CONFIGURATION}" \
+    --disable-sandbox \
+    --package-path "${ROOT}" \
+    --cache-path "${CACHE}" \
+    --scratch-path "${scratch}" \
+    --manifest-cache local \
+    ${arch_args[@]+"${arch_args[@]}"} \
+    -Xswiftc -disable-sandbox >&2
+  local bin_dir
+  bin_dir="$("${SWIFT}" build \
+    --configuration "${CONFIGURATION}" \
+    --disable-sandbox \
+    --package-path "${ROOT}" \
+    --cache-path "${CACHE}" \
+    --scratch-path "${scratch}" \
+    --manifest-cache local \
+    ${arch_args[@]+"${arch_args[@]}"} \
+    --show-bin-path)"
+  echo "${bin_dir}/DoyahStudioApp"
+}
 
-BIN="${BIN_DIR}/DoyahStudioApp"
+BIN=""
+BIN_X86=""
+case "${DOYAH_ARCH}" in
+  ""|"$(uname -m)")
+    BIN="$(build_product "${SCRATCH}" "")"
+    ;;
+  arm64|x86_64)
+    if [ "${DOYAH_ARCH}" = "x86_64" ]; then
+      BIN="$(build_product "${SCRATCH_X86}" "x86_64")"
+    else
+      BIN="$(build_product "${SCRATCH}" "arm64")"
+    fi
+    ;;
+  universal)
+    BIN="$(build_product "${SCRATCH}" "arm64")"
+    BIN_X86="$(build_product "${SCRATCH_X86}" "x86_64")"
+    ;;
+  *)
+    echo "未知 DOYAH_ARCH：${DOYAH_ARCH}（可用：arm64 / x86_64 / universal）"
+    exit 64
+    ;;
+esac
+
 if [ ! -x "${BIN}" ]; then
   echo "未找到可执行文件：${BIN}"
   exit 1
@@ -53,7 +112,13 @@ fi
 echo "==> 组装 ${APP}"
 rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
-cp "${BIN}" "${APP}/Contents/MacOS/DoyahStudio"
+if [ -n "${BIN_X86}" ]; then
+  echo "==> lipo 合成通用二进制（arm64 + x86_64）"
+  lipo -create -output "${APP}/Contents/MacOS/DoyahStudio" "${BIN}" "${BIN_X86}"
+else
+  cp "${BIN}" "${APP}/Contents/MacOS/DoyahStudio"
+fi
+echo "==> 架构：$(lipo -info "${APP}/Contents/MacOS/DoyahStudio" 2>&1 | sed 's/^.*: //')"
 
 cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
