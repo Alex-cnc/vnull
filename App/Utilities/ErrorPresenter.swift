@@ -31,6 +31,15 @@ enum ErrorPresenter {
             return description
         }
 
+        // 连接失败（R-46 / FR-META-10）：驱动抛的是 `PSQLError(code: server, serverInfo: […])`
+        // 这种给不了帮助的东西，映射成人话 + 一句排查建议再显示。
+        if let failure = ConnectionFailure.describe(error) {
+            if let suggestion = failure.suggestion {
+                return "\(failure.summary)\n\(suggestion)"
+            }
+            return failure.summary
+        }
+
         let detail = String(reflecting: error)
         if detail.count > 800 {
             return String(detail.prefix(800)) + "…"

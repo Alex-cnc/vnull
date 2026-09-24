@@ -195,7 +195,17 @@ struct DoyahCLI {
         } catch {
             print("连接失败")
             print("")
-            print("简要信息：\(error.localizedDescription)")
+            // 可读化（R-46 / FR-META-10）：人话 + 建议 + 错误码；原始串留在下面的调试详情里，
+            // **不丢信息** —— 排查时"到底是哪个 SQLSTATE"才是关键。
+            let failure = ConnectionFailure.describe(
+                error,
+                target: ConnectionFailure.Target(host: host, port: port, database: database, username: username)
+            )
+            if let failure {
+                print(failure.fullText)
+            } else {
+                print("简要信息：\(error.localizedDescription)")
+            }
             print("")
             print("调试详情：")
             print(String(reflecting: error))
