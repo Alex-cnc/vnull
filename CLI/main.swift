@@ -336,6 +336,13 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // keepalive：连接保活心跳的诊断入口（FR-CONN-20）。按间隔真发若干次心跳并汇报。
+        if arguments.first == "keepalive" {
+            let code = await runKeepAliveCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
         // stats：数据库统计指标（FR-DIAG-04）。四类指标各一条只读查询。
         if arguments.first == "stats" {
             let code = await runStatsCommand(arguments: Array(arguments.dropFirst()), service: service)
@@ -1371,6 +1378,71 @@ struct DoyahCLI {
     ///
     /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
     /// 而不是靠人在界面里看一眼。
+    /// `keepalive [--interval N] [--pings M] [--disabled]`
+    ///
+    /// 这条命令的价值是**可验证**：真实发若干次心跳、报告成功与失败，
+    /// 而"空闲多久才发"的判定留在 Core 的纯函数里（另有单测）。
+    private static func runKeepAliveCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+
+        let policy = KeepAlivePolicy(
+            isEnabled: !arguments.contains("--disabled"),
+            intervalSeconds: Int(value(for: "--interval") ?? "") ?? 5
+        )
+        print("保活策略：\(policy.isEnabled ? "开启" : "关闭")，间隔 \(policy.intervalSeconds) 秒")
+
+        guard policy.isEnabled else {
+            print("（已关闭：不会发送任何心跳）")
+            return 0
+        }
+
+        let pings = max(0, Int(value(for: "--pings") ?? "") ?? 1)
+        let statement = KeepAlivePolicy.statement(for: .postgresql)
+        var record = KeepAliveRecord()
+        let idle = Date(timeIntervalSince1970: 0)
+
+        for index in 1...max(1, pings) {
+            // 用"很久以前的活动时间"驱动判定：让 Core 的 shouldPing 真的参与决策，
+            // 而不是这里直接循环发 —— 否则命令就没在验那条判据。
+            guard KeepAliveScheduler.shouldPing(lastActivity: idle, now: Date(), policy: policy) else {
+                print("第 \(index) 次：按策略还不到时候（不该发）")
+                return 1
+            }
+            do {
+                _ = try await runQueryForKeepAlive(statement, on: service)
+                record.record(success: true, at: Date())
+                print("第 \(index) 次：\(statement) 成功")
+            } catch {
+                record.record(success: false, at: Date(), failure: error.localizedDescription)
+                print("第 \(index) 次：失败（\(error.localizedDescription)）")
+            }
+            if index < pings {
+                try? await Task.sleep(nanoseconds: UInt64(policy.intervalSeconds) * 1_000_000_000)
+            }
+        }
+        print("汇总：\(record.summary)")
+        return record.isHealthy ? 0 : 1
+    }
+
+    private static func runQueryForKeepAlive(
+        _ sql: String,
+        on service: any DatabaseService
+    ) async throws -> Int {
+        var rows = 0
+        for try await event in service.execute(sql, options: .default) {
+            if case .resultSet(let result) = event { rows = result.rows.count }
+        }
+        return rows
+    }
+
     /// `fk-nav --table T --column C [--value V] [--limit N] [--json]`
     ///
     /// 为什么要扫全库：**反向导航**（谁引用了我）必须知道别的表的外键，

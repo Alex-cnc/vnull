@@ -288,6 +288,72 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(isSQLArchiveEnabled, forKey: "sqlArchive.enabled") }
     }
 
+    // MARK: 连接保活心跳（FR-CONN-20）
+
+    /// 是否开启保活（间隔可配置、可关闭）。持久化到 UserDefaults。
+    @Published var isKeepAliveEnabled: Bool =
+        UserDefaults.standard.object(forKey: "keepAlive.enabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(isKeepAliveEnabled, forKey: "keepAlive.enabled") }
+    }
+
+    /// 空闲多久发一次心跳（秒）。
+    @Published var keepAliveIntervalSeconds: Int =
+        UserDefaults.standard.object(forKey: "keepAlive.intervalSeconds") as? Int ?? 60 {
+        didSet { UserDefaults.standard.set(keepAliveIntervalSeconds, forKey: "keepAlive.intervalSeconds") }
+    }
+
+    /// 每条连接的最后一次**真实活动**时间（心跳成功也会刷新它）。
+    private var serviceLastActivity: [ServiceKey: Date] = [:]
+
+    /// 心跳结果（界面可显示"连接已不通"）。
+    @Published private(set) var keepAliveRecord = KeepAliveRecord()
+
+    private var keepAliveTask: Task<Void, Never>?
+
+    var keepAlivePolicy: KeepAlivePolicy {
+        KeepAlivePolicy(isEnabled: isKeepAliveEnabled, intervalSeconds: keepAliveIntervalSeconds)
+    }
+
+    /// 启动心跳循环。**每 15 秒看一次**（比最小间隔还密），
+    /// 只有"确实空闲够久"的连接才会收到心跳 —— 见 `KeepAliveScheduler`。
+    func startKeepAliveTicker() {
+        keepAliveTask?.cancel()
+        keepAliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                await self?.keepAliveTick()
+            }
+        }
+    }
+
+    /// 一次心跳检查（可单测地暴露出来：判定全在 Core 的纯函数里）。
+    func keepAliveTick(now: Date = Date()) async {
+        let policy = keepAlivePolicy
+        guard policy.isEnabled else { return }
+        for (key, service) in services {
+            let last = serviceLastActivity[key] ?? now
+            guard KeepAliveScheduler.shouldPing(lastActivity: last, now: now, policy: policy) else { continue }
+            do {
+                // 心跳语句按**该连接的方言**取（现在两个方言都是 SELECT 1，但口径要接对，
+                // 免得将来加方言时这里悄悄用错）
+                let dbType = connections.first { $0.id == key.connectionID }?.dbType ?? .postgresql
+                _ = try await runSingleQuery(KeepAlivePolicy.statement(for: dbType), on: service)
+                // **心跳成功本身也算活动**，否则它会每隔几秒连发
+                serviceLastActivity[key] = now
+                keepAliveRecord.record(success: true, at: now)
+            } catch {
+                // 失败**只记录、不打断连接**：掐断可能发生在任何一刻，
+                // 工具该做的是如实报告"这条连接已经不通了"，而不是替用户弹一堆错误。
+                keepAliveRecord.record(success: false, at: now, failure: ErrorPresenter.message(for: error))
+            }
+        }
+    }
+
+    /// 记一次真实活动（执行查询后调用），心跳据此判断"是否空闲"。
+    func noteServiceActivity(for key: ServiceKey, at date: Date = Date()) {
+        serviceLastActivity[key] = date
+    }
+
     /// 归档面板是否呈现。
     @Published var isSQLArchivePresented = false
 
@@ -4082,6 +4148,7 @@ final class AppState: ObservableObject {
             let (service, serverInfo) = try await task.value
             services[key] = service
             connectTasks[key] = nil
+            serviceLastActivity[key] = Date()
             // 启动 SQL（FR-CONN-17）：只在**新建连接**后执行一次（缓存命中不重跑），
             // 且放在这个唯一收口点 —— 连接别处也建，散着写必漏。
             await runStartupStatements(configuration.startupStatements, for: configuration, on: service)
