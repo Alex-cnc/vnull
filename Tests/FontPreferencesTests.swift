@@ -94,3 +94,62 @@ final class FontPreferencesTests: XCTestCase {
         XCTAssertEqual(Set(TerminalAppearance.allCases).count, 3)
     }
 }
+
+// MARK: - 手输字体族的三档判定（FR-EDIT-26 补充）
+
+/// 手输族名让"不在等宽列表里"分成两种不同情况：**根本不存在**（打字错 / 字体被卸载）
+/// 与**存在但不是等宽**（列会对歪、终端格子会错）。混成一句提示，用户会一直以为自己选对了。
+final class MonospaceFontResolutionTests: XCTestCase {
+
+    private let monospaced = ["Menlo", "SF Mono", "JetBrains Mono"]
+    private let all = ["Menlo", "SF Mono", "JetBrains Mono", "Helvetica", "PingFang SC"]
+
+    func testNoSelectionMeansSystemDefault() {
+        XCTAssertEqual(
+            MonospaceFontPreference(family: nil).resolution(availableMonospacedFamilies: monospaced, allFamilies: all),
+            .systemDefault
+        )
+        XCTAssertNil(MonospaceFontResolution.systemDefault.effectiveFamily)
+        XCTAssertFalse(MonospaceFontResolution.systemDefault.needsWarning)
+    }
+
+    func testMatchingIsCaseInsensitiveAndReturnsSystemSpelling() {
+        let resolution = MonospaceFontPreference(family: "menlo")
+            .resolution(availableMonospacedFamilies: monospaced, allFamilies: all)
+        XCTAssertEqual(resolution, .resolved(family: "Menlo"), "要回系统里的正确大小写，而不是用户输入原样")
+        XCTAssertEqual(resolution.effectiveFamily, "Menlo")
+        XCTAssertFalse(resolution.needsWarning)
+    }
+
+    func testWhitespaceIsNotAFamily() {
+        XCTAssertEqual(
+            MonospaceFontPreference(family: "   ").resolution(availableMonospacedFamilies: monospaced, allFamilies: all),
+            .systemDefault
+        )
+    }
+
+    func testUnknownFamilyFallsBackWithWarning() {
+        let resolution = MonospaceFontPreference(family: "Comic Code")
+            .resolution(availableMonospacedFamilies: monospaced, allFamilies: all)
+        XCTAssertEqual(resolution, .unknownFamily(requested: "Comic Code"))
+        XCTAssertNil(resolution.effectiveFamily)
+        XCTAssertTrue(resolution.needsWarning)
+        XCTAssertEqual(resolution.requestedFamily, "Comic Code")
+    }
+
+    func testExistingNonMonospacedFamilyIsCalledOutSeparately() {
+        let resolution = MonospaceFontPreference(family: "helvetica")
+            .resolution(availableMonospacedFamilies: monospaced, allFamilies: all)
+        XCTAssertEqual(resolution, .notMonospaced(requested: "Helvetica"), "存在但非等宽要和「不存在」分开")
+        XCTAssertNil(resolution.effectiveFamily)
+        XCTAssertTrue(resolution.needsWarning)
+    }
+
+    /// 旧口径（`resolved`）仍然可用，且与三档判定一致 —— 别处读它的地方不会行为突变。
+    func testLegacyResolvedMatchesNewResolution() {
+        XCTAssertEqual(MonospaceFontPreference(family: "Menlo").resolved(availableFamilies: monospaced).family, "Menlo")
+        XCTAssertFalse(MonospaceFontPreference(family: "Menlo").resolved(availableFamilies: monospaced).didFallBack)
+        XCTAssertTrue(MonospaceFontPreference(family: "Helvetica").resolved(availableFamilies: monospaced).didFallBack)
+        XCTAssertNil(MonospaceFontPreference(family: "Helvetica").resolved(availableFamilies: monospaced).family)
+    }
+}

@@ -73,11 +73,37 @@ public struct MonospaceFontPreference: Equatable, Sendable {
     /// 为什么"如实报告"而不是静默回落：用户以为自己在用 Menlo、实际在用系统等宽，
     /// 这种差异只有说出来才查得到（换机器、字体被卸载都会触发）。
     public func resolved(availableFamilies: [String]) -> (family: String?, didFallBack: Bool) {
-        guard let family else { return (nil, false) }
-        // 家族名比较不区分大小写：不同来源（用户输入 / 系统列表 / 旧偏好）大小写不总一致。
-        let match = availableFamilies.first { $0.caseInsensitiveCompare(family) == .orderedSame }
-        guard let match else { return (nil, true) }
-        return (match, false)
+        switch resolution(availableMonospacedFamilies: availableFamilies) {
+        case .resolved(let family): return (family, false)
+        case .systemDefault: return (nil, false)
+        case .unknownFamily, .notMonospaced: return (nil, true)
+        }
+    }
+
+    /// 完整判定：**三档而不是两档**。
+    ///
+    /// 手输字体族（FR-EDIT-26 的补充）让"不在列表里"分成两种完全不同的情况：
+    /// - `unknownFamily`：系统里根本没有这个族（打字打错、字体被卸载）→ 回落系统等宽，提示"不可用"；
+    /// - `notMonospaced`：这个族**存在但不是等宽**（例如有人手输 `Helvetica`）→ 同样回落，但提示必须更重 ——
+    ///   等宽是画格子、对齐列、算终端单元格宽度的前提，用了比例字体列会歪、终端格子会错。
+    ///   把它与"不可用"混成一句说，用户会一直以为自己选对了。
+    public func resolution(
+        availableMonospacedFamilies: [String],
+        allFamilies: [String] = []
+    ) -> MonospaceFontResolution {
+        guard let family else { return .systemDefault }
+        if let match = Self.match(family, in: availableMonospacedFamilies) {
+            return .resolved(family: match)
+        }
+        if let existing = Self.match(family, in: allFamilies) {
+            return .notMonospaced(requested: existing)
+        }
+        return .unknownFamily(requested: family)
+    }
+
+    /// 族名匹配：不区分大小写（用户输入 / 系统列表 / 旧偏好的大小写不总一致）。
+    static func match(_ family: String, in families: [String]) -> String? {
+        families.first { $0.caseInsensitiveCompare(family) == .orderedSame }
     }
 
     /// 换字号（夹取后返回新值，供界面直接写回偏好）。
@@ -94,5 +120,42 @@ public struct MonospaceFontPreference: Equatable, Sendable {
     public enum Storage {
         public static let familyKey = "font.monoFamily"
         public static let sizeKey = "font.monoSize"
+    }
+}
+
+/// 等宽字体偏好的解析结果（FR-EDIT-26）。
+///
+/// 放在 Core 而不是界面里：**"这行字到底用哪个字体"是产品语义**（列对齐、终端格子都依赖它），
+/// 判断要能被单测钉住；界面只负责把 `needsWarning` 对应的那句话显示出来。
+public enum MonospaceFontResolution: Equatable, Sendable {
+    /// 没选族 = 系统等宽（`NSFont.monospacedSystemFont`）。
+    case systemDefault
+    /// 选中了可用的等宽族（给出系统里那个**正确大小写**的名字）。
+    case resolved(family: String)
+    /// 系统里没有这个族。
+    case unknownFamily(requested: String)
+    /// 系统里有这个族，但它**不是等宽** —— 会破坏列对齐与终端网格。
+    case notMonospaced(requested: String)
+
+    /// 实际生效的族；`nil` = 系统等宽。
+    public var effectiveFamily: String? {
+        if case .resolved(let family) = self { return family }
+        return nil
+    }
+
+    /// 是否要额外提示（前两档不用说话）。
+    public var needsWarning: Bool {
+        switch self {
+        case .systemDefault, .resolved: return false
+        case .unknownFamily, .notMonospaced: return true
+        }
+    }
+
+    /// 用户想用的那个名字（用于文案）。
+    public var requestedFamily: String? {
+        switch self {
+        case .unknownFamily(let requested), .notMonospaced(let requested): return requested
+        default: return nil
+        }
     }
 }

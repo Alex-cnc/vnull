@@ -17,6 +17,9 @@ struct AppearanceSheet: View {
     @EnvironmentObject private var appState: AppState
     /// 订阅字体偏好（FR-EDIT-26）：改完立即反映到预览与界面。
     @ObservedObject private var fonts = FontManager.shared
+    /// 手输的字体族（FR-EDIT-26 补充）：系统列表只列**等宽**族，但用户机器上
+    /// 可能装了列表认不出来的等宽字体（字体元数据里 `isFixedPitch` 没标对），手输是唯一出路。
+    @State private var typedFamily: String = ""
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
 
@@ -102,14 +105,34 @@ struct AppearanceSheet: View {
                 }
             }
 
+            // 手输字体族：列表里没有、但你确定它是等宽的字体，可以在这里直接写族名。
+            HStack(spacing: Spacing.s) {
+                TextField(L(.appearanceMonoFamilyCustom), text: $typedFamily)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { applyTypedFamily() }
+                Button(L(.appearanceMonoApply)) { applyTypedFamily() }
+                    .disabled(typedFamily.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            // 当前**实际生效**的字体：选了什么、最后用了什么，必须能看出来。
+            Text(L(.appearanceMonoEffective, fonts.resolution.effectiveFamily ?? L(.appearanceMonoSystem)))
+                .font(Theme.font(.caption))
+                .foregroundStyle(Theme.text(.secondary))
+
             Stepper(
                 L(.appearanceMonoSize, fonts.preference.size),
                 value: sizeBinding,
                 in: MonospaceFontSize.minimum...MonospaceFontSize.maximum
             )
 
-            if fonts.isFallingBack, let requested = fonts.preference.family {
-                Text(L(.appearanceMonoFallback, requested))
+            if let requested = fonts.resolution.requestedFamily {
+                // 两种"没生效"要说清楚：**根本不存在** vs **存在但不是等宽**。
+                // 后者更严重（列会对歪、终端格子会错），文案不能与前者混成一句。
+                let key: LKey = {
+                    if case .notMonospaced = fonts.resolution { return .appearanceMonoNotMonospaced }
+                    return .appearanceMonoFallback
+                }()
+                Text(L(key, requested))
                     .font(Theme.font(.caption))
                     .foregroundStyle(Theme.status(.warning))
                     .fixedSize(horizontal: false, vertical: true)
@@ -140,6 +163,14 @@ struct AppearanceSheet: View {
         }
         .padding(.horizontal, Spacing.l)
         .padding(.vertical, Spacing.m)
+    }
+
+    /// 应用手输的字体族：原样存用户的选择（判定与回落交给 `FontManager` / Core），
+    /// 这样"打错一个字"不会把偏好改坏 —— 用户改回正确名字就立刻生效。
+    private func applyTypedFamily() {
+        let trimmed = typedFamily.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        fonts.select(family: trimmed)
     }
 
     /// 字体族绑定：`FontManager` 是 `private(set)`，改写走它的方法（也顺手落盘）。

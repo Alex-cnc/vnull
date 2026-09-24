@@ -42,13 +42,24 @@ final class FontManager: ObservableObject {
         return families.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }()
 
-    /// 当前偏好解析后的结果（族可能因不可用而回落）。
-    var resolution: (family: String?, didFallBack: Bool) {
-        preference.resolved(availableFamilies: Self.availableMonospacedFamilies)
+    /// 系统里**全部**字体族（判定"这个族到底存不存在"用 —— 存在但不是等宽是另一回事）。
+    static let availableAllFamilies: [String] = NSFontManager.shared.availableFontFamilies.sorted {
+        $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
     }
 
-    /// 是否正处于"选了但不可用"的回落状态（界面据此给一句可读提示）。
-    var isFallingBack: Bool { resolution.didFallBack }
+    /// 当前偏好的**完整判定**（系统等宽 / 命中 / 不存在 / 存在但非等宽）。
+    var resolution: MonospaceFontResolution {
+        preference.resolution(
+            availableMonospacedFamilies: Self.availableMonospacedFamilies,
+            allFamilies: Self.availableAllFamilies
+        )
+    }
+
+    /// 实际生效的字体族（`nil` = 系统等宽）—— 与旧口径兼容的读法。
+    var effectiveFamily: String? { resolution.effectiveFamily }
+
+    /// 是否处于"选了但没生效"的状态（界面据此给一句可读提示）。
+    var isFallingBack: Bool { resolution.needsWarning }
 
     // MARK: 修改
 
@@ -77,7 +88,7 @@ final class FontManager: ObservableObject {
     /// - Parameter size: 传 `nil` 用偏好里的字号（终端会传自己的字号：它允许单独设得小一点）。
     func monospaceNSFont(size: CGFloat? = nil) -> NSFont {
         let pointSize = size ?? CGFloat(preference.size)
-        guard let family = resolution.family,
+        guard let family = resolution.effectiveFamily,
               let font = NSFont(name: family, size: pointSize) else {
             return NSFont.monospacedSystemFont(ofSize: pointSize, weight: .regular)
         }
@@ -86,7 +97,7 @@ final class FontManager: ObservableObject {
 
     /// 等宽粗体（终端画粗体字用；保持与正文字体同族）。
     func monospaceBoldNSFont(size: CGFloat) -> NSFont {
-        guard let family = resolution.family,
+        guard let family = resolution.effectiveFamily,
               let font = NSFont(name: family, size: size) else {
             return NSFont.monospacedSystemFont(ofSize: size, weight: .bold)
         }

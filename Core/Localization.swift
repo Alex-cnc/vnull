@@ -973,6 +973,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case appearanceMonoSize
     case appearanceMonoFallback
     case appearanceMonoHint
+    case appearanceMonoFamilyCustom
+    case appearanceMonoApply
+    case appearanceMonoEffective
+    case appearanceMonoNotMonospaced
     case terminalAppearanceFollowSystem
     case terminalAppearanceAlwaysDark
     case terminalAppearanceAlwaysLight
@@ -2033,6 +2037,10 @@ public enum LocalizedStrings {
         .appearanceMonoSize: [.simplifiedChinese: "等宽字号：%d pt", .english: "Monospace size: %d pt"],
         .appearanceMonoFallback: [.simplifiedChinese: "「%@」在当前系统不可用，已回落到系统等宽（偏好里仍保留你的选择，换台机器装了它就会生效）", .english: "%@ is not available on this system, so the system monospace font is used. Your choice is kept, and takes effect on a machine that has it."],
         .appearanceMonoHint: [.simplifiedChinese: "用于编辑器与终端（结果表格的数值列仍用系统的等宽数字字体，以保证小数点对齐）；终端字号在下面单独设置。", .english: "Used by the editor and the terminal (numeric result columns keep the system monospaced-digit font so decimals line up). The terminal size is set separately below."],
+        .appearanceMonoFamilyCustom: [.simplifiedChinese: "或直接输入字体族名", .english: "Or type a family name"],
+        .appearanceMonoApply: [.simplifiedChinese: "应用", .english: "Apply"],
+        .appearanceMonoEffective: [.simplifiedChinese: "当前使用：%@", .english: "In use: %@"],
+        .appearanceMonoNotMonospaced: [.simplifiedChinese: "「%@」存在但不是等宽字体：列会对不齐、终端格子会错，因此仍用系统等宽。请换一个等宽族。", .english: "%@ exists but is not monospaced — columns would misalign and the terminal grid would break, so the system monospace font is used instead. Please pick a monospaced family."],
         .terminalAppearanceFollowSystem: [.simplifiedChinese: "跟随系统", .english: "Follow system"],
         .terminalAppearanceAlwaysDark: [.simplifiedChinese: "总是深色", .english: "Always dark"],
         .terminalAppearanceAlwaysLight: [.simplifiedChinese: "总是浅色", .english: "Always light"],
