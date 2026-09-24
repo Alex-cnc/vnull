@@ -627,11 +627,13 @@ struct ObjectTreeView: View {
         if !isLoadingRoot { isLoadingRoot = true }
         if rootError != nil { rootError = nil }
 
+        var loaded: [DatabaseObject] = []
         do {
             // 先把新数据取回来，**再**清缓存与展开状态：否则请求往返期间树会先空掉一次，
             // 那也是一次可见的闪。
             let newRoots = try await appState.loadMetadataRoot()
             roots = newRoots
+            loaded = newRoots
             childrenCache = [:]
             expandedIDs = []
             errors = [:]
@@ -647,6 +649,48 @@ struct ObjectTreeView: View {
             appState.selectedTreeObject = nil
         }
         if isLoadingRoot { isLoadingRoot = false }
+
+        // 自动展开到「看得见表」（FR-META-01）：放在收起"加载中"**之后** —— 这一步还要走两三次
+        // 元数据往返，挂在首屏上会让人以为界面卡住。
+        await autoExpandToTables(roots: loaded)
+    }
+
+    /// 连上之后展开到表：服务器 → **连接自己那个库** → `public`。
+    ///
+    /// 为什么要有它：层级是「服务器 → 数据库 → schema → 表」，而展开状态是本地状态、每次连接
+    /// 都从全部折叠开始 —— 实测反馈「连上了，那么多数据库里没看到 `customers`」就是这么来的
+    /// （`customers` 是**表**，在连接自己那个库里，当时还得再点三次）。
+    /// 策略本身在 Core（`ObjectTreeAutoExpansion`，有单测），这里只按顺序把名字喂进去，
+    /// 走的是与用户手点**同一条** `loadChildren`（否则缓存与错误显示会分叉）。
+    private func autoExpandToTables(roots: [DatabaseObject]) async {
+        guard let server = roots.first, server.isExpandable else { return }
+
+        expandedIDs.insert(server.id)
+        await loadChildrenIfNeeded(of: server)
+
+        guard let databases = childrenCache[server.id],
+              let databaseName = ObjectTreeAutoExpansion.database(
+                  in: databases.map(\.name),
+                  connectionDatabase: appState.selectedConnection?.database
+              ),
+              let database = databases.first(where: { $0.name == databaseName }) else { return }
+
+        expandedIDs.insert(database.id)
+        await loadChildrenIfNeeded(of: database)
+
+        guard let schemas = childrenCache[database.id],
+              let schemaName = ObjectTreeAutoExpansion.schema(in: schemas.map(\.name)),
+              let schema = schemas.first(where: { $0.name == schemaName }) else { return }
+
+        expandedIDs.insert(schema.id)
+        await loadChildrenIfNeeded(of: schema)
+    }
+
+    /// `loadChildren` 的幂等包装：已经加载过、或正在加载中就不再打一次
+    /// （自动展开与用户手点可能撞在同一节点上）。
+    private func loadChildrenIfNeeded(of object: DatabaseObject) async {
+        guard childrenCache[object.id] == nil, !loadingIDs.contains(object.id) else { return }
+        await loadChildren(of: object)
     }
 
     // MARK: - 文案与配色
