@@ -329,6 +329,13 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // fk-nav：外键引用导航（FR-DATA-06）。扫全库外键建一张图，再给跳转目标。
+        if arguments.first == "fk-nav" {
+            let code = await runForeignKeyNavCommand(arguments: Array(arguments.dropFirst()), service: service)
+            await service.disconnect()
+            exit(code)
+        }
+
         // stats：数据库统计指标（FR-DIAG-04）。四类指标各一条只读查询。
         if arguments.first == "stats" {
             let code = await runStatsCommand(arguments: Array(arguments.dropFirst()), service: service)
@@ -1301,6 +1308,120 @@ struct DoyahCLI {
     ///
     /// 为什么 CLI 要有它：全库搜索的正确性（跨 schema、列的 `表.列` 形态、排序）**必须能脚本化验证**，
     /// 而不是靠人在界面里看一眼。
+    /// `fk-nav --table T --column C [--value V] [--limit N] [--json]`
+    ///
+    /// 为什么要扫全库：**反向导航**（谁引用了我）必须知道别的表的外键，
+    /// 只看本表约束是查不出来的。小库上这是几十条元数据查询，够用；
+    /// 大库要缓存（属后续）。**没有可跳转目标时返回非零** —— 界面据此决定不显示入口。
+    private static func runForeignKeyNavCommand(
+        arguments: [String],
+        service: any DatabaseService
+    ) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else {
+                return nil
+            }
+            return arguments[index + 1]
+        }
+        guard let table = value(for: "--table"), let column = value(for: "--column") else {
+            print("用法：fk-nav --table <表> --column <列> [--schema S] [--value V] [--limit N] [--json]")
+            return 64
+        }
+        let schema = value(for: "--schema") ?? "public"
+        let dialect = PostgresDialect()
+
+        func run(_ sql: String) async -> QueryResult? {
+            var result: QueryResult?
+            do {
+                for try await event in service.execute(sql, options: .default) {
+                    if case .resultSet(let value) = event { result = value }
+                }
+            } catch {
+                return nil
+            }
+            return result
+        }
+
+        // 1) 列出所有表（反向导航要知道别人）
+        guard let tablesResult = await run(dialect.listTablesQuery(database: "", schema: schema)) else {
+            print("列不出表（该方言可能不支持）")
+            return 66
+        }
+        let tables = tablesResult.rows.compactMap { row -> String? in
+            row.indices.contains(0) ? row[0] : nil
+        }
+
+        // 2) 逐表读约束，解析出外键边
+        var edges: [ForeignKeyNavigation.Edge] = []
+        for name in tables {
+            guard let query = dialect.tableConstraintsQuery(table: name, schema: schema),
+                  let result = await run(query) else { continue }
+            for row in result.rows {
+                let constraintName = row.indices.contains(0) ? row[0] : nil
+                let kind = (row.indices.contains(1) ? row[1] : nil) ?? ""
+                let definition = (row.indices.contains(2) ? row[2] : nil) ?? ""
+                if let edge = ForeignKeyNavigation.parseEdge(
+                    constraintName: constraintName,
+                    kind: kind,
+                    definition: definition,
+                    table: name,
+                    schema: schema,
+                    // 同 schema 的引用在 `pg_get_constraintdef` 里是**不带 schema** 的
+                    // （`REFERENCES customers(id)`）—— 这里让它继承源表的 schema：
+                    // 否则跳转语句会落到 `search_path` 上，换个会话就可能跳错库。
+                    defaultSchema: schema
+                ) {
+                    edges.append(edge)
+                }
+            }
+        }
+
+        let options = ForeignKeyNavigation.options(table: table, column: column, edges: edges, schema: schema)
+        let limit = Int(value(for: "--limit") ?? "") ?? 200
+
+        if arguments.contains("--json") {
+            let payload: [String: Any] = [
+                "table": table,
+                "column": column,
+                "edges": edges.count,
+                "options": options.map { option -> [String: Any] in
+                    var item: [String: Any] = [
+                        "direction": option.direction.rawValue,
+                        "targetTable": option.targetTable,
+                        "targetColumn": option.targetColumn,
+                        "title": option.title
+                    ]
+                    if let value = value(for: "--value") {
+                        item["query"] = ForeignKeyNavigation.query(
+                            option: option, value: value, limit: limit, dialect: dialect
+                        )
+                    }
+                    return item
+                }
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                print(text)
+                return options.isEmpty ? 1 : 0
+            }
+        }
+
+        print("外键图：\(edges.count) 条边（扫了 \(tables.count) 张表）")
+        guard !options.isEmpty else {
+            print("\(table).\(column) 没有可跳转的目标（界面据此不显示入口）")
+            return 1
+        }
+        for option in options {
+            print("  " + option.title)
+            if let value = value(for: "--value") {
+                print("      " + ForeignKeyNavigation.query(
+                    option: option, value: value, limit: limit, dialect: dialect
+                ))
+            }
+        }
+        return 0
+    }
+
     /// `stats [--limit N] [--json]` —— 表大小 / 索引命中率 / 连接数 / 缓存命中率（FR-DIAG-04）。
     private static func runStatsCommand(
         arguments: [String],
