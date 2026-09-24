@@ -17,7 +17,6 @@ import DoyahCore
 struct QueryToolbar: View {
     @EnvironmentObject private var appState: AppState
     let tab: QueryTab
-    let connection: ConnectionConfig?
 
     let onOpenFile: () -> Void
     let onSaveFile: () -> Void
@@ -76,15 +75,14 @@ struct QueryToolbar: View {
                     .padding(.leading, Spacing.xs)
             }
 
+            // 右侧**刻意什么都不放**（2026-09-24 需求提出者要求）：
+            // 「工具条上就应该是干干净净的一堆按钮，或者可选的下拉框对象等，
+            //   而不应该在这里留一长串文本 tooltip」。
+            // 所以原来那串「PostgreSQL · 分隔符 ; · 库 · 用户 · host:port」整段删掉；
+            // 这些信息没有丢 —— 紧挨着工具条**上面**的上下文栏里都有：
+            // 服务器下拉框显示「连接名 (用户) · host:port」（FR-CONN-14 / FR-CONN-12），
+            // 数据库下拉框显示当前库（FR-CONN-13）。
             Spacer()
-
-            if let connection {
-                connectionInfo(connection)
-            } else {
-                Label(L(.workspaceUnboundTab), systemImage: "exclamationmark.circle")
-                    .font(Theme.font(.caption))
-                    .foregroundStyle(Theme.text(.secondary))
-            }
         }
         .padding(.horizontal, Spacing.m)
         .padding(.vertical, Spacing.s)
@@ -457,60 +455,6 @@ struct QueryToolbar: View {
         .help(AppShortcut.executionPlan.help(L(.toolbarPlanHelp)))
         .keyboardShortcut(AppShortcut.executionPlan.key, modifiers: AppShortcut.executionPlan.modifiers)
         .disabled(tab.isExecuting)
-    }
-
-    // MARK: - 连接信息
-
-    private func connectionInfo(_ connection: ConnectionConfig) -> some View {
-        HStack(spacing: 8) {
-            let dialect = SQLDialectFactory.make(for: connection.dbType)
-
-            Text(connection.dbType.displayName)
-                .font(Theme.font(.caption))
-                .foregroundStyle(Theme.text(.secondary))
-
-            Text(L(.workspaceDelimiter, dialect.statementDelimiter))
-                .font(Theme.font(.caption))
-                .foregroundStyle(Theme.text(.tertiary))
-
-            if let info = appState.serverInfo(for: connection.id) {
-                Text("· \(info.database) · \(info.user)")
-                    .font(Theme.font(.caption))
-                    .foregroundStyle(Theme.text(.tertiary))
-                    .lineLimit(1)
-            }
-
-            Text(connection.endpointDescription)
-                .font(Theme.font(.caption))
-                .foregroundStyle(Theme.text(.tertiary))
-                .lineLimit(1)
-        }
-        // 整组**只占一行**，空间不够就截断 —— 理由见这一行的历史：
-        // 2026-09-24 实测「点执行后工具条被撑高」：执行让事务控件多出两个按钮 → 这一排宽度不够 →
-        // 上面两段**没写 lineLimit** 的文字开始**按字符换行**（PostgreSQL / ; 各占好几行），
-        // 连接信息组从 14pt 涨到 140pt，整条工具条从 38pt 涨到 156pt。
-        // 工具条的高度不该由文案长度决定：宁可截断（完整值在 tooltip 与连接设置里）。
-        .lineLimit(1)
-        .truncationMode(.middle)
-        // 截断之后完整值只能从这里看 —— 所以 tooltip 给**整串**，不是只给地址。
-        .help(fullConnectionInfo(connection))
-    }
-
-    /// 工具条右侧那串连接信息的**完整文本**（tooltip 用）。
-    ///
-    /// 两段都随连接变：① 类型名来自 `DatabaseType.displayName`（PostgreSQL / GBase 8a…）；
-    /// ② 分隔符来自**方言**（`SQLDialect.statementDelimiter`），不是写死的 `;` ——
-    /// 目前两种方言恰好都是 `;`，但以后加方言（Oracle 的 `/`、MySQL 的自定义分隔符）这里会自动跟着变。
-    private func fullConnectionInfo(_ connection: ConnectionConfig) -> String {
-        var parts = [
-            connection.dbType.displayName,
-            L(.workspaceDelimiter, SQLDialectFactory.make(for: connection.dbType).statementDelimiter)
-        ]
-        if let info = appState.serverInfo(for: connection.id) {
-            parts.append("\(info.database) · \(info.user)")
-        }
-        parts.append(connection.endpointDescription)
-        return parts.joined(separator: " · ")
     }
 
     // MARK: - 通用图标按钮样式

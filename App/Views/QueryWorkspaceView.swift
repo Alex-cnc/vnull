@@ -133,9 +133,10 @@ struct QueryEditorView: View {
             QueryContextBar()
             Divider()
 
+            // 工具条只放按钮 / 下拉框（2026-09-24 需求提出者要求）：连接信息不再传进来，
+            // 「连着哪台库、哪个库」由它上面那一条上下文档负责（服务器 / 数据库两个下拉框）。
             QueryToolbar(
                 tab: tab,
-                connection: appState.connection(for: tab),
                 onOpenFile: {
                     appState.openFileFromPanel()
                 },
