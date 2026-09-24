@@ -60,6 +60,7 @@ struct CodeEditorView: NSViewRepresentable {
 
         context.coordinator.textView = textView
         context.coordinator.language = language
+        textView.completionLanguage = language
         context.coordinator.applyHighlighting()
 
         let scrollView = NSScrollView()
@@ -84,6 +85,7 @@ struct CodeEditorView: NSViewRepresentable {
         // 切页签 / 外部改了内容：把文本同步过去（带上语言变化一起重着色）。
         let languageChanged = context.coordinator.language != language
         context.coordinator.language = language
+        textView.completionLanguage = language
         if textView.string != text {
             context.coordinator.isApplyingExternalText = true
             textView.string = text
@@ -162,6 +164,40 @@ struct CodeEditorView: NSViewRepresentable {
 /// `.keyboardShortcut` 在文本视图获得焦点时收不到这个按键。拦在这里最稳。
 final class CodeTextView: NSTextView {
     var onSave: (() -> Void)?
+
+    /// 补全落光标用：插入的是哪个语言，决定片段插入后的落点约定。
+    var completionLanguage: TextLanguage = .plainText
+
+    /// 补全**自己插**，不交给 `NSTextView` 默认实现。
+    ///
+    /// 为什么：默认实现把候选原样塞进去、光标留在末尾。对多行片段（`function name() {\n  \n}`）
+    /// 与带括号的片段（`console.log()`）那都不对 —— 用户的下一步是"在括号里 / 空行里继续写"。
+    /// 落点约定在 Core（`CodeCompletion.caretOffset`，有单测），这里只负责搬。
+    override func insertCompletion(
+        _ word: String,
+        forPartialWordRange charRange: NSRange,
+        movement: Int,
+        isFinal flag: Bool
+    ) {
+        guard flag, let storage = textStorage else {
+            super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: flag)
+            return
+        }
+        let characters = Array(word)
+        let offset = min(max(0, CodeCompletion.caretOffset(inInsertText: word)), characters.count)
+        let prefix = String(characters[0..<offset])
+
+        let replacement = NSRange(location: charRange.location, length: charRange.length)
+        guard shouldChangeText(in: replacement, replacementString: word) else { return }
+        storage.replaceCharacters(in: replacement, with: word)
+        didChangeText()
+
+        // 注意：`caretOffset` 数的是**字符**，而 `NSRange` 数的是 UTF-16 单元 —— 中文注释里插入
+        // 片段时两者会差，所以按前缀的 utf16 长度换算（片段里出现宽字符时不换算就会偏到别处）。
+        let caret = replacement.location + prefix.utf16.count
+        setSelectedRange(NSRange(location: min(caret, storage.length), length: 0))
+        scrollRangeToVisible(NSRange(location: caret, length: 0))
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.contains(.command),
