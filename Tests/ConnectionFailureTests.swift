@@ -102,4 +102,24 @@ final class ConnectionFailureTests: XCTestCase {
         )
         XCTAssertEqual(description.fullText, "连不上\n建议：检查服务\n错误码：08006")
     }
+
+    // MARK: 「服务端在要口令吗」（无口令认证的库能不能连）
+
+    /// 认证类 SQLSTATE 才算「要口令」；别的失败（库不存在 / 表不存在 / 权限）**不能**被认成要口令，
+    /// 否则用户会拿到一句误导的「缺少口令」。
+    func testRequiresPasswordOnlyForAuthSQLStates() {
+        XCTAssertTrue(ConnectionFailure.requiresPassword(sqlState: "28P01"))
+        XCTAssertTrue(ConnectionFailure.requiresPassword(sqlState: "28000"))
+        XCTAssertFalse(ConnectionFailure.requiresPassword(sqlState: "3D000"), "库不存在不是要口令")
+        XCTAssertFalse(ConnectionFailure.requiresPassword(sqlState: "42P01"))
+        XCTAssertFalse(ConnectionFailure.requiresPassword(sqlState: nil))
+    }
+
+    /// 不是 PSQLError（网络层 / 包装错误）时一律 false：这些情况下的「缺少口令」是误报。
+    func testRequiresPasswordIsFalseForNonDriverErrors() {
+        struct Wrapper: LocalizedError {
+            var errorDescription: String? { "connect(2) failed: Connection refused" }
+        }
+        XCTAssertFalse(ConnectionFailure.requiresPassword(Wrapper()))
+    }
 }

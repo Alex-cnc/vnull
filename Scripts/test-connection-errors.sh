@@ -95,6 +95,19 @@ else
 fi
 
 echo ""
+echo "== 6) **不带口令**（不是空口令，是根本没给）连 trust 库也要成功 =="
+# 这一档守的是「无口令认证」这条路：服务端是 trust / peer / 证书时本来就不需要口令，
+# 客户端在连接前无从判断 —— 所以 `password = nil` 必须能一路走到底。
+# （App 侧原先"没存口令就直接拒绝"，本机 trust 集群于是**永远连不上**；本轮修掉。）
+OUT6="$(env -u PGPASSWORD PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGDATABASE=postgres \
+    "$CLI" -c "SELECT 1" 2>&1)"
+code=$?
+check "无口令连接退出码 0（实际 $code）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
+echo "$OUT6" | grep -q "连接成功" && check "无口令也能连上 trust 库（无口令认证不是错误）" 0 \
+    || { echo "$OUT6" | head -8; check "无口令也能连上 trust 库（无口令认证不是错误）" 1; }
+echo "$OUT6" | grep -q "缺少口令" && check "没有误报「缺少口令」" 1 || check "没有误报「缺少口令」" 0
+
+echo ""
 if [ "$fail" -eq 0 ]; then
     echo "全部通过：连接失败给的是人话 + 建议 + 错误码，且原始串仍在调试详情里。"
 else

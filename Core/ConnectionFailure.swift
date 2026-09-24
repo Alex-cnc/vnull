@@ -250,4 +250,32 @@ public enum ConnectionFailure {
         }
         return nil
     }
+
+    // MARK: - 「服务端在要口令吗」
+
+    /// 服务端是不是因为**要口令**而拒绝。
+    ///
+    /// 为什么要单独一个判据：客户端在连接前**无法知道**服务端需不需要口令 ——
+    /// `trust` / `peer` / 证书 / IAM 这些认证方式本来就不需要，替服务端先拒绝，
+    /// 代价是这类库**永远连不上**（实测：本机 `trust` 集群报「缺少口令」，而 psql 直接连得上）。
+    /// 所以策略改成「没存口令也照连」，只有服务端真的开口要、而本地又确实没有时，
+    /// 才把「口令读不到 + 找过哪些位置」这条更具体的诊断推给用户 —— 这条判据就是那个开关。
+    public static func requiresPassword(sqlState: String?) -> Bool {
+        // 28P01 invalid_password / 28000 invalid_authorization_specification。
+        guard let sqlState else { return false }
+        return sqlState == "28P01" || sqlState == "28000"
+    }
+
+    /// 从驱动错误里判断「服务端在要口令而本地没有」。
+    public static func requiresPassword(_ error: any Error) -> Bool {
+        guard let psql = error as? PSQLError else { return false }
+        // 驱动自己就知道"服务端要求口令、但本次没提供"——这是最准的一档。
+        switch psql.code {
+        case .authMechanismRequiresPassword:
+            return true
+        default:
+            break
+        }
+        return requiresPassword(sqlState: psql.serverInfo?[.sqlState])
+    }
 }

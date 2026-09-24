@@ -5561,8 +5561,15 @@ final class AppState: ObservableObject {
         if let existing = connectTasks[key] {
             task = existing
         } else {
-            guard let password = try secretStore.password(for: configuration.id) else {
-                throw AppError.invalidConfiguration(L(.stateMissingPassword))
+            // 口令：**没存也照连**（R-46）。本机 `trust`、`peer`、证书、IAM 这些认证方式本来就
+            // 不需要口令，而客户端在连接前无从判断服务端要不要 —— 以前这里"没存口令就直接拒绝"，
+            // 代价是这类库在 App 里**永远连不上**（实测：本机 trust 集群报「缺少口令」，`psql` 却连得上）。
+            // 空串与"没存"等价：把空口令发出去只会让服务端困惑。
+            let storedPassword: String? = (try? secretStore.password(for: configuration.id)) ?? nil
+            let password = (storedPassword?.isEmpty == false) ? storedPassword : nil
+            // 真被服务端要口令时，把"找过哪些位置"补进诊断 —— 原来那条更有用的信息不能丢。
+            let searched = (secretStore as? FileSecretStore).map {
+                $0.searchedLocations().map(\.path).joined(separator: "、")
             }
 
             var derived = configuration
@@ -5570,8 +5577,16 @@ final class AppState: ObservableObject {
 
             let newTask = Task<(any DatabaseService, ServerInfo), Error> {
                 let service = DatabaseServiceFactory.make(for: derived, password: password)
-                let serverInfo = try await service.connect()
-                return (service, serverInfo)
+                do {
+                    let serverInfo = try await service.connect()
+                    return (service, serverInfo)
+                } catch {
+                    guard password == nil, ConnectionFailure.requiresPassword(error) else { throw error }
+                    let hint = searched.map { L(.statePasswordSearched, $0) }
+                    throw AppError.invalidConfiguration(
+                        [L(.stateMissingPassword), hint].compactMap { $0 }.joined(separator: "\n")
+                    )
+                }
             }
             connectTasks[key] = newTask
             task = newTask
