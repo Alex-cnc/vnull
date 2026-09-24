@@ -54,22 +54,28 @@ public enum CellInspector {
         }
 
         /// 一句话摘要，供列表 / 状态栏用：`JSON 对象 · 42 字符 · 6 行`。
-        public var summary: String {
+        ///
+        /// - Parameter language: 语言（R-45：这段文本会直接显示在行详情侧栏，固定中文会让
+        ///   英文界面上冒出几个中文字）。默认中文，兼容既有调用点与 CLI。
+        public func summary(language: AppLanguage = .simplifiedChinese) -> String {
+            func text(_ key: LKey) -> String { LocalizedStrings.text(key, language: language) }
             var parts: [String] = []
             switch shape {
             case .null: parts.append("NULL")
-            case .empty: parts.append("空字符串")
-            case .jsonObject: parts.append("JSON 对象")
-            case .jsonArray: parts.append("JSON 数组")
-            case .binary(let bytes): parts.append("二进制 \(bytes) 字节")
-            case .scalarJSON: parts.append("JSON 标量")
-            case .text: parts.append("文本")
+            case .empty: parts.append(text(.cellSummaryEmpty))
+            case .jsonObject: parts.append(text(.cellSummaryJsonObject))
+            case .jsonArray: parts.append(text(.cellSummaryJsonArray))
+            case .binary(let bytes): parts.append(LocalizedStrings.format(.cellSummaryBinary, language: language, bytes))
+            case .scalarJSON: parts.append(text(.cellSummaryScalarJSON))
+            case .text: parts.append(text(.cellSummaryText))
             }
             if shape != .null && shape != .empty {
-                parts.append("\(originalCharacterCount) 字符")
-                if lineCount > 1 { parts.append("\(lineCount) 行") }
+                parts.append(LocalizedStrings.format(.cellSummaryCharacters, language: language, originalCharacterCount))
+                if lineCount > 1 {
+                    parts.append(LocalizedStrings.format(.cellSummaryLines, language: language, lineCount))
+                }
             }
-            if isTruncated { parts.append("已截断") }
+            if isTruncated { parts.append(text(.cellSummaryTruncated)) }
             return parts.joined(separator: " · ")
         }
     }

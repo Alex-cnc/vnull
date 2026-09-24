@@ -1063,6 +1063,20 @@ public enum LKey: String, CaseIterable, Sendable {
     case browserDownloadStarted
     case browserDownloadFinished
     case browserDownloadFailed
+    case inlineEditNoPrimaryKey
+    case inlineEditNoPrimaryKeyWhy
+    case inlineEditRowNotInResult
+    case inlineEditMissingKeyColumn
+    case inlineEditNullKeyValue
+    case cellSummaryEmpty
+    case cellSummaryJsonObject
+    case cellSummaryJsonArray
+    case cellSummaryBinary
+    case cellSummaryScalarJSON
+    case cellSummaryText
+    case cellSummaryCharacters
+    case cellSummaryLines
+    case cellSummaryTruncated
     case schemaDiffCopy
     case schemaDiffOpenInTab
     case schemaDiffFailed
@@ -2125,6 +2139,20 @@ public enum LocalizedStrings {
         .browserDownloadStarted: [.simplifiedChinese: "开始下载：%@", .english: "Downloading: %@"],
         .browserDownloadFinished: [.simplifiedChinese: "已下载到 %@", .english: "Downloaded to %@"],
         .browserDownloadFailed: [.simplifiedChinese: "下载失败（%@）：%@", .english: "Download failed (%@): %@"],
+        .inlineEditNoPrimaryKey: [.simplifiedChinese: "这张表没有主键：改 / 删需要主键才能定位到具体某一行。", .english: "This table has no primary key: updates and deletes need one to target a specific row."],
+        .inlineEditNoPrimaryKeyWhy: [.simplifiedChinese: "用「所有列都相等」当条件会一次改掉多行（NULL 比较、重复行都会咬人），所以这里直接拒绝。", .english: "Matching on “all columns equal” would hit several rows at once (NULL comparisons and duplicate rows both bite), so this is refused outright."],
+        .inlineEditRowNotInResult: [.simplifiedChinese: "行号 %d 不在当前结果集里（结果集可能已刷新）", .english: "Row %d is not in the current result set (it may have been refreshed)"],
+        .inlineEditMissingKeyColumn: [.simplifiedChinese: "结果集里找不到主键列 %@，无法定位行", .english: "The primary-key column %@ is missing from the result set, so the row cannot be located"],
+        .inlineEditNullKeyValue: [.simplifiedChinese: "第 %d 行的主键 %@ 为空，无法定位", .english: "Row %d has a NULL primary key (%@), so the row cannot be located"],
+        .cellSummaryEmpty: [.simplifiedChinese: "空字符串", .english: "Empty string"],
+        .cellSummaryJsonObject: [.simplifiedChinese: "JSON 对象", .english: "JSON object"],
+        .cellSummaryJsonArray: [.simplifiedChinese: "JSON 数组", .english: "JSON array"],
+        .cellSummaryBinary: [.simplifiedChinese: "二进制 %d 字节", .english: "Binary, %d bytes"],
+        .cellSummaryScalarJSON: [.simplifiedChinese: "JSON 标量", .english: "JSON scalar"],
+        .cellSummaryText: [.simplifiedChinese: "文本", .english: "Text"],
+        .cellSummaryCharacters: [.simplifiedChinese: "%d 字符", .english: "%d characters"],
+        .cellSummaryLines: [.simplifiedChinese: "%d 行", .english: "%d lines"],
+        .cellSummaryTruncated: [.simplifiedChinese: "已截断", .english: "Truncated"],
         .schemaDiffCopy: [.simplifiedChinese: "复制脚本", .english: "Copy script"],
         .schemaDiffOpenInTab: [.simplifiedChinese: "在新查询页签打开", .english: "Open in a new query tab"],
         .schemaDiffFailed: [.simplifiedChinese: "对比失败：%@", .english: "Comparison failed: %@"],

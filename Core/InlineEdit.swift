@@ -77,6 +77,9 @@ public enum InlineEdit {
     ///     我第一版就是这么写的，当场改掉）。
     ///   - rows: 当前结果集（`update` / `delete` 用它取被定位行的主键值）。
     ///   - changes: 用户的改动；同一行多次改同一列时**以最后一次为准**。
+    /// - Parameter language: 生成**给人看的拒绝理由**时用的语言。
+    ///   默认中文（CLI 与既有调用点都是中文）；界面按当前语言传进来 —— 这些理由会原样显示在
+    ///   预览弹窗里，固定中文会让英文界面上出现一段看不懂的话（R-45 的同一类问题）。
     public static func plan(
         table: String,
         schema: String? = nil,
@@ -84,7 +87,8 @@ public enum InlineEdit {
         columns: [Column],
         rows: [[String?]],
         changes: [Change],
-        dialect: SQLDialect
+        dialect: SQLDialect,
+        language: AppLanguage = .simplifiedChinese
     ) -> Plan {
         guard !changes.isEmpty else { return Plan() }
 
@@ -101,8 +105,8 @@ public enum InlineEdit {
         }
         if needsKey && primaryKeys.isEmpty {
             return Plan(refusals: [
-                "这张表没有主键：改 / 删需要主键才能定位到具体某一行。",
-                "用「所有列都相等」当条件会一次改掉多行（NULL 比较、重复行都会咬人），所以这里直接拒绝。"
+                LocalizedStrings.text(.inlineEditNoPrimaryKey, language: language),
+                LocalizedStrings.text(.inlineEditNoPrimaryKeyWhy, language: language)
             ])
         }
 
@@ -151,6 +155,7 @@ public enum InlineEdit {
         for rowIndex in updates.keys.sorted() {
             guard let assignments = updates[rowIndex],
                   let whereClause = whereClause(
+                      language: language,
                       rowIndex: rowIndex,
                       rows: rows,
                       columnNames: columnNames,
@@ -170,6 +175,7 @@ public enum InlineEdit {
         // 条件是按主键拼的，其实不依赖行号，但降序能让"看预览时"的顺序与人翻列表的方向一致）
         for rowIndex in deletes.sorted(by: >) {
             guard let whereClause = whereClause(
+                language: language,
                 rowIndex: rowIndex,
                 rows: rows,
                 columnNames: columnNames,
@@ -197,6 +203,7 @@ public enum InlineEdit {
 
     /// 按主键拼 WHERE。主键值为 NULL / 行不存在 / 结果集里没有该列时**拒绝这一行**（不猜、不退化）。
     private static func whereClause(
+        language: AppLanguage,
         rowIndex: Int,
         rows: [[String?]],
         columnNames: [String],
@@ -205,7 +212,7 @@ public enum InlineEdit {
         refusals: inout [String]
     ) -> String? {
         guard rows.indices.contains(rowIndex) else {
-            refusals.append("行号 \(rowIndex + 1) 不在当前结果集里（结果集可能已刷新）")
+            refusals.append(LocalizedStrings.format(.inlineEditRowNotInResult, language: language, rowIndex + 1))
             return nil
         }
         let normalized = columnNames.map { $0.lowercased() }
@@ -213,11 +220,11 @@ public enum InlineEdit {
         var parts: [String] = []
         for key in primaryKeys {
             guard let position = normalized.firstIndex(of: key.name.lowercased()) else {
-                refusals.append("结果集里找不到主键列 \(key.name)，无法定位行")
+                refusals.append(LocalizedStrings.format(.inlineEditMissingKeyColumn, language: language, key.name))
                 return nil
             }
             guard row.indices.contains(position), let raw = row[position] else {
-                refusals.append("第 \(rowIndex + 1) 行的主键 \(key.name) 为空，无法定位")
+                refusals.append(LocalizedStrings.format(.inlineEditNullKeyValue, language: language, rowIndex + 1, key.name))
                 return nil
             }
             parts.append("\(dialect.quoteIdentifier(key.name)) = \(literal(raw, typeName: key.typeName))")

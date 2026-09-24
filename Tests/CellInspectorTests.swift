@@ -19,11 +19,11 @@ final class CellInspectorTests: XCTestCase {
 
     /// 摘要要能一眼看出形态（状态栏 / 列表用）。
     func testSummaryText() {
-        XCTAssertEqual(CellInspector.inspect(nil).summary, "NULL")
-        XCTAssertEqual(CellInspector.inspect("").summary, "空字符串")
-        XCTAssertTrue(CellInspector.inspect(#"{"a":1}"#).summary.contains("JSON 对象"))
-        XCTAssertTrue(CellInspector.inspect(#"[1,2]"#).summary.contains("JSON 数组"))
-        XCTAssertTrue(CellInspector.inspect("hello").summary.contains("文本"))
+        XCTAssertEqual(CellInspector.inspect(nil).summary(), "NULL")
+        XCTAssertEqual(CellInspector.inspect("").summary(), "空字符串")
+        XCTAssertTrue(CellInspector.inspect(#"{"a":1}"#).summary().contains("JSON 对象"))
+        XCTAssertTrue(CellInspector.inspect(#"[1,2]"#).summary().contains("JSON 数组"))
+        XCTAssertTrue(CellInspector.inspect("hello").summary().contains("文本"))
     }
 
     // MARK: JSON 识别（边界）
@@ -69,7 +69,7 @@ final class CellInspectorTests: XCTestCase {
     func testByteaHexIsSummarized() {
         let value = CellInspector.inspect(#"\x48656c6c6f"#)
         XCTAssertEqual(value.shape, .binary(byteCount: 5))
-        XCTAssertTrue(value.summary.contains("二进制 5 字节"), value.summary)
+        XCTAssertTrue(value.summary().contains("二进制 5 字节"), value.summary())
         XCTAssertEqual(value.display, #"\x48656c6c6f"#, "短值原样显示，不截")
     }
 
@@ -99,7 +99,7 @@ final class CellInspectorTests: XCTestCase {
         XCTAssertTrue(value.isTruncated)
         XCTAssertEqual(value.originalCharacterCount, 100, "原始字符数要如实报告")
         XCTAssertEqual(value.originalByteCount, 300, "UTF-8 字节数（鲸 = 3 字节）")
-        XCTAssertTrue(value.summary.contains("已截断"), value.summary)
+        XCTAssertTrue(value.summary().contains("已截断"), value.summary())
         // 展示文本按**字符**截断，不会把多字节字符切成半个
         XCTAssertEqual(value.display.count, 11, "10 个字符 + 省略号")
     }
@@ -115,7 +115,7 @@ final class CellInspectorTests: XCTestCase {
     func testLineCountIsReported() {
         XCTAssertEqual(CellInspector.inspect("a\nb\nc").lineCount, 3)
         XCTAssertEqual(CellInspector.inspect(#"{"a":1,"b":2}"#).lineCount, 1, "原始文本是单行（美化后才是多行）")
-        XCTAssertTrue(CellInspector.inspect("a\nb").summary.contains("2 行"))
+        XCTAssertTrue(CellInspector.inspect("a\nb").summary().contains("2 行"))
     }
 
     // MARK: 单行竖排

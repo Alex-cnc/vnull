@@ -771,7 +771,7 @@ struct DoyahCLI {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let payload = fields.map { ["column": $0.columnName, "type": $0.typeName,
-                                            "summary": $0.value.summary, "value": $0.value.display] }
+                                            "summary": $0.value.summary(language: .simplifiedChinese), "value": $0.value.display] }
                 if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
                    let text = String(data: data, encoding: .utf8) {
                     print(text)
@@ -2574,7 +2574,8 @@ struct DoyahCLI {
             columns: columns,
             rows: planRows,
             changes: changes,
-            dialect: dialect
+            dialect: dialect,
+            language: .simplifiedChinese
         )
 
         if arguments.contains("--json") {

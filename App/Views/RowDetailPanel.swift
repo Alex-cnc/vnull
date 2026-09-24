@@ -159,13 +159,13 @@ struct RowDetailPanel: View {
 
         case .empty:
             // 空串用 SQL 的空串字面量 `''` 表示：语言无关，也不会与 NULL 混淆。
-            // （Core 的 `summary` 对空串给的是中文"空字符串"，放进英文界面不合适，
-            //   所以这里只拿它当 tooltip，不当作正文。）
+            // tooltip 用按**当前语言**生成的摘要（Core 的 `summary(language:)`）——
+            // 以前 Core 只吐中文，只好把中文摘要放在英文界面里当 tooltip（R-45）。
             Text("''")
                 .font(Theme.font(.mono))
                 .italic()
                 .foregroundStyle(Theme.text(.tertiary))
-                .help(value.summary)
+                .help(value.summary(language: LocalizationManager.shared.language))
 
         default:
             // **不要**加 `lineLimit(1)` / `truncationMode(...)`：JSON 已经美化换行，
@@ -187,7 +187,7 @@ struct RowDetailPanel: View {
             // 摘要就是 "NULL" / "空字符串"，正文已经把它说完了。
             return nil
         default:
-            return value.summary
+            return value.summary(language: LocalizationManager.shared.language)
         }
     }
 

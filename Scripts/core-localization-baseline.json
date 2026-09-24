@@ -1,0 +1,7 @@
+{
+  "baseline": {
+    "files": 59,
+    "lines": 611
+  },
+  "comment": "Core 展示文本本地化棘轮基线：Core 里「字符串字面量含汉字」的文件数与行数只能降不能升。修掉一批后用 --update-baseline 降基线。"
+}

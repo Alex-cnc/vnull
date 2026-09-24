@@ -1559,7 +1559,9 @@ final class AppState: ObservableObject {
             columns: columns,
             rows: rows,
             changes: changes,
-            dialect: dialect
+            dialect: dialect,
+            // 拒绝理由会原样显示在预览弹窗里 → 用**当前界面语言**生成（R-45 的同一类问题）。
+            language: LocalizationManager.shared.language
         )
     }
 
