@@ -179,6 +179,12 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case mcpRefusedReadOnly
+    case mcpNeedsApproval
+    case mcpInitialized
+    case mcpToolNotExposed
+    case mcpBadArguments
+    case mcpNoConnection
     case maintenanceRefusedReadOnly
     case maintenanceNoApprovalNeeded
     case maintenanceNeedsApproval
@@ -1714,6 +1720,12 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .mcpRefusedReadOnly: [.simplifiedChinese: "当前连接是只读的（或语句被判为写操作）：该调用被拒绝，批准也不能绕过", .english: "This connection is read-only (or the statement counts as a write): the call is refused and approval cannot bypass it"],
+        .mcpNeedsApproval: [.simplifiedChinese: "工具 %@ 需要审批：请先在界面上确认这一次外部调用", .english: "Tool %@ needs approval: confirm this external call in the app first"],
+        .mcpInitialized: [.simplifiedChinese: "已就绪：能力继承当前会话，调用进审批与审计", .english: "Ready: capabilities inherit the current session, and every call is approved and audited"],
+        .mcpToolNotExposed: [.simplifiedChinese: "没有暴露这个工具：%@", .english: "This tool is not exposed: %@"],
+        .mcpBadArguments: [.simplifiedChinese: "参数不合法：%@", .english: "Invalid arguments: %@"],
+        .mcpNoConnection: [.simplifiedChinese: "当前没有已连接的会话：外部调用一律不另开连接", .english: "No session is connected: external calls never open their own connection"],
         .maintenanceRefusedReadOnly: [.simplifiedChinese: "这是只读连接：写操作被拒绝，无法批准执行", .english: "This connection is read-only: the write is refused and cannot be approved"],
         .maintenanceNoApprovalNeeded: [.simplifiedChinese: "这条只给语句、不改库，不需要审批", .english: "This one only hands you a statement and does not touch the database, so no approval is needed"],
         .maintenanceNeedsApproval: [.simplifiedChinese: "写操作 / DDL：执行前必须逐条批准", .english: "Write or DDL: each step must be approved before it runs"],

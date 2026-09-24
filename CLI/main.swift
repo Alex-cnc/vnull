@@ -176,6 +176,12 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // mcp：FR-AI-10 的可脚本化出口（serve = 我们当 server；call = 我们当 host）。
+        if arguments.first == "mcp" {
+            let code = await runMCPCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -900,6 +906,270 @@ struct DoyahCLI {
     ///
     /// 行为：起隧道 → 打印本地端点 → 保持（默认到被信号打断；给了 `--hold` 就等这么多秒）→ 收干净。
     /// 退出码：0 成功；2 参数不对；1 隧道起不来（stderr 带 ssh 的输出，已脱敏）。
+    /// `doyah mcp serve | call`：MCP 两个方向的可脚本化出口（FR-AI-10）。
+    ///
+    /// - `serve`：我们**当 server**，从 stdin 读 JSON-RPC 行、往 stdout 写回复。
+    ///   能力**继承当前会话**（用环境变量里的 PG* 连一次；没连上就只给元数据类工具，其余如实拒），
+    ///   写操作要预先用 `--allow <工具名>` 放行（等价于界面上点过一次"允许"），每一次调用都进审计。
+    /// - `call`：我们**当 host**，起一个外部 MCP 服务器进程，走"握手 → 列工具 → 调工具"最小闭环。
+    ///   批处理式：把请求一次写完、关掉 stdin、读回全部回复（真实服务器在 stdin 关闭后会退出）。
+    private static func runMCPCommand(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        guard let mode = arguments.first else {
+            FileHandle.standardError.write(Data(("用法：mcp serve [--read-only] [--approve-write <SQL>] [--approve-call <工具名>|<JSON>] [--audit <文件>]\n"
+                + "      mcp call --command <外部服务器命令> [--tool <工具名>] [--args <JSON>]\n").utf8))
+            return 2
+        }
+        switch mode {
+        case "serve": return await runMCPServe(arguments: Array(arguments.dropFirst()))
+        case "call": return await runMCPCall(arguments: Array(arguments.dropFirst()))
+        default:
+            FileHandle.standardError.write(Data("mcp 只支持 serve / call\n".utf8))
+            return 2
+        }
+    }
+
+    private static func runMCPServe(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        let isReadOnly = arguments.contains("--read-only")
+        // **按次批准**：`--approve-write <SQL>` 只放行这一条语句；
+        // `--approve-call <工具名>|<JSON 参数>` 放行其它工具的一次具体调用。
+        // 不再有"按工具名全放行"的开关 —— 那等于把逐次审批变成一次总批准（脚本实测抓到过）。
+        var approvedCalls: Set<String> = []
+        if let sql = value(for: "--approve-write") {
+            approvedCalls.insert(
+                MCPToolCatalog.callFingerprint(
+                    tool: MCPToolCatalog.querySQL,
+                    arguments: .object(["sql": .string(sql)])
+                )
+            )
+        }
+        if let call = value(for: "--approve-call") {
+            let parts = call.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            if parts.count == 2,
+               let data = String(parts[1]).data(using: .utf8),
+               let raw = try? JSONSerialization.jsonObject(with: data) {
+                approvedCalls.insert(
+                    MCPToolCatalog.callFingerprint(tool: String(parts[0]), arguments: MCPValue(any: raw))
+                )
+            } else {
+                FileHandle.standardError.write(Data("--approve-call 需要 <工具名>|<JSON 参数>\n".utf8))
+                return 2
+            }
+        }
+        let auditPath = value(for: "--audit")
+
+        // 当前会话：环境变量里的连接。**连不上就不另开连接**，能力如实降级。
+        var service: PostgresService?
+        var capabilities = MCPServerSession.Capabilities(
+            hasConnection: false,
+            isReadOnly: isReadOnly,
+            target: "(未连接)",
+            approvedCalls: approvedCalls
+        )
+        let environment = ProcessInfo.processInfo.environment
+        if environment["PGHOST"] != nil || environment["PGUSER"] != nil {
+            let config = makeEnvironmentConfig(name: "CLI mcp")
+            let created = PostgresService(config: config, password: environment["PGPASSWORD"])
+            do {
+                let info = try await created.connect()
+                service = created
+                capabilities = MCPServerSession.Capabilities(
+                    hasConnection: true,
+                    isReadOnly: isReadOnly,
+                    target: "\(config.username)@\(config.host):\(config.port)/\(info.database)",
+                    approvedCalls: approvedCalls
+                )
+            } catch {
+                FileHandle.standardError.write(Data("（连接失败，能力降级为仅元数据）：\(error.localizedDescription)\n".utf8))
+            }
+        }
+
+        var session = MCPServerSession(capabilities: capabilities)
+        func audit(_ entry: MCPAuditEntry) {
+            FileHandle.standardError.write(Data(("审计 \(entry.jsonText)\n").utf8))
+            guard let auditPath else { return }
+            if let handle = FileHandle(forWritingAtPath: auditPath) {
+                handle.seekToEndOfFile()
+                handle.write(Data((entry.jsonText + "\n").utf8))
+                try? handle.close()
+            } else {
+                try? (entry.jsonText + "\n").write(toFile: auditPath, atomically: true, encoding: .utf8)
+            }
+        }
+
+        while let line = readLine(strippingNewline: true) {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+            let outcome = session.handle(line: line)
+            for reply in outcome.replies {
+                print(reply.encode())
+                fflush(stdout)
+            }
+            if let last = session.audit.last { audit(last) }
+
+            guard let invocation = outcome.invocation else { continue }
+            let result = await runMCPInvocation(invocation, service: service, config: makeEnvironmentConfig(name: "CLI mcp"))
+            if let reply = session.finish(invocation, text: result.text, isError: result.isError) {
+                print(reply.encode())
+                fflush(stdout)
+            }
+            if let last = session.audit.last { audit(last) }
+        }
+        await service?.disconnect()
+        return 0
+    }
+
+    /// 执行一次工具调用（会话只决定"能不能"，执行在这里）。
+    private static func runMCPInvocation(
+        _ invocation: MCPServerSession.Invocation,
+        service: PostgresService?,
+        config: ConnectionConfig
+    ) async -> (text: String, isError: Bool) {
+        guard let service else {
+            return ("当前没有已连接的会话：外部调用一律不另开连接", true)
+        }
+        let arguments = invocation.arguments
+        switch invocation.tool {
+        case MCPToolCatalog.querySQL:
+            guard let sql = arguments["sql"]?.stringValue else {
+                return ("缺少参数 sql", true)
+            }
+            return await runMCPQuery(service: service, sql: sql)
+
+        case MCPToolCatalog.listObjects:
+            let dialect = PostgresDialect()
+            let metadata = MetadataService(service: service, dialect: dialect, databaseName: config.database, serverLabel: config.host)
+            do {
+                let databases = try await metadata.loadChildren(
+                    of: DatabaseObject(id: "server", name: config.host, kind: DatabaseObject.Kind.server)
+                )
+                var lines: [String] = []
+                for database in databases.prefix(20) {
+                    lines.append(database.name)
+                }
+                return (lines.joined(separator: "\n"), false)
+            } catch {
+                return (error.localizedDescription, true)
+            }
+
+        case MCPToolCatalog.describeTable:
+            guard let table = arguments["table"]?.stringValue else {
+                return ("缺少参数 table", true)
+            }
+            let sql = PostgresDialect().listColumnsQuery(table: table, schema: arguments["schema"]?.stringValue)
+            return await runMCPQuery(service: service, sql: sql)
+
+        case MCPToolCatalog.exportResult:
+            guard let sql = arguments["sql"]?.stringValue, let path = arguments["path"]?.stringValue else {
+                return ("缺少参数 sql / path", true)
+            }
+            let result = await runMCPQuery(service: service, sql: sql)
+            guard !result.isError else { return result }
+            do {
+                try result.text.write(toFile: path, atomically: true, encoding: .utf8)
+                let rows = result.text.split(separator: "\n").count
+                return ("已导出 \(rows) 行到 \(path)", false)
+            } catch {
+                return ("写文件失败：\(error.localizedDescription)", true)
+            }
+
+        default:
+            return ("没有暴露这个工具：\(invocation.tool)", true)
+        }
+    }
+
+    private static func runMCPQuery(service: PostgresService, sql: String) async -> (text: String, isError: Bool) {
+        do {
+            var lines: [String] = []
+            for try await event in service.execute(sql, options: .default) {
+                if case .resultSet(let result) = event {
+                    if !result.columns.isEmpty {
+                        lines.append(result.columns.map(\.name).joined(separator: "\t"))
+                    }
+                    for row in result.rows {
+                        lines.append(row.map { $0 ?? "NULL" }.joined(separator: "\t"))
+                    }
+                    if let affected = result.affectedRows {
+                        lines.append("影响行数：\(affected)")
+                    }
+                }
+            }
+            return (lines.isEmpty ? "（没有结果）" : lines.joined(separator: "\n"), false)
+        } catch {
+            return (error.localizedDescription, true)
+        }
+    }
+
+    private static func runMCPCall(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        guard let command = value(for: "--command") else {
+            FileHandle.standardError.write(Data("用法：mcp call --command <外部服务器命令> [--tool <工具名>] [--args <JSON>]\n".utf8))
+            return 2
+        }
+
+        var client = MCPClientSession()
+        let initialize = client.initializeRequest()
+        let initialized = MCPMessage.notification(method: "notifications/initialized", params: .object([:]))
+        let list = client.toolsListRequest()
+
+        var outbound = [initialize.encode(), initialized.encode(), list.encode()]
+        if let tool = value(for: "--tool") {
+            let argsText = value(for: "--args") ?? "{}"
+            let args: MCPValue
+            if let data = argsText.data(using: .utf8),
+               let raw = try? JSONSerialization.jsonObject(with: data) {
+                args = MCPValue(any: raw)
+            } else {
+                FileHandle.standardError.write(Data("--args 不是合法 JSON\n".utf8))
+                return 2
+            }
+            outbound.append(client.toolsCallRequest(tool: tool, arguments: args).encode())
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", command]
+        let stdinPipe = Pipe(), stdoutPipe = Pipe(), stderrPipe = Pipe()
+        process.standardInput = stdinPipe
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        do {
+            try process.run()
+        } catch {
+            FileHandle.standardError.write(Data("起不来外部服务器：\(error.localizedDescription)\n".utf8))
+            return 1
+        }
+        stdinPipe.fileHandleForWriting.write(Data((outbound.joined(separator: "\n") + "\n").utf8))
+        try? stdinPipe.fileHandleForWriting.close()
+
+        let output = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let errors = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        let text = String(decoding: output, as: UTF8.self)
+        for line in text.split(separator: "\n") where !line.trimmingCharacters(in: .whitespaces).isEmpty {
+            client.receive(line: String(line))
+        }
+        if let errorText = String(data: errors, encoding: .utf8), !errorText.isEmpty {
+            FileHandle.standardError.write(Data(errorText.utf8))
+        }
+
+        print("server=\(client.serverName) protocol=\(client.protocolVersion)")
+        print("tools=" + client.tools.map(\.name).joined(separator: ","))
+        if let result = client.lastResult { print("result=\(result)") }
+        if let error = client.lastError { print("error=\(error)") }
+        return client.hasError() ? 1 : 0
+    }
+
     /// `doyah maintain`：维护任务编排的可脚本化出口。
     ///
     /// 三段分开，**没有"跳过审批直接跑"的开关**：
