@@ -30,6 +30,8 @@ public enum MenuLocalization {
         .menuDiagnoseQuery,
         // 维护任务编排（FR-AI-04）：同上。
         .menuMaintenanceTasks,
+        // 外部调用审批（FR-AI-10 界面那一半）：同上。
+        .menuMCPApprovals,
         .menuDataTask,
         .menuAgentAudit,
         .menuEgressLog,

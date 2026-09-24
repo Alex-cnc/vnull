@@ -224,6 +224,18 @@ public enum LKey: String, CaseIterable, Sendable {
     case diagnosisRejectedUnparsable
     case diagnosisInserted
     case mcpRefusedReadOnly
+    case mcpApprovalTitle
+    case menuMCPApprovals
+    case mcpApprovalPending
+    case mcpApprovalEmpty
+    case mcpApprovalAllow
+    case mcpApprovalDeny
+    case mcpApprovalRefresh
+    case mcpApprovalHint
+    case mcpApprovalQueuePath
+    case mcpApprovalDecided
+    case mcpApprovalBadLines
+    case mcpApprovalDenied
     case mcpNeedsApproval
     case mcpInitialized
     case mcpToolNotExposed
@@ -1809,6 +1821,18 @@ public enum LocalizedStrings {
         .diagnosisRejectedUnparsable: [.simplifiedChinese: "没看懂这一行", .english: "this line could not be parsed"],
         .diagnosisInserted: [.simplifiedChinese: "已放进编辑器（未执行）", .english: "Put in the editor (not executed)"],
         .mcpRefusedReadOnly: [.simplifiedChinese: "当前连接是只读的（或语句被判为写操作）：该调用被拒绝，批准也不能绕过", .english: "This connection is read-only (or the statement counts as a write): the call is refused and approval cannot bypass it"],
+        .mcpApprovalTitle: [.simplifiedChinese: "外部调用审批", .english: "External call approvals"],
+        .menuMCPApprovals: [.simplifiedChinese: "外部调用审批…", .english: "External call approvals…"],
+        .mcpApprovalPending: [.simplifiedChinese: "待审批（%@）", .english: "Waiting for you (%@)"],
+        .mcpApprovalEmpty: [.simplifiedChinese: "现在没有待审批的外部调用。", .english: "No external call is waiting right now."],
+        .mcpApprovalAllow: [.simplifiedChinese: "允许这一次", .english: "Allow this one"],
+        .mcpApprovalDeny: [.simplifiedChinese: "拒绝", .english: "Deny"],
+        .mcpApprovalRefresh: [.simplifiedChinese: "刷新", .english: "Refresh"],
+        .mcpApprovalHint: [.simplifiedChinese: "外部智能体每一次需要审批的调用都会出现在这里；批准只对**这一次**有效（不是给某个工具开总开关）。没人确认时默认不放行。", .english: "Every external call that needs approval shows up here; allowing covers **this call only** (it is not a blanket switch for the tool). With nobody confirming, nothing runs."],
+        .mcpApprovalQueuePath: [.simplifiedChinese: "队列位置：%@", .english: "Queue location: %@"],
+        .mcpApprovalDecided: [.simplifiedChinese: "已%@：%@", .english: "%@: %@"],
+        .mcpApprovalBadLines: [.simplifiedChinese: "队列里有 %@ 行读不出来（已跳过，不影响其余）", .english: "%@ unreadable lines in the queue (skipped; the rest still work)"],
+        .mcpApprovalDenied: [.simplifiedChinese: "外部调用被拒绝或等待审批超时：没有执行", .english: "The external call was denied or the approval timed out: nothing ran"],
         .mcpNeedsApproval: [.simplifiedChinese: "工具 %@ 需要审批：请先在界面上确认这一次外部调用", .english: "Tool %@ needs approval: confirm this external call in the app first"],
         .mcpInitialized: [.simplifiedChinese: "已就绪：能力继承当前会话，调用进审批与审计", .english: "Ready: capabilities inherit the current session, and every call is approved and audited"],
         .mcpToolNotExposed: [.simplifiedChinese: "没有暴露这个工具：%@", .english: "This tool is not exposed: %@"],

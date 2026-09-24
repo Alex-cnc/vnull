@@ -88,6 +88,11 @@ struct DoyahStudioCommands: Commands {
                 appState.openMaintenance()
             }
 
+            // 外部调用审批（FR-AI-10 界面那一半）：与 ⌘K 的 `mcpApprovals` 打开同一个面板。
+            Button(L(.menuMCPApprovals)) {
+                appState.openMCPApprovals()
+            }
+
             Divider()
 
             Button(L(.menuDataTask)) {

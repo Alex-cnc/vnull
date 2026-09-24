@@ -195,8 +195,46 @@ PY
 grep -q "error=Method not found" "$WORK/bad.out" && check "对端的 JSON-RPC 错误如实透出" 0 || check "对端的 JSON-RPC 错误如实透出" 1
 
 echo ""
+echo "== 5) 界面审批通道：入队 → 人点 → 按决定执行（FR-AI-10 的界面那一半） =="
+# 三条路径分开验，**重点是"没人点的时候会怎样"**：
+# 默认放行是最危险的默认值，所以拒绝与超时都必须如实回错误内容、且都不执行。
+QUEUE="$WORK/approvals"
+mkdir -p "$QUEUE"
+
+if python3 Scripts/mcp-stub/approval_host.py --cli "$CLI" --queue "$QUEUE" --work "$WORK" \
+    --mode deny --sql "CREATE TEMP TABLE mcp_deny (id int)" > "$WORK/approve-deny.out" 2>&1; then
+    check "拒绝路径：入队 → 拒绝 → 如实回错误（不执行）" 0
+else
+    check "拒绝路径：入队 → 拒绝 → 如实回错误（不执行）" 1
+    tail -5 "$WORK/approve-deny.out"
+fi
+grep -q "进了待审批队列" "$WORK/approve-deny.out" && check "需要的调用确实进了队列" 0 || check "需要的调用确实进了队列" 1
+
+if python3 Scripts/mcp-stub/approval_host.py --cli "$CLI" --queue "$QUEUE" --work "$WORK" \
+    --mode allow --sql "CREATE TEMP TABLE mcp_allow (id int)" > "$WORK/approve-allow.out" 2>&1; then
+    check "批准路径：入队 → 批准 → 真执行 + 审计留痕" 0
+else
+    check "批准路径：入队 → 批准 → 真执行 + 审计留痕" 1
+    tail -5 "$WORK/approve-allow.out"
+fi
+
+if python3 Scripts/mcp-stub/approval_host.py --cli "$CLI" --queue "$QUEUE" --work "$WORK" \
+    --mode timeout --sql "CREATE TEMP TABLE mcp_timeout (id int)" > "$WORK/approve-timeout.out" 2>&1; then
+    check "超时路径：没人确认就不放行（默认拒绝）" 0
+else
+    check "超时路径：没人确认就不放行（默认拒绝）" 1
+    tail -5 "$WORK/approve-timeout.out"
+fi
+
+echo ""
+echo "== 6) 队列本身：坏行不致命、待办可被脚本列出 =="
+printf '{这不是 JSON}\n' >> "$QUEUE/pending.jsonl"
+"$CLI" mcp pending --approval-queue "$QUEUE" --json > "$WORK/pending-after.json" 2>&1
+grep -q '"pending":\[' "$WORK/pending-after.json" && check "有坏行时队列仍可读（逐行 JSONL）" 0 || check "有坏行时队列仍可读（逐行 JSONL）" 1
+
+echo ""
 if [ "$fail" -eq 0 ]; then
-    echo "✅ MCP 双向全部通过（假 host / 假 server 真跑 JSON-RPC，真库上跑查询）"
+    echo "✅ MCP 双向全部通过（含界面审批通道：入队 → 人点 → 按决定执行）"
 else
     echo "❌ 有断言失败，见上"
 fi

@@ -39,6 +39,12 @@ public struct MCPServerSession: Sendable {
         public var tool: String
         public var arguments: MCPValue
         public var requestID: MCPMessage.MCPID?
+
+        public init(tool: String, arguments: MCPValue, requestID: MCPMessage.MCPID?) {
+            self.tool = tool
+            self.arguments = arguments
+            self.requestID = requestID
+        }
     }
 
     public private(set) var isInitialized = false

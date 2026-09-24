@@ -926,9 +926,74 @@ struct DoyahCLI {
         switch mode {
         case "serve": return await runMCPServe(arguments: Array(arguments.dropFirst()))
         case "call": return await runMCPCall(arguments: Array(arguments.dropFirst()))
+        case "pending": return runMCPPending(arguments: Array(arguments.dropFirst()))
+        case "decide": return runMCPDecide(arguments: Array(arguments.dropFirst()))
         default:
-            FileHandle.standardError.write(Data("mcp 只支持 serve / call\n".utf8))
+            FileHandle.standardError.write(Data("mcp 只支持 serve / call / pending / decide\n".utf8))
             return 2
+        }
+    }
+
+    /// `doyah mcp pending`：列出待审批的外部调用（界面面板与脚本都看这一份）。
+    private static func runMCPPending(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        let queue = value(for: "--approval-queue").map { MCPApprovalStore(directory: URL(fileURLWithPath: $0)) }
+            ?? MCPApprovalStore.defaultStore()
+        do {
+            let pending = try queue.pending()
+            if arguments.contains("--json") {
+                let items = pending.map { request in
+                    "{\"id\":\(jsonQuoted(request.id)),\"client\":\(jsonQuoted(request.client)),"
+                        + "\"tool\":\(jsonQuoted(request.tool)),\"sql\":\(request.sql.map(jsonQuoted) ?? "null")}"
+                }
+                print("{\"pending\":[" + items.joined(separator: ",") + "]}")
+            } else if pending.isEmpty {
+                print("没有待审批的外部调用")
+            } else {
+                for request in pending {
+                    print("\(request.id)  \(request.client) → \(request.tool)")
+                    if let sql = request.sql { print("    SQL: \(sql)") }
+                    print("    理由: \(request.reason)")
+                }
+            }
+            return 0
+        } catch {
+            FileHandle.standardError.write(Data("读审批队列失败：\(error.localizedDescription)\n".utf8))
+            return 1
+        }
+    }
+
+    /// `doyah mcp decide <id> --allow|--deny`：写一条决定（等价于界面上点一下）。
+    private static func runMCPDecide(arguments: [String]) -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        let positional = arguments.filter { !$0.hasPrefix("--") }
+        // 第一个位置参数可能是 `decide` 之后的 id；`--approval-queue` 的值也要排除。
+        let queuePath = value(for: "--approval-queue")
+        let candidates = positional.filter { $0 != queuePath }
+        guard let requestID = candidates.first else {
+            FileHandle.standardError.write(Data("用法：mcp decide <请求 id> --allow|--deny [--approval-queue <目录>]\n".utf8))
+            return 2
+        }
+        let approved = arguments.contains("--allow")
+        guard approved || arguments.contains("--deny") else {
+            FileHandle.standardError.write(Data("要明确写 --allow 或 --deny（没有默认：不确认就不放行）\n".utf8))
+            return 2
+        }
+        let queue = queuePath.map { MCPApprovalStore(directory: URL(fileURLWithPath: $0)) }
+            ?? MCPApprovalStore.defaultStore()
+        do {
+            try queue.decide(requestID: requestID, approved: approved)
+            print(approved ? "已允许 \(requestID)" : "已拒绝 \(requestID)")
+            return 0
+        } catch {
+            FileHandle.standardError.write(Data("写决定失败：\(error.localizedDescription)\n".utf8))
+            return 1
         }
     }
 
@@ -964,6 +1029,12 @@ struct DoyahCLI {
             }
         }
         let auditPath = value(for: "--audit")
+        // 界面审批通道（FR-AI-10 的界面那一半）：需要审批的调用**入队并等**，
+        // 由界面（或 `doyah mcp decide`）写决定。没配队列时保持"直接拒绝"的老行为。
+        let approvalQueue: MCPApprovalStore? = value(for: "--approval-queue").map {
+            MCPApprovalStore(directory: URL(fileURLWithPath: $0))
+        } ?? (arguments.contains("--app-approval") ? MCPApprovalStore.defaultStore() : nil)
+        let approvalTimeout = TimeInterval(value(for: "--approval-timeout") ?? "120") ?? 120
 
         // 当前会话：环境变量里的连接。**连不上就不另开连接**，能力如实降级。
         var service: PostgresService?
@@ -1007,13 +1078,53 @@ struct DoyahCLI {
         while let line = readLine(strippingNewline: true) {
             if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }
             let outcome = session.handle(line: line)
-            for reply in outcome.replies {
-                print(reply.encode())
-                fflush(stdout)
+            // 配了审批队列时，"需要审批"的那一条**先不回**：等界面点完再回**唯一一个**回复。
+            // （一个请求回两个响应会违反 JSON-RPC，而且客户端会先收到"需要审批"、
+            //   后面真正的结果被当成多余报文丢掉 —— 脚本第一版就是这么把它抓出来的。）
+            let needsApproval = session.audit.last?.outcome == "needs-approval"
+            let deferToApprovalQueue = approvalQueue != nil && needsApproval
+            if !deferToApprovalQueue {
+                for reply in outcome.replies {
+                    print(reply.encode())
+                    fflush(stdout)
+                }
             }
             if let last = session.audit.last { audit(last) }
 
-            guard let invocation = outcome.invocation else { continue }
+            guard let invocation = outcome.invocation else {
+                // 需要审批的调用：入队、等人点、再决定。
+                if let approvalQueue, deferToApprovalQueue {
+                    if let approved = await waitForApproval(
+                        queue: approvalQueue,
+                        client: session.clientName,
+                        invocation: pendingInvocation(from: line),
+                        timeout: approvalTimeout,
+                        audit: audit
+                    ) {
+                        if approved {
+                            let result = await runMCPInvocation(
+                                pendingInvocation(from: line), service: service, config: makeEnvironmentConfig(name: "CLI mcp")
+                            )
+                            if let reply = session.finish(
+                                pendingInvocation(from: line), text: result.text, isError: result.isError
+                            ) {
+                                print(reply.encode())
+                                fflush(stdout)
+                            }
+                            if let last = session.audit.last { audit(last) }
+                        } else {
+                            // 拒绝 / 超时：**如实回一个错误内容**，不是静默不响应。
+                            let text = LocalizedStrings.text(.mcpApprovalDenied, language: .simplifiedChinese)
+                            if let reply = session.finish(pendingInvocation(from: line), text: text, isError: true) {
+                                print(reply.encode())
+                                fflush(stdout)
+                            }
+                            if let last = session.audit.last { audit(last) }
+                        }
+                    }
+                }
+                continue
+            }
             let result = await runMCPInvocation(invocation, service: service, config: makeEnvironmentConfig(name: "CLI mcp"))
             if let reply = session.finish(invocation, text: result.text, isError: result.isError) {
                 print(reply.encode())
@@ -1023,6 +1134,67 @@ struct DoyahCLI {
         }
         await service?.disconnect()
         return 0
+    }
+
+    /// 从客户端报文里取出工具名与参数（"需要审批"的那一次）。
+    private static func pendingInvocation(from line: String) -> MCPServerSession.Invocation {
+        guard case .success(.request(let id, _, let params)) = MCPMessage.decode(line) else {
+            return MCPServerSession.Invocation(tool: "", arguments: .object([:]), requestID: nil)
+        }
+        return MCPServerSession.Invocation(
+            tool: params["name"]?.stringValue ?? "",
+            arguments: params["arguments"] ?? .object([:]),
+            requestID: id
+        )
+    }
+
+    /// 入队等人点：轮询决定文件，直到有决定或超时。
+    /// 超时**返回拒绝**（`false`）而不是"当作同意" —— 无人确认时默认不放行。
+    private static func waitForApproval(
+        queue: MCPApprovalStore,
+        client: String,
+        invocation: MCPServerSession.Invocation,
+        timeout: TimeInterval,
+        audit: (MCPAuditEntry) -> Void
+    ) async -> Bool? {
+        let fingerprint = MCPToolCatalog.callFingerprint(tool: invocation.tool, arguments: invocation.arguments)
+        let sql = invocation.arguments["sql"]?.stringValue
+        let tool = MCPToolCatalog.tool(named: invocation.tool)
+        let reason = tool.map {
+            LocalizedStrings.format(.mcpNeedsApproval, language: .simplifiedChinese, $0.name)
+        } ?? "需要审批"
+        do {
+            let request = try queue.enqueue(
+                client: client,
+                tool: invocation.tool,
+                argumentsSummary: invocation.arguments.jsonText,
+                fingerprint: fingerprint,
+                sql: sql,
+                reason: reason
+            )
+            FileHandle.standardError.write(Data("待审批：\(request.id)（\(invocation.tool)）—— 在界面上点允许 / 拒绝\n".utf8))
+            audit(MCPAuditEntry(client: client, tool: invocation.tool, argumentsSummary: "queued", outcome: "waiting-approval"))
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if let decision = try queue.decision(for: request.id) {
+                    audit(
+                        MCPAuditEntry(
+                            client: client,
+                            tool: invocation.tool,
+                            argumentsSummary: invocation.arguments.jsonText,
+                            outcome: decision ? "approved-by-user" : "denied-by-user"
+                        )
+                    )
+                    return decision
+                }
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+            audit(MCPAuditEntry(client: client, tool: invocation.tool, argumentsSummary: "timeout", outcome: "approval-timeout"))
+            return false
+        } catch {
+            FileHandle.standardError.write(Data("审批队列不可用：\(error.localizedDescription)\n".utf8))
+            return false
+        }
     }
 
     /// 执行一次工具调用（会话只决定"能不能"，执行在这里）。

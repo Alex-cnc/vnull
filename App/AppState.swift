@@ -329,6 +329,13 @@ final class AppState: ObservableObject {
 
     // 维护任务编排（FR-AI-04）：计划文本、审阅结果与执行状态。
     @Published var isMaintenancePresented = false
+
+    // 外部调用审批（FR-AI-10 的界面那一半）：待审批队列 + 决定。
+    @Published var isMCPApprovalPresented = false
+    @Published var mcpPendingApprovals: [MCPApprovalRequest] = []
+    @Published var mcpApprovalMessage: String?
+    @Published var mcpApprovalBadLines = 0
+    private var mcpApprovalWatcher: Task<Void, Never>?
     @Published var maintenancePlanText = ""
     @Published var maintenanceReview: MaintenancePlanReview?
     @Published var maintenanceMessage: String?
@@ -3813,6 +3820,7 @@ final class AppState: ObservableObject {
         case "databaseStats": isDatabaseStatsPresented = true
         case "diagnoseQuery": openDiagnosis()
         case "maintenanceTasks": openMaintenance()
+        case "mcpApprovals": openMCPApprovals()
         case "schemaDiff": isSchemaDiffPresented = true
         case "erDiagram": isERDiagramPresented = true
         case "serverObjects":
@@ -5773,6 +5781,62 @@ final class AppState: ObservableObject {
         sshTunnels[configuration.id] = tunnel
         statusMessage = L(.sshTunnelReady, String(localPort))
         return (SSHTunnelEndpoint.loopbackHost, localPort)
+    }
+
+    // MARK: - 外部调用审批（FR-AI-10 界面那一半）
+
+    /// 队列位置由 Core 给（两侧必须算同一个路径，界面写的决定 CLI 才读得到）。
+    var mcpApprovalStore: MCPApprovalStore { MCPApprovalStore.defaultStore() }
+
+    func openMCPApprovals() {
+        mcpApprovalMessage = nil
+        refreshMCPApprovals()
+        isMCPApprovalPresented = true
+        startMCPApprovalWatching()
+    }
+
+    func closeMCPApprovals() {
+        mcpApprovalWatcher?.cancel()
+        mcpApprovalWatcher = nil
+        isMCPApprovalPresented = false
+    }
+
+    /// 轮询队列：外部调用可能在我们看别处时进来（**界面上要能"冒出来"**，
+    /// 否则用户永远不知道有人在等审批）。
+    private func startMCPApprovalWatching() {
+        mcpApprovalWatcher?.cancel()
+        mcpApprovalWatcher = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self, !Task.isCancelled else { return }
+                await MainActor.run { self.refreshMCPApprovals() }
+            }
+        }
+    }
+
+    func refreshMCPApprovals() {
+        let store = mcpApprovalStore
+        do {
+            mcpPendingApprovals = try store.pending()
+            mcpApprovalBadLines = store.malformedLineCount()
+        } catch {
+            mcpApprovalMessage = error.localizedDescription
+        }
+    }
+
+    /// 写一条决定（批准只对**这一次**有效 —— 判据在 Core，界面不改判据）。
+    func decideMCPApproval(requestID: String, approved: Bool) {
+        do {
+            try mcpApprovalStore.decide(requestID: requestID, approved: approved)
+            mcpApprovalMessage = L(
+                .mcpApprovalDecided,
+                approved ? L(.mcpApprovalAllow) : L(.mcpApprovalDeny),
+                requestID
+            )
+            refreshMCPApprovals()
+        } catch {
+            mcpApprovalMessage = error.localizedDescription
+        }
     }
 
     // MARK: - 维护任务编排（FR-AI-04）

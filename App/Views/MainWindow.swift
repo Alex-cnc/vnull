@@ -146,6 +146,11 @@ struct MainWindow: View {
             MaintenancePanel()
                 .environmentObject(appState)
         }
+        // 外部调用审批（FR-AI-10 界面那一半）：外部智能体的写调用在这里等人点。
+        .sheet(isPresented: $appState.isMCPApprovalPresented) {
+            MCPApprovalPanel()
+                .environmentObject(appState)
+        }
         // Schema 对比与同步（FR-DDL-04）：两侧结构差异 + 同步脚本。
         .sheet(isPresented: $appState.isSchemaDiffPresented) {
             SchemaDiffPanel()
