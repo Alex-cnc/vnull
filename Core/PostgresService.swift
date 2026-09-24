@@ -238,6 +238,33 @@ public actor PostgresService: DatabaseService {
         }
     }
 
+    /// `COPY … FROM STDIN`：分块把 text 格式数据流给服务端（FR-IO-03 的快路径）。
+    ///
+    /// 为什么分块：一次性把整段字节交给驱动，会让大文件的内存峰值翻倍；
+    /// 64 KB 一块在吞吐与内存之间够用。
+    public func copyFromText(table: String, columns: [String], text: String) async throws {
+        guard let connection else {
+            throw AppError.notConnected
+        }
+        let bytes = Array(text.utf8)
+        try await connection.copyFrom(
+            table: table,
+            columns: columns,
+            format: .text(.init()),
+            logger: logger
+        ) { writer in
+            let chunkSize = 64 * 1024
+            var offset = 0
+            while offset < bytes.count {
+                let end = min(offset + chunkSize, bytes.count)
+                var buffer = ByteBufferAllocator().buffer(capacity: end - offset)
+                buffer.writeBytes(bytes[offset..<end])
+                try await writer.write(buffer)
+                offset = end
+            }
+        }
+    }
+
     public func beginTransaction() async throws {
         try await run("BEGIN")
     }

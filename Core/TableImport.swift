@@ -186,6 +186,22 @@ public enum TableImport {
     }
 
     /// 把行按批切开（内存与文件大小无关的关键）。
+    /// 为 `COPY … FROM STDIN` 准备数据（FR-IO-03 的快路径）。
+    ///
+    /// 与 INSERT 路径的**关键区别**：这里**原样取值、不做字面量转义** —— text 格式由服务端
+    /// 按列类型解析，转义交给 `CopyTextFormat`（只处理分隔符与反斜杠）。
+    /// 因此"无效值"的行为也不同：INSERT 路径会把转不过去的值写成 NULL（并在预检里列出），
+    /// 而 COPY 路径会被**服务端直接拒绝** —— 在大批量导入里，"要么全对要么报错"通常更受欢迎，
+    /// 但这是个需要说清楚的差异，不能默默不同。
+    ///
+    /// 顺序与 `mappings` 里**有来源列**的那些一致（调用方传给 `copyFromText` 的列清单也按此过滤）。
+    public static func copyRows(rows: [[String?]], plan: Plan) -> [[String?]] {
+        let positions = plan.mappings.compactMap(\.sourceIndex)
+        return rows.map { row in
+            positions.map { index in row.indices.contains(index) ? row[index] : nil }
+        }
+    }
+
     public static func batches(_ rows: [[String?]], size: Int) -> [[[String?]]] {
         guard size > 0 else { return rows.isEmpty ? [] : [rows] }
         var result: [[[String?]]] = []

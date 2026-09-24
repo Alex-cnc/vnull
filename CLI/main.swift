@@ -1995,7 +1995,7 @@ struct DoyahCLI {
         }
 
         guard let table = value(for: "--table") else {
-            print("用法：import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--write]")
+            print("用法：import --table <表> --file <文件> [--format csv|json] [--delimiter ,] [--no-header] [--batch N] [--copy] [--write]")
             return 64
         }
         guard let path = value(for: "--file") else {
@@ -2102,6 +2102,48 @@ struct DoyahCLI {
 
         let batches = TableImport.batches(parsed.rows, size: plan.batchSize)
         print("共 \(parsed.rows.count) 行，分 \(batches.count) 批（每批 \(plan.batchSize) 行）")
+
+        // `--copy`：走 `COPY … FROM STDIN`（FR-IO-03 的快路径）。
+        // 值 → text 格式的编码由 `CopyTextFormat` 负责（NULL 写 `\N`、空串写空、反斜杠先转义）。
+        if arguments.contains("--copy") {
+            let rowsForCopy = TableImport.copyRows(rows: parsed.rows, plan: plan)
+            let payload = CopyTextFormat.encode(rows: rowsForCopy)
+            // 驱动的 COPY 语句会给表名自己加引号，**表达不了 schema 限定名**；
+            // 所以给了 --schema 时先在同一个连接上设 search_path。
+            if let schema, !schema.isEmpty {
+                do {
+                    for try await _ in service.execute(
+                        "SET search_path TO \(dialect.quoteIdentifier(schema))",
+                        options: .default
+                    ) {}
+                } catch {
+                    print("设置 search_path 失败：\(error.localizedDescription)")
+                    return 68
+                }
+            }
+            if !arguments.contains("--write") {
+                let preview = payload.split(separator: "\n").prefix(2).joined(separator: "\n")
+                print("")
+                print("（未加 --write，只输出 COPY 数据前两行编码）")
+                print(preview)
+                return 0
+            }
+            let started = Date()
+            do {
+                try await service.copyFromText(
+                    table: table,
+                    columns: plan.mappings.compactMap { $0.sourceIndex == nil ? nil : $0.targetName },
+                    text: payload
+                )
+            } catch {
+                print("COPY 导入失败：\(error.localizedDescription)")
+                print("（COPY 在单个 COPY 语句内是原子的：失败即整批未写入，不会留下半截）")
+                return 68
+            }
+            let elapsed = Date().timeIntervalSince(started)
+            print("COPY 写入完成：\(parsed.rows.count) 行，用时 \(String(format: "%.2f", elapsed)) 秒")
+            return 0
+        }
 
         if !arguments.contains("--write") {
             if let first = batches.first, let sql = TableImport.insertStatement(rows: first, plan: plan, dialect: dialect) {

@@ -33,6 +33,18 @@ public protocol DatabaseService: AnyObject, Sendable {
     func beginTransaction() async throws
     func commit() async throws
     func rollback() async throws
+
+    /// 批量导入（FR-IO-03 的 `COPY … FROM STDIN` 路径）：把**已经编码好的 COPY text 格式数据**
+    /// 交给服务端流式写入。
+    ///
+    /// 三条约定：
+    /// 1. 编码规则（NULL 写 `\N`、空串写空、反斜杠先转义）由 `CopyTextFormat` 负责 ——
+    ///    服务层**不再判定值**，只负责传输；
+    /// 2. 不支持的方言**抛可读错误**，绝不"悄悄退回逐条 INSERT"：那会让"用了 COPY"变成一句空话，
+    ///    而用户以为是快路径；
+    /// 3. `table` 传**裸表名**（不含 schema）：驱动会在 COPY 语句里自己加引号，
+    ///    带 schema 的写法请先用 `SET search_path`（见 CLI 的实现）。
+    func copyFromText(table: String, columns: [String], text: String) async throws
 }
 
 public extension DatabaseService {
@@ -40,6 +52,11 @@ public extension DatabaseService {
     /// 它内部生成一个**外部无法取消**的句柄 —— 需要「停止」按钮的场景必须显式传句柄。
     func execute(_ sql: String, options: QueryOptions) -> AsyncThrowingStream<QueryEvent, Error> {
         execute(sql, options: options, handle: ExecutionHandle())
+    }
+
+    /// 默认：该方言不支持 COPY 导入。**明确报出来**，不静默退化成逐条 INSERT。
+    func copyFromText(table: String, columns: [String], text: String) async throws {
+        throw AppError.notImplemented("当前方言不支持 COPY 导入（请去掉 --copy，改用批量 INSERT）")
     }
 }
 
