@@ -551,7 +551,8 @@ struct DoyahCLI {
         formatName: String,
         fetchSize: Int,
         service: any DatabaseService,
-        dialect: PostgresDialect
+        dialect: PostgresDialect,
+        encoding: ResultExportEncoding = .utf8
     ) async -> Int32 {
         let schemaName = schema ?? "public"
         let listSQL = """
@@ -605,7 +606,8 @@ struct DoyahCLI {
                 tableName: table,
                 service: service,
                 dialect: dialect,
-                quiet: false
+                quiet: false,
+                encoding: encoding
             )
             if code != 0 { failures += 1 }
         }
@@ -2333,9 +2335,15 @@ struct DoyahCLI {
             return 64
         }
 
+        // 编码不猜死 UTF-8（FR-IO-07）：中文 Windows 上 Excel / WPS 另存的 CSV 是 GBK / GB18030，
+        // 这里按「BOM → 严格 UTF-8 → GB18030」解码，并把实际用的编码**打印出来**。
         let text: String
         do {
-            text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+            let decoded = try TextFileDecoder.decode(contentsOf: URL(fileURLWithPath: path))
+            text = decoded.text
+            if decoded.isFallback {
+                print("文本编码：\(decoded.encoding.displayName)（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）")
+            }
         } catch {
             print("读取文件失败：\(error.localizedDescription)")
             return 65
@@ -2933,6 +2941,31 @@ struct DoyahCLI {
 
         let schema = value(for: "--schema")
 
+        // 文本编码（FR-IO-07）：默认 UTF-8；`gbk` / `gb2312` / `ansi` 都落到 GB18030
+        // （它是那三种的超集）。名字不认就**报错退出**，不静默退回 UTF-8 —— 否则用户以为
+        // 拿到的是 GBK 文件，实际是一份 GBK 工具打不开的 UTF-8。
+        let encoding: ResultExportEncoding
+        if let raw = value(for: "--encoding") {
+            guard let parsed = ResultExportEncoding.parse(raw) else {
+                print("--encoding 只支持 utf8 / gb18030（别名：gbk、gb2312、cp936、ansi）")
+                return 64
+            }
+            encoding = parsed
+        } else {
+            encoding = .utf8
+        }
+        if encoding != .utf8 {
+            let formatName = (value(for: "--format") ?? "csv").lowercased()
+            guard formatName == "csv" else {
+                print("--encoding \(encoding.shortName) 只对 csv 生效（json / tsv / markdown / insert / xlsx 固定 UTF-8）")
+                return 64
+            }
+            guard encoding.isAvailable else {
+                print("当前系统不支持 \(encoding.shortName) 编码，无法导出")
+                return 65
+            }
+        }
+
         // 模式一：**整库导出**（FR-IO-02）—— 指定 schema 下的每张表各导出一个文件。
         if arguments.contains("--all-tables") {
             guard let directory = value(for: "--out-dir") else {
@@ -2945,7 +2978,8 @@ struct DoyahCLI {
                 formatName: value(for: "--format") ?? "csv",
                 fetchSize: Int(value(for: "--fetch-size") ?? "") ?? CursorPaging.defaultPageSize,
                 service: service,
-                dialect: dialect
+                dialect: dialect,
+                encoding: encoding
             )
         }
 
@@ -2954,7 +2988,8 @@ struct DoyahCLI {
         let tableName = value(for: "--table")
         guard let query = explicitQuery ?? tableName.map({ tableSelect($0, schema: schema, dialect: dialect) }) else {
             print("用法：export --query \"SELECT …\" | --table <表> | --all-tables --out-dir <目录>")
-            print("      --out <文件> [--format csv / json / tsv / markdown / insert] [--fetch-size N] [--schema S]")
+            print("      --out <文件> [--format csv / json / tsv / markdown / insert / xlsx] [--fetch-size N] [--schema S]")
+            print("      [--encoding utf8 | gb18030]（仅 csv；gb18030 给中文 Windows 的 Excel / WPS）")
             return 64
         }
         guard let outputPath = value(for: "--out") else {
@@ -2982,7 +3017,8 @@ struct DoyahCLI {
             tableName: tableName ?? "table_name",
             service: service,
             dialect: dialect,
-            quiet: false
+            quiet: false,
+            encoding: encoding
         )
     }
 
@@ -2997,7 +3033,8 @@ struct DoyahCLI {
         tableName: String,
         service: any DatabaseService,
         dialect: PostgresDialect,
-        quiet: Bool
+        quiet: Bool,
+        encoding: ResultExportEncoding = .utf8
     ) async -> Int32 {
         let format: ResultExportFormat
         switch formatName.lowercased() {
@@ -3058,7 +3095,7 @@ struct DoyahCLI {
                     isTruncated: false,
                     truncationLimit: nil
                 )
-                let payload = ResultExporter.data(for: result, format: format)
+                let payload = try ResultExporter.data(for: result, format: format, encoding: encoding)
                 try payload.write(to: url)
                 if !quiet {
                     print("导出完成：\(rows.count) 行 / \(payload.count) 字节")
@@ -3086,7 +3123,8 @@ struct DoyahCLI {
                 format: format,
                 columns: first.columns,
                 tableName: tableName,
-                dialect: dialect
+                dialect: dialect,
+                encoding: encoding
             )
             writer = streamWriter
             try streamWriter.begin()
@@ -3101,6 +3139,10 @@ struct DoyahCLI {
                 print("导出完成：\(report.rowCount) 行 / \(report.byteCount) 字节 / \(await fetcher.pageCount) 页")
                 print("文件：\(url.path)")
                 print("取数方式：服务端游标逐页（每页 \(fetchSize) 行），内存占用与总行数无关")
+                if encoding != .utf8 {
+                    // 编码说清楚：GB18030 的文件用 UTF-8 打开就是乱码，用户需要知道为什么。
+                    print("文本编码：\(encoding.displayName)")
+                }
             }
             return 0
         } catch {

@@ -32,7 +32,8 @@ public enum ResultStreamError: Error, Equatable, LocalizedError {
 /// 三个保证：
 /// - **逐字节一致**：CSV / TSV / Markdown / INSERT 按块写出的文件，与
 ///   `ResultExporter.text(for:format:)` 一次成型的文本完全一致（共用同一套行渲染），
-///   所以「分块」不会改变导出结果；JSON 例外，见 `begin()` 说明；
+///   所以「分块」不会改变导出结果；**换编码也成立**（FR-IO-07：GB18030 是无状态映射，
+///   逐块编出来与整份编出来逐字节相同）；JSON 例外，见 `begin()` 说明；
 /// - **中断清理**：先写隐藏的 `.partial-<uuid>` 临时文件，`finish()` 成功才移动
 ///   到目标路径。也就是说目标文件要么是完整的，要么不存在 —— 中途取消 / 抛错 /
 ///   对象被释放（`deinit`）都不会留下半个文件冒充成品；
@@ -73,6 +74,8 @@ public final class ResultStreamWriter {
     private let tableName: String
     private let dialect: (any SQLDialect)?
     private let includeByteOrderMark: Bool
+    /// 文本编码（FR-IO-07）：只有 CSV 允许非 UTF-8，其余格式在 `begin()` 里被拒。
+    private let encoding: ResultExportEncoding
     private let flushByteLimit: Int
     /// 文件移动操作。抽成可注入，是为了能测「移动失败」这条路径 ——
     /// 那条路径正是 R-34 里会**毁掉用户已有文件**的地方，必须被测试覆盖。
@@ -105,6 +108,7 @@ public final class ResultStreamWriter {
         tableName: String = "table_name",
         dialect: (any SQLDialect)? = nil,
         includeByteOrderMark: Bool = true,
+        encoding: ResultExportEncoding = .utf8,
         flushByteLimit: Int = 1 << 20,
         moveItem: @escaping @Sendable (URL, URL) throws -> Void = { source, destination in
             try FileManager.default.moveItem(at: source, to: destination)
@@ -116,6 +120,7 @@ public final class ResultStreamWriter {
         self.tableName = tableName
         self.dialect = dialect
         self.includeByteOrderMark = includeByteOrderMark
+        self.encoding = encoding
         self.flushByteLimit = flushByteLimit
         self.moveItem = moveItem
         self.jsonKeys = ResultExporter.uniqueKeys(for: columns)
@@ -143,6 +148,11 @@ public final class ResultStreamWriter {
     /// —— 键顺序不同，语义相同（JSON 对象无序），用 `JSONSerialization` 解析结果一致。
     public func begin() throws {
         guard flushByteLimit > 0 else { throw ResultStreamError.invalidFlushLimit(flushByteLimit) }
+        // 编码只在 CSV 上有意义（FR-IO-07）：JSON / TSV / Markdown / INSERT 由各自的
+        // 规范或用途定死 UTF-8。这里**明确拒绝**，与 `ResultExporter.data(...)` 同一口径。
+        guard encoding == .utf8 || format == .csv else {
+            throw ResultExportEncodingError.notApplicableToFormat(encoding: encoding, format: format)
+        }
         switch state {
         case .idle:
             break
@@ -167,7 +177,10 @@ public final class ResultStreamWriter {
         switch format {
         case .csv:
             if includeByteOrderMark {
-                try append("\u{FEFF}")
+                // BOM 是**字节**层面的标记，必须直接落盘而不能塞进 `pending` 的字符串里：
+                // 后者在 UTF-8 下变成 `U+FEFF` 字符（可行），在别的编码下就会被当成普通字符
+                // 编进第一个字段（GB18030 没有 BOM 概念）。
+                try writeRaw(Data(encoding.byteOrderMark))
             }
             if !columns.isEmpty {
                 try append(ResultExporter.csvHeader(for: columns) + "\r\n")
@@ -296,6 +309,7 @@ public final class ResultStreamWriter {
         tableName: String = "table_name",
         dialect: (any SQLDialect)? = nil,
         includeByteOrderMark: Bool = true,
+        encoding: ResultExportEncoding = .utf8,
         flushByteLimit: Int = 1 << 20,
         pageSize: Int = 1_000,
         fetchPage: (_ offset: Int, _ limit: Int) throws -> [[String?]]
@@ -307,6 +321,7 @@ public final class ResultStreamWriter {
             tableName: tableName,
             dialect: dialect,
             includeByteOrderMark: includeByteOrderMark,
+            encoding: encoding,
             flushByteLimit: flushByteLimit
         )
         try writer.begin()
@@ -376,8 +391,18 @@ public final class ResultStreamWriter {
         pending.removeAll(keepingCapacity: true)
         pendingBytes = 0
 
+        // 按目标编码落字节（**不含 BOM** —— BOM 已在 `begin()` 里写过一次，
+        // 每个分块都带一次会把 `EF BB BF` 插进文件中间）。GB18030 是**无状态**的逐字符
+        // 映射（无 BOM、无规范化），因此"分块编码"与"整份一次编码"逐字节相同 ——
+        // 这正是 FR-RES-13 承诺的「流式与一次性一致」在换编码后依然成立的原因。
+        let data = try encoding.encodeBody(text)
+        try writeRaw(data)
+    }
+
+    /// 直接落盘（不经 `pending`）：给 BOM 这类"必须在最前面、又不该参与分块"的字节用。
+    private func writeRaw(_ data: Data) throws {
+        guard !data.isEmpty else { return }
         guard let handle else { throw stateError() }
-        let data = Data(text.utf8)
         try handle.write(contentsOf: data)
         byteCount += data.count
         flushCount += 1

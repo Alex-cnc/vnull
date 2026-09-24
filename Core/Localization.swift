@@ -1178,6 +1178,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionDeleteConfirmMessage
     case resultExport
     case exportCSV
+    case exportCSVGB18030
+    case exportEncodingNote
     case exportXLSX
     case exportBinaryOneShot
     case exportJSON
@@ -1286,6 +1288,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case importParse
     case importParseFailed
     case importReadFailed
+    case importEncodingFallback
     case importSourceSummary
     case importWarnings
     case importColumnMapping
@@ -2245,6 +2248,8 @@ public enum LocalizedStrings {
         .connectionDeleteConfirmMessage: [.simplifiedChinese: "将删除连接「%@」以及保存在钥匙串中的密码，该操作不可撤销。", .english: "This permanently deletes “%@” and its Keychain password."],
         .resultExport: [.simplifiedChinese: "导出结果", .english: "Export Result"],
         .exportCSV: [.simplifiedChinese: "导出为 CSV…", .english: "Export as CSV…"],
+        .exportCSVGB18030: [.simplifiedChinese: "导出为 CSV（GB18030，中文 Windows 直接打开）…", .english: "Export as CSV (GB18030, for Chinese Windows)…"],
+        .exportEncodingNote: [.simplifiedChinese: "文本编码：%@（中文 Windows 的 Excel / WPS 可直接打开）", .english: "Text encoding: %@ (opens directly in Chinese Windows Excel / WPS)"],
         .exportXLSX: [.simplifiedChinese: "导出为 Excel（.xlsx）…", .english: "Export as Excel (.xlsx)…"],
         .exportBinaryOneShot: [.simplifiedChinese: "%：xlsx 是二进制工作簿，需要整份写完才能落盘，因此按一次性取回导出", .english: "%: an xlsx workbook must be written in one piece (it is a ZIP), so this export reads the full result set"],
         .exportJSON: [.simplifiedChinese: "导出为 JSON…", .english: "Export as JSON…"],
@@ -2520,6 +2525,7 @@ public enum LocalizedStrings {
         .importParse: [.simplifiedChinese: "解析并预览", .english: "Parse and preview"],
         .importParseFailed: [.simplifiedChinese: "解析失败：%@", .english: "Parse failed: %@"],
         .importReadFailed: [.simplifiedChinese: "读取文件失败：%@", .english: "Failed to read file: %@"],
+        .importEncodingFallback: [.simplifiedChinese: "文本编码：%@（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）", .english: "Text encoding: %@ (no UTF-8 BOM found; read as the Chinese Windows code page)"],
         .importSourceSummary: [.simplifiedChinese: "文件：%@（%d 行数据 · %d 列）", .english: "File: %@ (%d rows · %d columns)"],
         .importWarnings: [.simplifiedChinese: "解析告警（前 %d 条）", .english: "Parse warnings (first %d)"],
         .importColumnMapping: [.simplifiedChinese: "列映射（文件 → 目标列）", .english: "Column mapping (file → target)"],

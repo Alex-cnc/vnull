@@ -180,15 +180,15 @@ final class XLSXExportIntegrationTests: XCTestCase {
         XCTAssertEqual(ResultExporter.text(for: result(), format: .xlsx), "")
     }
 
-    func testDataEntryPointMatchesTextForTextFormats() {
+    func testDataEntryPointMatchesTextForTextFormats() throws {
         let model = result()
-        let data = ResultExporter.data(for: model, format: .csv)
+        let data = try ResultExporter.data(for: model, format: .csv)
         XCTAssertEqual(String(decoding: data, as: UTF8.self), ResultExporter.text(for: model, format: .csv))
         XCTAssertEqual(Array(data.prefix(4)), [0xEF, 0xBB, 0xBF, 0x69], "CSV 带 BOM（与既有行为一致）")
     }
 
-    func testDataEntryPointProducesZipForXLSX() {
-        let data = ResultExporter.data(for: result(), format: .xlsx)
+    func testDataEntryPointProducesZipForXLSX() throws {
+        let data = try ResultExporter.data(for: result(), format: .xlsx)
         XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B], "应当是 ZIP（PK）")
     }
 

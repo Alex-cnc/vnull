@@ -29,7 +29,8 @@ struct ImportPanel: View {
     /// 后台解析的结论：**不跨线程抛 `Error`**（`Result` 带 `Error` 在并发里不好送），
     /// 失败只带底层原因，本地化文案回到主线程再拼。
     private enum ParseOutcome: Sendable {
-        case parsed(DelimitedTextReader.Result)
+        /// 解析成功 + **实际使用的文本编码**（GB18030 时界面要提示一句）。
+        case parsed(DelimitedTextReader.Result, ResultExportEncoding)
         case readFailed(String)
         case parseFailed(String)
     }
@@ -45,6 +46,8 @@ struct ImportPanel: View {
     @State private var plan: TableImport.Plan?
     @State private var parseError: String?
     @State private var isParsing = false
+    /// 这次解析实际用的文本编码（默认 UTF-8；GB18030 时在文件行下面提示）。
+    @State private var sourceEncoding: ResultExportEncoding = .utf8
     @State private var mode: ImportWriteMode = .batchInsert
     @State private var copyReason: String?
     @State private var pendingConfirmation: ExecutionSafety.Decision?
@@ -132,6 +135,15 @@ struct ImportPanel: View {
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(L(.importChooseFile)) { chooseFile() }
+            }
+
+            // 不是 UTF-8 就写明按什么编码读的（FR-IO-07）：中文列名 / 值会不会乱码，
+            // 取决于这一步，用户需要看得见。
+            if sourceEncoding != .utf8 {
+                Text(L(.importEncodingFallback, sourceEncoding.shortName))
+                    .font(Theme.font(.caption))
+                    .foregroundStyle(Theme.text(.secondary))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: Spacing.l) {
@@ -466,26 +478,29 @@ struct ImportPanel: View {
         let format = self.format
         let hasHeader = self.hasHeader
         let outcome = await Task.detached(priority: .userInitiated) { () -> ParseOutcome in
-            let text: String
+            // 编码不猜死 UTF-8（FR-IO-07）：中文 Windows 上从 Excel / WPS 另存的 CSV
+            // 是 GBK / GB18030，只按 UTF-8 读会直接报"读不了"。
+            let decoded: TextFileDecoder.Decoded
             do {
-                text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+                decoded = try TextFileDecoder.decode(contentsOf: URL(fileURLWithPath: path))
             } catch {
                 return .readFailed(error.localizedDescription)
             }
+            let text = decoded.text
             do {
                 switch format {
                 case .json:
-                    return .parsed(try DelimitedTextReader.readJSON(text))
+                    return .parsed(try DelimitedTextReader.readJSON(text), decoded.encoding)
                 case .csv:
                     return .parsed(try DelimitedTextReader.read(
                         text,
                         options: DelimitedTextReader.Options(hasHeader: hasHeader)
-                    ))
+                    ), decoded.encoding)
                 case .tsv:
                     return .parsed(try DelimitedTextReader.read(
                         text,
                         options: DelimitedTextReader.Options(delimiter: "\t", hasHeader: hasHeader)
-                    ))
+                    ), decoded.encoding)
                 }
             } catch {
                 return .parseFailed(error.localizedDescription)
@@ -501,7 +516,8 @@ struct ImportPanel: View {
             parsed = nil
             plan = nil
             parseError = L(.importParseFailed, reason)
-        case .parsed(let result):
+        case .parsed(let result, let encoding):
+            sourceEncoding = encoding
             let target = parsedTarget
             guard !target.table.isEmpty else {
                 parseError = L(.importTargetTableHint)

@@ -1290,7 +1290,8 @@ final class AppState: ObservableObject {
     @discardableResult
     func exportResult(
         for tabID: UUID,
-        format: ResultExportFormat
+        format: ResultExportFormat,
+        encoding: ResultExportEncoding = .utf8
     ) async -> Bool {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let result = tab.result else {
@@ -1320,12 +1321,12 @@ final class AppState: ObservableObject {
         // 这里提前分支并如实交代，而不是让流式写入器在 begin() 里抛错（那样用户只看到"导出失败"）。
         if format.isBinary {
             reportTabStatus(L(.exportBinaryOneShot, url.lastPathComponent), for: tabID)
-            let payload = ResultExporter.data(
-                for: result,
-                format: format,
-                tableName: tab.fileURL == nil ? "table_name" : baseName
-            )
             do {
+                let payload = try ResultExporter.data(
+                    for: result,
+                    format: format,
+                    tableName: tab.fileURL == nil ? "table_name" : baseName
+                )
                 try payload.write(to: url)
                 reportTabStatus(L(.exportSucceeded, result.rowCount, url.lastPathComponent), for: tabID)
                 return true
@@ -1346,25 +1347,30 @@ final class AppState: ObservableObject {
                     fallbackColumns: result.columns,
                     format: format,
                     url: url,
-                    baseName: baseName
+                    baseName: baseName,
+                    encoding: encoding
                 )
             }
         }
 
         // INSERT 语句需要表名与方言：表名取页签标题（文件名为准，导出后由用户确认），
         // 方言按该页签绑定的连接决定（未绑定连接时退回 SQL 标准双引号）。
-        let payload = ResultExporter.data(
-            for: result,
-            format: format,
-            tableName: tab.fileURL == nil ? "table_name" : baseName,
-            dialect: connections
-                .first { $0.id == tab.connectionID }
-                .map { SQLDialectFactory.make(for: $0.dbType) }
-        )
         do {
             // 用 `data(...)` 而不是 `text(...)` + UTF-8：文本格式两者等价（同一个编码），
-            // 而二进制格式（xlsx）只有前者能写对。
+            // 而二进制格式（xlsx）只有前者能写对；编码选择（FR-IO-07）也只有它能表达。
+            let payload = try ResultExporter.data(
+                for: result,
+                format: format,
+                tableName: tab.fileURL == nil ? "table_name" : baseName,
+                dialect: connections
+                    .first { $0.id == tab.connectionID }
+                    .map { SQLDialectFactory.make(for: $0.dbType) },
+                encoding: encoding
+            )
             try payload.write(to: url)
+            if encoding != .utf8 {
+                reportTabStatus(L(.exportEncodingNote, encoding.shortName), for: tabID)
+            }
             // 与流式路径同一处交代（页签日志）：小结果集也要看得见"导到哪个文件、多少行"。
             reportTabStatus(L(.exportSucceeded, result.rowCount, url.lastPathComponent), for: tabID)
             return true
@@ -1406,7 +1412,8 @@ final class AppState: ObservableObject {
         fallbackColumns: [ColumnMeta],
         format: ResultExportFormat,
         url: URL,
-        baseName: String
+        baseName: String,
+        encoding: ResultExportEncoding = .utf8
     ) async -> Bool {
         guard let configuration = connection(for: tab) else {
             errorMessage = L(.exportFailed, AppError.notConnected.localizedDescription)
@@ -1454,7 +1461,8 @@ final class AppState: ObservableObject {
                     format: format,
                     columns: first.columns.isEmpty ? fallbackColumns : first.columns,
                     tableName: tab.fileURL == nil ? "table_name" : baseName,
-                    dialect: dialect
+                    dialect: dialect,
+                    encoding: encoding
                 )
                 streamWriter = writer
 

@@ -16,8 +16,9 @@ struct ResultTableView: View {
     var selectedIndex: Int = 0
     var onSelectResult: ((Int) -> Void)?
     var isExecuting: Bool = false
-    /// 导出当前结果集（FR-RES-06）。为 nil 时不显示导出按钮。
-    var onExport: ((ResultExportFormat) -> Void)?
+    /// 导出当前结果集（FR-RES-06 / FR-IO-07）。为 nil 时不显示导出按钮。
+    /// 第二个参数是**文本编码** —— 目前只有 CSV 用得上（GB18030 给中文 Windows 的 Excel / WPS）。
+    var onExport: ((ResultExportFormat, ResultExportEncoding) -> Void)?
     /// R-21：把筛选条件生成的 WHERE 交给编辑器（为 nil 时不显示该入口）。
     var onGenerateWhere: ((String) -> Void)?
     /// 右键「跳到被引用行…」回调：`(列名, 单元格值)`（FR-DATA-06）。
@@ -211,13 +212,14 @@ struct ResultTableView: View {
 
             if let onExport, ResultExporter.hasExportableContent(result) {
                 Menu {
-                    Button(L(.exportCSV)) { onExport(.csv) }
-                    Button(L(.exportJSON)) { onExport(.json) }
-                    Button(L(.exportXLSX)) { onExport(.xlsx) }
+                    Button(L(.exportCSV)) { onExport(.csv, .utf8) }
+                    Button(L(.exportCSVGB18030)) { onExport(.csv, .gb18030) }
+                    Button(L(.exportJSON)) { onExport(.json, .utf8) }
+                    Button(L(.exportXLSX)) { onExport(.xlsx, .utf8) }
                     Divider()
-                    Button(L(.exportTSV)) { onExport(.tsv) }
-                    Button(L(.exportMarkdown)) { onExport(.markdown) }
-                    Button(L(.exportSQLInsert)) { onExport(.sqlInsert) }
+                    Button(L(.exportTSV)) { onExport(.tsv, .utf8) }
+                    Button(L(.exportMarkdown)) { onExport(.markdown, .utf8) }
+                    Button(L(.exportSQLInsert)) { onExport(.sqlInsert, .utf8) }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }

@@ -303,15 +303,30 @@ public enum ResultExporter {
         }
     }
 
-    /// 导出字节。文本格式给出 UTF-8 字节，`.xlsx` 给出工作簿（FR-RES-14）。
+    /// 导出字节。默认 UTF-8（CSV 带 BOM），`.xlsx` 给出工作簿（FR-RES-14 / FR-IO-07）。
+    ///
+    /// - Parameter encoding: 文本编码。**只有 CSV 支持非 UTF-8** —— JSON 的编码由
+    ///   RFC 8259 定为 UTF-8；TSV / Markdown / INSERT 是喂给工具与人的文本，没有理由
+    ///   在它们身上再引入第二套编码。传了不支持的组合会抛
+    ///   `ResultExportEncodingError.notApplicableToFormat`，而不是悄悄忽略参数
+    ///   （忽略了的话，用户以为拿到 GBK 文件、实际是 UTF-8，双击一片乱码还找不到原因）。
     public static func data(
         for result: QueryResult,
         format: ResultExportFormat,
         tableName: String = "table_name",
         schema: String? = nil,
-        dialect: (any SQLDialect)? = nil
-    ) -> Data {
+        dialect: (any SQLDialect)? = nil,
+        encoding: ResultExportEncoding = .utf8
+    ) throws -> Data {
+        guard encoding == .utf8 || format == .csv else {
+            throw ResultExportEncodingError.notApplicableToFormat(encoding: encoding, format: format)
+        }
         if format == .xlsx { return xlsx(for: result) }
+        if format == .csv {
+            // CSV 的 BOM 落在**字节**层（`ResultExportEncoding.byteOrderMark`），
+            // 所以这里取不带字符 BOM 的正文 —— 否则 UTF-8 下会写出两个 BOM。
+            return try encoding.encode(csv(for: result, includeByteOrderMark: false))
+        }
         return Data(text(for: result, format: format, tableName: tableName, schema: schema, dialect: dialect).utf8)
     }
 
