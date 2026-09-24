@@ -1967,12 +1967,56 @@ struct DoyahCLI {
             jobs: value(for: "--jobs").flatMap(Int.init),
             noOwner: arguments.contains("--no-owner"),
             clean: arguments.contains("--clean"),
+            // `--section pre-data|data|post-data`：分段恢复，失败续跑的基础
+            section: value(for: "--section"),
+            // `--fail-fast`：遇错即停（续跑时必须开，否则不知道停在哪一段）
+            exitOnError: arguments.contains("--fail-fast"),
             rolesOnly: arguments.contains("--roles-only"),
             globalsOnly: arguments.contains("--globals-only"),
             noRolePasswords: arguments.contains("--no-role-passwords"),
             // `--tool` 允许指定绝对路径：GUI / CI 的 PATH 里通常没有 pg_dump（本机就如此）。
             executableName: value(for: "--tool") ?? BackupPlan.defaultExecutable(for: kind)
         )
+
+        // `--restore-sections`：**逐段**恢复（结构 → 数据 → 索引/约束），遇错即停并给出续跑命令。
+        // 这是 FR-IO-05 的「失败续跑」入口：一次性 `pg_restore` 失败后，
+        // 用户面对的是"半截库 + 一堆错误"，而分段跑能明确停在某一段并告诉他下一步做什么。
+        if kind == .restore, arguments.contains("--restore-sections") {
+            guard database?.isEmpty == false else {
+                print("恢复需要 --database <目标库>")
+                return 64
+            }
+            for section in RestoreSection.allCases {
+                var sectionPlan = plan
+                sectionPlan.section = section.rawValue
+                sectionPlan.exitOnError = true
+                print("==> \(section.displayName)")
+                print("命令：\(sectionPlan.displayCommand(password: password))")
+                if arguments.contains("--dry-run") { continue }
+                do {
+                    let result = try await BackupExecutor().execute(sectionPlan, password: password) { line in
+                        print("  \(line)")
+                    }
+                    if result.isFailure {
+                        print("第 \(section.displayName) 段失败（退出码 \(result.exitCode)）：")
+                        print(result.failureSummary ?? "")
+                        print(RestoreResume.hint(
+                            archivePath: outputPath,
+                            database: database ?? "",
+                            failed: section,
+                            jobs: value(for: "--jobs").flatMap(Int.init),
+                            clean: arguments.contains("--clean")
+                        ))
+                        return 1
+                    }
+                } catch {
+                    print("无法执行：\(error.localizedDescription)")
+                    return 68
+                }
+            }
+            print("三段全部完成。")
+            return 0
+        }
 
         print("命令：\(plan.displayCommand(password: password))")
         if arguments.contains("--dry-run") {

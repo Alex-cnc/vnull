@@ -132,6 +132,57 @@ public struct BackupPlan: Equatable, Sendable {
 }
 
 /// 执行结果。
+/// `pg_restore` 的三段。**顺序就是依赖顺序**：先建结构（pre-data）、再灌数据（data）、
+/// 最后建索引与约束（post-data）。这也正是"失败续跑"能成立的原因 ——
+/// 失败后从没做完的那一段接着做即可，不必从头再来。
+public enum RestoreSection: String, CaseIterable, Codable, Sendable {
+    case preData = "pre-data"
+    case data
+    case postData = "post-data"
+
+    public var displayName: String {
+        switch self {
+        case .preData: return "结构（pre-data）"
+        case .data: return "数据（data）"
+        case .postData: return "索引与约束（post-data）"
+        }
+    }
+}
+
+/// 失败续跑的建议。
+///
+/// 为什么是"打印一条可直接粘的命令"而不是自己偷偷接着跑：
+/// 恢复失败往往意味着**目标库已经处于半截状态**（有些表建好了、有些没建），
+/// 这时该不该继续、要不要先清干净，是人的判断 —— 工具只能把"接下来这一步"
+/// 说清楚，而不是替人决定。
+public enum RestoreResume {
+
+    /// 从哪一段开始接着做（`failed` 为失败的那一段；为 `nil` 表示还没开始，从头做）。
+    public static func remaining(after failed: RestoreSection?) -> [RestoreSection] {
+        guard let failed else { return RestoreSection.allCases }
+        guard let index = RestoreSection.allCases.firstIndex(of: failed) else { return RestoreSection.allCases }
+        return Array(RestoreSection.allCases[index...])
+    }
+
+    /// 给人看的续跑建议（含可直接粘的命令行）。
+    public static func hint(
+        archivePath: String,
+        database: String,
+        failed: RestoreSection?,
+        jobs: Int? = nil,
+        clean: Bool = false
+    ) -> String {
+        let sections = remaining(after: failed)
+        var command = "doyah backup --kind restore --out \(archivePath) --database \(database)"
+        command += " --section \(sections.first?.rawValue ?? RestoreSection.preData.rawValue)"
+        command += " --fail-fast"
+        if let jobs { command += " --jobs \(jobs)" }
+        if clean { command += " --clean" }
+        let listed = sections.map { $0.displayName }.joined(separator: " → ")
+        return "下一步：\(listed)\n  \(command)"
+    }
+}
+
 public struct BackupExecutionResult: Equatable, Sendable {
     public var exitCode: Int32
     public var outputLineCount: Int

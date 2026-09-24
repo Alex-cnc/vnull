@@ -45,6 +45,42 @@ final class BackupSectionTests: XCTestCase {
         XCTAssertFalse(argv.contains("--exit-on-error"), "\(argv)")
     }
 
+    // MARK: 失败续跑
+
+    /// 三段的顺序就是**依赖顺序**（结构 → 数据 → 索引/约束），续跑从失败那一段开始。
+    func testResumeStartsAtFailedSection() {
+        XCTAssertEqual(RestoreSection.allCases.map(\.rawValue), ["pre-data", "data", "post-data"])
+        XCTAssertEqual(RestoreResume.remaining(after: nil), RestoreSection.allCases)
+        XCTAssertEqual(RestoreResume.remaining(after: .preData), [.preData, .data, .postData])
+        XCTAssertEqual(RestoreResume.remaining(after: .data), [.data, .postData])
+        XCTAssertEqual(RestoreResume.remaining(after: .postData), [.postData])
+    }
+
+    /// 续跑建议要**能直接粘**：含归档路径、目标库、从哪一段开始、以及 `--fail-fast`。
+    func testResumeHintIsCopyPasteable() {
+        let hint = RestoreResume.hint(
+            archivePath: "/tmp/a.dump",
+            database: "target_db",
+            failed: .preData,
+            jobs: 4,
+            clean: true
+        )
+        XCTAssertTrue(hint.contains("/tmp/a.dump"), hint)
+        XCTAssertTrue(hint.contains("--database target_db"), hint)
+        XCTAssertTrue(hint.contains("--section pre-data"), hint)
+        XCTAssertTrue(hint.contains("--fail-fast"), hint)
+        XCTAssertTrue(hint.contains("--jobs 4"), hint)
+        XCTAssertTrue(hint.contains("--clean"), hint)
+        XCTAssertTrue(hint.contains("数据"), "要列出接下来会做哪几段：\(hint)")
+    }
+
+    /// 已经成功跑完 pre-data、失败在 data：续跑应从 data 起（不重做结构）。
+    func testResumeAfterDataFailureSkipsPreData() {
+        let hint = RestoreResume.hint(archivePath: "/tmp/a.dump", database: "db", failed: .data)
+        XCTAssertTrue(hint.contains("--section data"), hint)
+        XCTAssertFalse(hint.contains("--section pre-data"), hint)
+    }
+
     /// 恢复必须给出目标库：没有库名的 restore 命令是无效的（不是"默认当前库"那么随便）。
     func testRestoreWithoutDatabaseProducesNoArguments() {
         let broken = BackupPlan(
