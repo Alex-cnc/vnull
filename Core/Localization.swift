@@ -178,6 +178,44 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneDebugPlaceholder
     case lowerPaneClear
     case treeMenuEmpty
+    // 代码编辑器（FR-EDIT-36）：补全候选的说明文字与常用片段说明
+    case codeDetailKeyword
+    case codeDetailBuiltin
+    case codeDetailSnippet
+    case codeDetailDocument
+    case codeDetailLog
+    case codeDetailFunction
+    case codeDetailArrow
+    case codeDetailLoop
+    case codeDetailException
+    case codeDetailImport
+    case codeDetailRequest
+    case codeDetailType
+    case codeDetailClass
+    case codeDetailQuery
+    case codeDetailCondition
+    case codeDetailInsert
+    case codeDetailUpdate
+    case codeDetailDelete
+    case codeDetailCreateTable
+    case codeDetailJoin
+    case codeDetailTemplate
+    case codeDetailElement
+    case codeDetailLink
+    case codeDetailImage
+    case codeDetailInput
+    case codeDetailList
+    case codeDetailListItem
+    case codeDetailLayout
+    case codeDetailCenter
+    case codeDetailMedia
+    case codeDetailObject
+    case codeDetailArray
+    case codeDetailEntry
+    case codeDetailMap
+    case codeDetailHeading
+    case codeDetailCodeBlock
+    case codeDetailTable
     case terminalRestart
     case terminalClearScrollback
     case terminalCursorStyle
@@ -1570,6 +1608,43 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .codeDetailKeyword: [.simplifiedChinese: "关键字", .english: "Keyword"],
+        .codeDetailBuiltin: [.simplifiedChinese: "内置", .english: "Built-in"],
+        .codeDetailSnippet: [.simplifiedChinese: "片段", .english: "Snippet"],
+        .codeDetailDocument: [.simplifiedChinese: "文档中", .english: "In document"],
+        .codeDetailLog: [.simplifiedChinese: "打印", .english: "Log"],
+        .codeDetailFunction: [.simplifiedChinese: "函数", .english: "Function"],
+        .codeDetailArrow: [.simplifiedChinese: "箭头函数", .english: "Arrow function"],
+        .codeDetailLoop: [.simplifiedChinese: "遍历", .english: "Loop"],
+        .codeDetailException: [.simplifiedChinese: "异常处理", .english: "Error handling"],
+        .codeDetailImport: [.simplifiedChinese: "导入", .english: "Import"],
+        .codeDetailRequest: [.simplifiedChinese: "请求", .english: "Request"],
+        .codeDetailType: [.simplifiedChinese: "类型", .english: "Type"],
+        .codeDetailClass: [.simplifiedChinese: "类", .english: "Class"],
+        .codeDetailQuery: [.simplifiedChinese: "查询", .english: "Query"],
+        .codeDetailCondition: [.simplifiedChinese: "条件", .english: "Condition"],
+        .codeDetailInsert: [.simplifiedChinese: "插入", .english: "Insert"],
+        .codeDetailUpdate: [.simplifiedChinese: "更新", .english: "Update"],
+        .codeDetailDelete: [.simplifiedChinese: "删除", .english: "Delete"],
+        .codeDetailCreateTable: [.simplifiedChinese: "建表", .english: "Create table"],
+        .codeDetailJoin: [.simplifiedChinese: "连接", .english: "Join"],
+        .codeDetailTemplate: [.simplifiedChinese: "骨架", .english: "Template"],
+        .codeDetailElement: [.simplifiedChinese: "元素", .english: "Element"],
+        .codeDetailLink: [.simplifiedChinese: "链接", .english: "Link"],
+        .codeDetailImage: [.simplifiedChinese: "图片", .english: "Image"],
+        .codeDetailInput: [.simplifiedChinese: "输入框", .english: "Input"],
+        .codeDetailList: [.simplifiedChinese: "列表", .english: "List"],
+        .codeDetailListItem: [.simplifiedChinese: "列表项", .english: "List item"],
+        .codeDetailLayout: [.simplifiedChinese: "布局", .english: "Layout"],
+        .codeDetailCenter: [.simplifiedChinese: "居中", .english: "Center"],
+        .codeDetailMedia: [.simplifiedChinese: "媒体查询", .english: "Media query"],
+        .codeDetailObject: [.simplifiedChinese: "对象", .english: "Object"],
+        .codeDetailArray: [.simplifiedChinese: "数组", .english: "Array"],
+        .codeDetailEntry: [.simplifiedChinese: "入口", .english: "Entry"],
+        .codeDetailMap: [.simplifiedChinese: "键值", .english: "Key-value"],
+        .codeDetailHeading: [.simplifiedChinese: "标题", .english: "Heading"],
+        .codeDetailCodeBlock: [.simplifiedChinese: "代码块", .english: "Code block"],
+        .codeDetailTable: [.simplifiedChinese: "表格", .english: "Table"],
         .terminalRestart: [.simplifiedChinese: "重新开始 shell", .english: "Restart shell"],
         .commonPaste: [.simplifiedChinese: "粘贴", .english: "Paste"],
         .commonSelectAll: [.simplifiedChinese: "全选", .english: "Select All"],
