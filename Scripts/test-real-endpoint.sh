@@ -71,7 +71,7 @@ PYEOF
 echo "$OUT" | head -8 | sed 's/^/  /'
 
 echo ""
-[ "$CODE" -eq 0 ] && check "调用返回成功（退出码 0）" 0 || check "调用应成功（退出码 $CODE）" 1
+[ "$CODE" -eq 0 ] && check "调用返回成功（退出码 0）" 0 || check "调用应成功（退出码 ${CODE}）" 1
 
 # 判据 1：输出里要有像 SQL 的东西
 if echo "$OUT" | grep -qiE "select|insert|update|delete|with "; then

@@ -141,18 +141,18 @@ echo "== 4) 负例：不认识的编码、非 CSV 格式、别留下半个文件
 BAD="$(mktemp -t doyah-csv-bad).csv"; rm -f "$BAD"
 "$CLI" export --query "$QUERY" --out "$BAD" --encoding latin1 > /tmp/doyah-csv-bad.log 2>&1
 code=$?
-check "未知编码被拒（退出码 $code，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
+check "未知编码被拒（退出码 ${code}，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
 grep -q "utf8 / gb18030" /tmp/doyah-csv-bad.log && check "错误信息列出了支持的取值" 0 || check "错误信息列出了支持的取值" 1
 check "被拒的导出没有写出文件" "$([ -f "$BAD" ] && echo 1 || echo 0)"
 
 "$CLI" export --query "$QUERY" --out /tmp/doyah-csv-bad.json --format json --encoding gb18030 > /tmp/doyah-csv-badjson.log 2>&1
 code=$?
-check "json + gb18030 被拒（退出码 $code，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
+check "json + gb18030 被拒（退出码 ${code}，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
 grep -q "只对 csv 生效" /tmp/doyah-csv-badjson.log && check "并说明原因（只对 csv 生效）" 0 || check "并说明原因（只对 csv 生效）" 1
 
 "$CLI" export --query "$QUERY" --out /tmp/doyah-csv-bad.xlsx --format xlsx --encoding gb18030 > /tmp/doyah-csv-badxlsx.log 2>&1
 code=$?
-check "xlsx + gb18030 被拒（退出码 $code，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
+check "xlsx + gb18030 被拒（退出码 ${code}，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
 
 echo ""
 echo "== 5) 闭环：自己导出的 GB18030 文件，导入侧要能读回 =="
@@ -163,9 +163,9 @@ grep -q "文本编码：GB18030" /tmp/doyah-csv-import.log && check "导入侧�
 "$CLI" export --query "SELECT count(*) AS n, count(*) FILTER (WHERE name = '订单一') AS cn, count(*) FILTER (WHERE name = 'emoji 😀 与生僻字 𠀀') AS emoji FROM csv_roundtrip" --out /tmp/doyah-csv-roundtrip.csv > /dev/null 2>&1
 ROUNDTRIP="$(tail -1 /tmp/doyah-csv-roundtrip.csv | tr -d '\r')"
 if [ "$ROUNDTRIP" = "3,1,1" ]; then
-    check "3 行都回来了，中文与 emoji/生僻字逐字符相等（$ROUNDTRIP）" 0
+    check "3 行都回来了，中文与 emoji/生僻字逐字符相等（${ROUNDTRIP}）" 0
 else
-    check "3 行都回来了，中文与 emoji/生僻字逐字符相等（实际 $ROUNDTRIP）" 1
+    check "3 行都回来了，中文与 emoji/生僻字逐字符相等（实际 ${ROUNDTRIP}）" 1
 fi
 
 echo ""

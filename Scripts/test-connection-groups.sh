@@ -54,13 +54,13 @@ echo "$BY" | grep -q "分组：3 组 / 5 条连接" && check "3 个命名组 + �
 echo "$BY" | grep -q "生产环境（2）" && check "同组的两条连接归到一组" 0 || check "生产环境应含 2 条" 1
 # 未分组必须在最后一行块：取最后一行的组标题
 LAST_TITLE="$("$CLI" connections --dir "$DIR" --by-group 2>/dev/null | grep -v "分组：" | grep -v "^    " | tail -1)"
-echo "$LAST_TITLE" | grep -q "未分组" && check "未分组排在最后（不是夹在中间）" 0 || { check "未分组应在最后（实际 $LAST_TITLE）" 1; }
+echo "$LAST_TITLE" | grep -q "未分组" && check "未分组排在最后（不是夹在中间）" 0 || { check "未分组应在最后（实际 ${LAST_TITLE}）" 1; }
 
 echo ""
 echo "== 3) 组内顺序保持传入顺序（不按名字重排）=="
 ORDER="$("$CLI" connections --dir "$DIR" --by-group 2>/dev/null | grep -A2 "生产环境（2）" | grep "^    " | sed 's/^ *//' | cut -f1)"
 FIRST="$(echo "$ORDER" | head -1)"
-[ "$FIRST" = "订单库" ] && check "组内保持文件里的先后（订单库在报表库之前）" 0 || { check "组内顺序应保持传入顺序（首个=$FIRST）" 1; }
+[ "$FIRST" = "订单库" ] && check "组内保持文件里的先后（订单库在报表库之前）" 0 || { check "组内顺序应保持传入顺序（首个=${FIRST}）" 1; }
 
 echo ""
 echo "== 4) 确定性：同一目录两次分组输出逐字一致 =="

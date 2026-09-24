@@ -164,7 +164,7 @@ sleep 1
 "$CLI" tunnel --ssh-host jump --ssh-user alice --ssh-agent \
     --target-host 127.0.0.1 --target-port "$PGPORT_TEST" --local-port 55903 --hold 2 > "$TUNNEL_LOG" 2>&1
 CODE=$?
-[ "$CODE" -ne 0 ] && check "端口被占用时退出码非 0（实际 $CODE）" 0 || check "端口被占用时退出码非 0（实际 $CODE）" 1
+[ "$CODE" -ne 0 ] && check "端口被占用时退出码非 0（实际 ${CODE}）" 0 || check "端口被占用时退出码非 0（实际 ${CODE}）" 1
 grep -q "隧道起不来" "$TUNNEL_LOG" && check "如实说明隧道起不来（附 ssh 输出）" 0 || { cat "$TUNNEL_LOG"; check "如实说明隧道起不来（附 ssh 输出）" 1; }
 kill "$BLOCKER" 2>/dev/null
 

@@ -85,7 +85,7 @@ IS_EMPTY="$(scalar "SELECT CASE WHEN note = '' THEN 'EMPTY' ELSE 'OTHER' END FRO
 # 两条一起看才不假通过：NULL 只有 id=1 一行，且 id=2 确实是**空串**（不是"没改成"）
 [ "$DISTINCT" = "1" ] && [ "$IS_EMPTY" = "EMPTY" ] \
     && check "id=1 是 NULL、id=2 是空串（两者可区分）" 0 \
-    || { check "NULL 与空串应可区分（NULL 行数=$DISTINCT，id=2 实际=$IS_EMPTY）" 1; }
+    || { check "NULL 与空串应可区分（NULL 行数=${DISTINCT}，id=2 实际=${IS_EMPTY}）" 1; }
 
 echo ""
 echo "== 4) 新增 / 删除 =="

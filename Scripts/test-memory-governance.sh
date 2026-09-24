@@ -191,7 +191,7 @@ text = sys.stdin.read()
 start = text.find("[")
 print(0 if start < 0 else len(json.loads(text[start:])))
 ' || true)"
-[ "$REMAINING_MEM" = "0" ] && check "确认后按计划删除：重建索引 0 条（实际 $REMAINING_MEM）" 0 \
+[ "$REMAINING_MEM" = "0" ] && check "确认后按计划删除：重建索引 0 条（实际 ${REMAINING_MEM}）" 0 \
     || check "删除应生效（实际 $REMAINING_MEM 条）" 1
 grep -q "tmp_diag" "$ARCHIVE_FILE" && check "被忘的那条不该还在归档里" 1 || check "被忘的那条已从归档删除" 0
 rm -rf "$DIR4"

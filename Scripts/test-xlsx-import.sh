@@ -166,7 +166,7 @@ echo "  核对结果（行数,中文,拼音,emoji,小数,日期,已付,空值,�
 if [ "$LINE" = "4,1,1,1,1,1,2,2,1" ]; then
     check "4 行全部写入；中文 / 跳过拼音 / emoji / 金额 / 日期 / 布尔 / NULL 与空串 逐项正确" 0
 else
-    check "4 行全部写入；中文 / 跳过拼音 / emoji / 金额 / 日期 / 布尔 / NULL 与空串 逐项正确（实际 $LINE）" 1
+    check "4 行全部写入；中文 / 跳过拼音 / emoji / 金额 / 日期 / 布尔 / NULL 与空串 逐项正确（实际 ${LINE}）" 1
 fi
 
 # 日期绝不能是序列号（这是"看着成功、数据已错"的典型）
@@ -183,14 +183,14 @@ SPARSE="$(tail -1 /tmp/doyah-xlsx-import-sparse.csv | tr -d '\r' | tr -d '[:spac
 if [ "$SPARSE" = "1" ]; then
     check "稀疏行（只有 D 列）落到了正确的列，前面的列是 NULL" 0
 else
-    check "稀疏行（只有 D 列）落到了正确的列，前面的列是 NULL（实际 $SPARSE）" 1
+    check "稀疏行（只有 D 列）落到了正确的列，前面的列是 NULL（实际 ${SPARSE}）" 1
 fi
 
 echo ""
 echo "== 3) 负例：不是 xlsx 的文件 / 工作表序号越界 =="
 "$CLI" import --table 导入目标 --file "$WORK/老格式.xls" --format xlsx --write > /tmp/doyah-xlsx-import-bad.log 2>&1
 code=$?
-check "非 xlsx 被拒（退出码 $code，期望 65）" "$([ "$code" -eq 65 ] && echo 0 || echo 1)"
+check "非 xlsx 被拒（退出码 ${code}，期望 65）" "$([ "$code" -eq 65 ] && echo 0 || echo 1)"
 grep -q "\.xls" /tmp/doyah-xlsx-import-bad.log && check "错误信息解释了「.xls / .et 不是 xlsx，要另存为 .xlsx」" 0 || check "错误信息解释了「.xls / .et 不是 xlsx，要另存为 .xlsx」" 1
 "$CLI" export --query "SELECT count(*) FROM 导入目标" --out /tmp/doyah-xlsx-import-before.csv > /dev/null 2>&1
 BEFORE="$(tail -1 /tmp/doyah-xlsx-import-before.csv | tr -d '\r' | tr -d '[:space:]')"
@@ -198,14 +198,14 @@ check "被拒的导入没有往表里写数据（仍是 $BEFORE 行）" "$([ "$B
 
 "$CLI" import --table 导入目标 --file "$WORK/订单.xlsx" --format xlsx --sheet 9 --write > /tmp/doyah-xlsx-import-sheet.log 2>&1
 code=$?
-check "工作表序号越界被拒（退出码 $code，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
+check "工作表序号越界被拒（退出码 ${code}，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
 grep -q "工作表序号超出范围" /tmp/doyah-xlsx-import-sheet.log && check "并列出这个文件实际有哪些工作表" 0 || check "并列出这个文件实际有哪些工作表" 1
 
 echo ""
 echo "== 4) 与仓库里的夹具交叉：orders.xlsx 的第二张表 =="
 "$CLI" import --table 导入目标 --file Tests/Fixtures/xlsx/orders.xlsx --format xlsx --sheet 2 > /tmp/doyah-xlsx-import-fixture2.log 2>&1
 code=$?
-check "列名全对不上时**拒绝导入**并给非零退出码（$code）" "$([ "$code" -ne 0 ] && echo 0 || echo 1)"
+check "列名全对不上时**拒绝导入**并给非零退出码（${code}）" "$([ "$code" -ne 0 ] && echo 0 || echo 1)"
 grep -q "Excel 工作表：第二张" /tmp/doyah-xlsx-import-fixture2.log && check "选中的是「第二张」而不是第一张" 0 || check "选中的是「第二张」而不是第一张" 1
 grep -q "没有任何列能映射到目标表" /tmp/doyah-xlsx-import-fixture2.log && check "并说出了原因（没有任何列能映射）" 0 || check "并说出了原因（没有任何列能映射）" 1
 

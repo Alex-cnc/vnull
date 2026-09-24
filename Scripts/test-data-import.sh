@@ -135,7 +135,7 @@ echo "$POS_OUT" | grep -q "column1" && check "预览里给的是位置列名（c
 "$CLI" export --query "SELECT count(*) AS n, count(*) FILTER (WHERE a = 1 AND b = 'hello' AND c = '世界') AS first_row, count(*) FILTER (WHERE a = 2 AND c IS NULL) AS second_row FROM positional" --out /tmp/doyah-positional.csv > /dev/null 2>&1
 POSLINE="$(tail -1 /tmp/doyah-positional.csv | tr -d '\r')"
 [ "$POSLINE" = "2,1,1" ] && check "两行按位置落到了正确的列（第 1 列→a、第 2 列→b、第 3 列→c）" 0 \
-    || { check "按位置落列不对（实际 $POSLINE）" 1; }
+    || { check "按位置落列不对（实际 ${POSLINE}）" 1; }
 
 # 文件比表宽：多出来的列要点名（而不是悄悄丢）
 WIDE="$(mktemp -t doyah-import).csv"

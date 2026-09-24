@@ -129,7 +129,7 @@ grep -q "\[记忆\]" "$DIR/empty.txt" && check "空前缀不该出现记忆（�
 # 候选上限在真实路径上也成立：空前缀恰好给满 20 条关键字
 EMPTY_COUNT="$(grep -cE "^ +[0-9]+\. \[" "$DIR/empty.txt" || true)"
 [ "$EMPTY_COUNT" = "20" ] && check "候选上限生效（空前缀 $EMPTY_COUNT 条关键字）" 0 \
-    || check "候选上限（期望 20 条，实际 $EMPTY_COUNT）" 1
+    || check "候选上限（期望 20 条，实际 ${EMPTY_COUNT}）" 1
 
 # 超长 SQL（600 字符）不入补全：补全是替换光标处的半个词，不是往光标里灌报表
 "$CLI" memory --dir "$DIR" --prefix "SELECT '" --completion --connection 长句库 >"$DIR/long.txt" 2>&1

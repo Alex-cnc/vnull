@@ -202,7 +202,7 @@ echo ""
 echo "== 4) 负例 =="
 "$CLI" er-diagram --schema public --format png > /tmp/doyah-er-bad.log 2>&1
 code=$?
-check "不认识的导出格式被拒（退出码 $code，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
+check "不认识的导出格式被拒（退出码 ${code}，期望 64）" "$([ "$code" -eq 64 ] && echo 0 || echo 1)"
 
 "$CLI" -c "CREATE SCHEMA no_fk; CREATE TABLE no_fk.only_table (id integer PRIMARY KEY);" >/dev/null 2>&1
 "$CLI" er-diagram --schema no_fk --format mermaid --out /tmp/doyah-er-nofk.mmd > /dev/null 2>&1

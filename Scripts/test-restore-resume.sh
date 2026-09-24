@@ -47,7 +47,7 @@ done
 PGDATABASE="$SRC_DB" "$CLI" -c "CREATE TABLE items (id integer primary key, note text);
 INSERT INTO items VALUES (1, 'a'), (2, 'b'), (3, 'c');" >/dev/null 2>&1
 SRC_COUNT="$(scalar "$SRC_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
-[ "$SRC_COUNT" = "3" ] && check "源库已就绪（3 行）" 0 || { check "源库准备（实际 $SRC_COUNT）" 1; exit 1; }
+[ "$SRC_COUNT" = "3" ] && check "源库已就绪（3 行）" 0 || { check "源库准备（实际 ${SRC_COUNT}）" 1; exit 1; }
 
 echo ""
 echo "== 1) 备份成自定义格式（pg_restore 只能吃自定义 / 目录格式）=="
@@ -63,7 +63,7 @@ echo "$RESTORE" | grep -E "^==>|三段全部完成" | sed 's/^/  /'
 echo "$RESTORE" | grep -q "结构（pre-data）" && echo "$RESTORE" | grep -q "数据（data）" \
     && echo "$RESTORE" | grep -q "索引与约束（post-data）" && check "三段按依赖顺序都跑了" 0 || check "三段应都跑" 1
 COUNT="$(scalar "$DST_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
-[ "$COUNT" = "3" ] && check "目标库数据完整（3 行，恢复到指定库）" 0 || { check "恢复后应有 3 行（实际 $COUNT）" 1; }
+[ "$COUNT" = "3" ] && check "目标库数据完整（3 行，恢复到指定库）" 0 || { check "恢复后应有 3 行（实际 ${COUNT}）" 1; }
 
 echo ""
 echo "== 3) 造一个真实的失败：把 data 段单独恢复到**空库**（没有表，必然失败）=="
@@ -81,7 +81,7 @@ RESUME="$(PGDATABASE=postgres "$CLI" backup --kind restore --out "$ARCHIVE" --da
     --restore-sections --tool "$PGBIN/pg_restore" --no-version-check 2>&1)"
 echo "$RESUME" | grep -q "三段全部完成" && check "续跑把三段做完" 0 || { check "续跑应完成" 1; echo "$RESUME" | tail -4; }
 RESUME_COUNT="$(scalar "$RETRY_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
-[ "$RESUME_COUNT" = "3" ] && check "续跑后数据完整（3 行）" 0 || { check "续跑后应有 3 行（实际 $RESUME_COUNT）" 1; }
+[ "$RESUME_COUNT" = "3" ] && check "续跑后数据完整（3 行）" 0 || { check "续跑后应有 3 行（实际 ${RESUME_COUNT}）" 1; }
 
 echo ""
 echo "== 5) 逐段模式下的失败：必须**打印可直接粘的续跑命令** =="

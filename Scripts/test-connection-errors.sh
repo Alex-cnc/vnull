@@ -38,7 +38,7 @@ echo "== 1) 端口没人监听（连接超时 / 被拒）=="
 OUT="$(PGHOST=127.0.0.1 PGPORT=59999 PGUSER=nobody PGPASSWORD="" PGDATABASE=nothing \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
-check "失败退出码非 0（实际 $code）" "$([ "$code" -ne 0 ] && echo 0 || echo 1)"
+check "失败退出码非 0（实际 ${code}）" "$([ "$code" -ne 0 ] && echo 0 || echo 1)"
 echo "$OUT" | grep -qE "连接超时|目标主机拒绝了连接" && check "给了人话（超时 / 拒绝）" 0 || check "给了人话（超时 / 拒绝）" 1
 echo "$OUT" | grep -q "建议：" && check "给了排查建议" 0 || check "给了排查建议" 1
 echo "$OUT" | grep -q "127.0.0.1:59999/nothing" && check "带上了目标（跨库时才知道是哪个）" 0 || check "带上了目标（跨库时才知道是哪个）" 1
@@ -81,7 +81,7 @@ echo "== 4) 对照：能连上时不出现任何失败文案 =="
 OUT4="$(PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD="" PGDATABASE=postgres \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
-check "正常连接退出码 0（实际 $code）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
+check "正常连接退出码 0（实际 ${code}）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
 echo "$OUT4" | grep -q "连接失败" && check "正常路径没有多余的失败文案" 1 || check "正常路径没有多余的失败文案" 0
 
 echo ""
@@ -102,7 +102,7 @@ echo "== 6) **不带口令**（不是空口令，是根本没给）连 trust 库
 OUT6="$(env -u PGPASSWORD PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGDATABASE=postgres \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
-check "无口令连接退出码 0（实际 $code）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
+check "无口令连接退出码 0（实际 ${code}）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
 echo "$OUT6" | grep -q "连接成功" && check "无口令也能连上 trust 库（无口令认证不是错误）" 0 \
     || { echo "$OUT6" | head -8; check "无口令也能连上 trust 库（无口令认证不是错误）" 1; }
 echo "$OUT6" | grep -q "缺少口令" && check "没有误报「缺少口令」" 1 || check "没有误报「缺少口令」" 0
