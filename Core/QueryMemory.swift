@@ -147,7 +147,9 @@ public enum QueryMemory {
             }
             let entries = SQLArchive.parse(text)
             guard !entries.isEmpty else {
-                // 空的 / 不是归档格式的文件：记下来但不报错（用户目录里可能有别的 .sql）。
+                // 合法的**空归档**（删完条目后只剩文件头）不是可疑文件：静默跳过。
+                if SQLArchive.isArchiveText(text) { continue }
+                // 其余"空 / 不是归档格式"的文件记下来但不报错（用户目录里可能有别的 .sql）。
                 skipped.append(file.lastPathComponent)
                 continue
             }

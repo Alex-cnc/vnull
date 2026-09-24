@@ -61,6 +61,18 @@ public struct SQLArchiveEntry: Equatable, Sendable {
 /// 全部是纯函数（渲染 / 解析 / 合并），文件 IO 交给 `SQLArchiveStore`。
 public enum SQLArchive {
 
+    /// 归档文件头（渲染时写下；也是"这是不是归档文件"的判据）。
+    ///
+    /// 为什么需要它：删除条目后当天文件可能只剩文件头（合法状态），
+    /// 而"条目数为 0"同时也是"这文件不是归档"的表现 —— 没有这个判据就分不开，
+    /// 于是删完一条记忆，索引会报一句"跳过 1 个文件（空 / 非归档格式）"，像出了故障。
+    public static let headerPrefix = "-- Doyah Studio 查询归档"
+
+    /// 这份文本是不是归档文件（**空归档也算**）。
+    public static func isArchiveText(_ text: String) -> Bool {
+        text.contains(headerPrefix)
+    }
+
     static let startMarker = "-- ===== 条目开始 ====="
     static let endMarker = "-- ===== 条目结束 ====="
 
@@ -151,7 +163,7 @@ public enum SQLArchive {
     ) -> String {
         let dayText = fileName(for: day).replacingOccurrences(of: ".sql", with: "")
         var lines: [String] = [
-            "-- Doyah Studio 查询归档 · \(dayText)",
+            "\(Self.headerPrefix) · \(dayText)",
             "-- 本文件由应用自动追加，可读、可直接执行，也可放进版本库。",
             "-- 同一条 SQL 重复执行只累计「执行次数」，不会重复抄写。"
         ]

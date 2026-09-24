@@ -752,7 +752,7 @@ struct DoyahCLI {
         }
 
         guard let directory = value(for: "--dir") else {
-            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect …]] [--routines] [--veto 指纹] [--unveto 指纹] [--keep-literal 指纹 字面量] [--json]")
+            print("用法：memory --dir <归档目录> [--prefix \"…\"] [--connection 名] [--completion [--dialect …]] [--routines] [--show 指纹] [--delete 指纹] [--clear --yes] [--promote 指纹] [--veto 指纹] [--unveto 指纹] [--keep-literal 指纹 字面量] [--json]")
             return 64
         }
 
@@ -795,6 +795,83 @@ struct DoyahCLI {
                 print("⚠️ 记忆决定写入失败：\(error)")
                 return 1
             }
+        }
+
+        // ── 治理（FR-AI-15）：可检视 / 可删除 / 可整层清空 / 可解释 ──
+
+        // `--show`：这条记忆的来路与"为什么记了它 / 为什么它被忘了"
+        if let fingerprint = value(for: "--show") {
+            guard let memory = index.memories.first(where: { $0.fingerprint == fingerprint }) else {
+                print("没有这条记忆：\(fingerprint)")
+                return 1
+            }
+            // 「一年只用一次但很关键」的巡检脚本按人工钉住处理（CLI 里没有界面，用 --kind 指定）
+            let kind = MemoryKind(rawValue: value(for: "--kind") ?? "") ?? .routine
+            let verdict = RetentionPolicy.standard.evaluate(
+                kind: kind,
+                stats: MemoryStats(memory: memory),
+                now: Date()
+            )
+            for line in MemoryExplanation.describe(memory: memory, kind: kind, verdict: verdict) {
+                print("  " + line)
+            }
+            return 0
+        }
+
+        // `--delete` / `--clear`：治理必须作用在**归档**上（记忆层只是派生索引）
+        if let fingerprint = value(for: "--delete") {
+            do {
+                let report = try SQLArchiveEditor.removeEntries(
+                    matchingFingerprint: fingerprint,
+                    in: decisionsDirectory
+                )
+                print("已删除 \(report.removedEntryCount) 条归档记录（\u{66f4}改文件：\(report.changedFiles.joined(separator: "、"))；剩余 \(report.remainingEntryCount) 条）")
+                print("重建索引后该记忆不会再出现（\u{7eaf}\u{6d3e}\u{751f}\u{7f13}\u{5b58}）")
+                return report.didChangeAnything ? 0 : 1
+            } catch {
+                print("删除失败：\(error.localizedDescription)")
+                return 1
+            }
+        }
+
+        if arguments.contains("--clear") {
+            // 清空是不可逆的：**必须显式确认**，否则拒绝且不动归档一个字节
+            guard arguments.contains("--yes") else {
+                print("拒绝：整层清空不可逆，请确认后加 `--yes`（当前未改动任何文件）")
+                return 64
+            }
+            do {
+                let report = try SQLArchiveEditor.removeAll(in: decisionsDirectory)
+                print("已清空归档：删除 \(report.removedEntryCount) 条记录 / \(report.changedFiles.count) 个文件")
+                return 0
+            } catch {
+                print("清空失败：\(error.localizedDescription)")
+                return 1
+            }
+        }
+
+        // `--promote`：通用层提升 + 脱敏闸（只打印，不落盘存储通用层）
+        if let fingerprint = value(for: "--promote") {
+            guard let memory = index.memories.first(where: { $0.fingerprint == fingerprint }) else {
+                print("没有这条记忆：\(fingerprint)")
+                return 1
+            }
+            let dialect = SQLDialectFactory.make(
+                for: value(for: "--dialect") == "gbase8a" ? .gbase8a : .postgresql
+            )
+            guard let generalized = MemoryPromotion.generalize(sql: memory.latestSQL, dialect: dialect) else {
+                print("这条语句不适合提升到通用层")
+                return 1
+            }
+            let verdict = MemoryPromotion.check(
+                original: memory.latestSQL,
+                generalized: generalized,
+                dialect: dialect
+            )
+            print("通用写法：\(generalized)")
+            print("脱敏闸：\(verdict.reason)")
+            print("（本轮只打印判定，**不落盘存储通用层** —— 通用层的存储与检视属后续）")
+            return verdict.isAllowed ? 0 : 1
         }
 
         // ── 例行候选（FR-AI-14）──
@@ -914,6 +991,27 @@ struct DoyahCLI {
                 print("      \(suggestion.sql.replacingOccurrences(of: "\n", with: " "))")
             }
             return suggestions.isEmpty ? 1 : 0
+        }
+
+        // `--json`：**清单也要有机器可读出口**。
+        // 为什么补：验证脚本此前只能按缩进数去"猜"指纹，缩进一变就假失败 ——
+        // 脚本解析人类可读文本是错的做法，出口本身该是机器可读的。
+        if arguments.contains("--json") {
+            let payload = index.memories.map { memory -> [String: Any] in
+                [
+                    "fingerprint": memory.fingerprint,
+                    "sql": memory.latestSQL,
+                    "runs": memory.runCount,
+                    "days": memory.days.sorted(),
+                    "variants": memory.variantCount,
+                    "connections": memory.connections.sorted()
+                ]
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
+               let text = String(data: data, encoding: .utf8) {
+                print(text)
+                return index.isEmpty ? 1 : 0
+            }
         }
 
         for memory in index.memories {
