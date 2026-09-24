@@ -170,6 +170,12 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // maintain：FR-AI-04 的可脚本化出口（计划解析 → 逐条审阅 → 批准后才执行）。
+        if arguments.first == "maintain" {
+            let code = await runMaintainCommand(arguments: Array(arguments.dropFirst()))
+            exit(code)
+        }
+
         if arguments.first == "memory" {
             let code = runMemoryCommand(arguments: Array(arguments.dropFirst()))
             exit(code)
@@ -894,6 +900,155 @@ struct DoyahCLI {
     ///
     /// 行为：起隧道 → 打印本地端点 → 保持（默认到被信号打断；给了 `--hold` 就等这么多秒）→ 收干净。
     /// 退出码：0 成功；2 参数不对；1 隧道起不来（stderr 带 ssh 的输出，已脱敏）。
+    /// `doyah maintain`：维护任务编排的可脚本化出口。
+    ///
+    /// 三段分开，**没有"跳过审批直接跑"的开关**：
+    ///   ① 解析 + 审阅（默认只打印计划与每条的理由）；
+    ///   ② `--approve m1,m3` 或 `--approve all` 才把任务置为已批准；
+    ///   ③ `--execute` 才真的下发（且只下发"已批准"的那些）。
+    ///
+    /// 为什么把"批准"和"执行"拆成两个开关：需求原文要求「逐次审批」「可预览、可编辑、可拒绝」——
+    /// 一个开关就把这三件事糊在一起，用户没法拒绝其中一条。
+    private static func runMaintainCommand(arguments: [String]) async -> Int32 {
+        func value(for flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+
+        guard let path = value(for: "--plan") else {
+            FileHandle.standardError.write(Data(("用法：maintain --plan <计划文件> [--approve all|m1,m3] "
+                + "[--reject m2] [--execute] [--read-only] [--sandboxed] "
+                + "[--allow-multiple-high-cost] [--json]\n").utf8))
+            return 2
+        }
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            FileHandle.standardError.write(Data("读不到计划文件：\(path)\n".utf8))
+            return 2
+        }
+
+        let isJSON = arguments.contains("--json")
+        let policy = MaintenancePolicy(
+            allowMultipleHighCost: arguments.contains("--allow-multiple-high-cost"),
+            isReadOnly: arguments.contains("--read-only"),
+            isSandboxed: arguments.contains("--sandboxed")
+        )
+        var review = MaintenancePlanner.makePlan(from: text, policy: policy)
+
+        if let rejectList = value(for: "--reject") {
+            review = MaintenancePlanner.reject(review, ids: splitIDs(rejectList))
+        }
+        if let approveList = value(for: "--approve") {
+            let ids: [String]? = approveList.lowercased() == "all" ? nil : splitIDs(approveList)
+            review = MaintenancePlanner.approve(review, ids: ids)
+        }
+
+        var executed: [(id: String, ok: Bool, detail: String)] = []
+        if arguments.contains("--execute") {
+            let service = PostgresService(config: makeEnvironmentConfig(name: "CLI maintain"), password: ProcessInfo.processInfo.environment["PGPASSWORD"])
+            do {
+                _ = try await service.connect()
+            } catch {
+                if isJSON {
+                    print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
+                } else {
+                    print("连接失败：\(error.localizedDescription)")
+                }
+                return 1
+            }
+            for task in review.executableTasks(isSandboxed: policy.isSandboxed) {
+                guard let sql = task.sql else { continue }
+                do {
+                    for try await event in service.execute(sql, options: .default) {
+                        if case .resultSet(let result) = event, let affected = result.affectedRows {
+                            _ = affected
+                        }
+                    }
+                    review = MaintenancePlanner.record(review, taskID: task.id)
+                    executed.append((task.id, true, sql))
+                } catch {
+                    review = MaintenancePlanner.record(review, taskID: task.id, failureReason: error.localizedDescription)
+                    executed.append((task.id, false, error.localizedDescription))
+                }
+            }
+            await service.disconnect()
+        }
+
+        if isJSON {
+            var json = "{"
+            json += "\"ok\":true"
+            json += ",\"tasks\":["
+            json += review.tasks.map { task in
+                let state: String
+                switch task.state {
+                case .pending: state = "pending"
+                case .approved: state = "approved"
+                case .rejected: state = "rejected"
+                case .executed: state = "executed"
+                case .failed: state = "failed"
+                }
+                let sql = task.sql.map(jsonQuoted) ?? "null"
+                let command = task.command.map(jsonQuoted) ?? "null"
+                return "{\"id\":\(jsonQuoted(task.id)),\"kind\":\(jsonQuoted(task.kind.rawValue)),"
+                    + "\"summary\":\(jsonQuoted(task.summary)),\"risk\":\(jsonQuoted(task.risk.rawValue)),"
+                    + "\"highCost\":\(task.isHighCost),\"needsApproval\":\(task.requiresApproval),"
+                    + "\"state\":\(jsonQuoted(state)),\"sql\":\(sql),\"command\":\(command),"
+                    + "\"executable\":\(task.isExecutable(isSandboxed: policy.isSandboxed)),"
+                    + "\"notes\":[" + task.reviewNotes.map(jsonQuoted).joined(separator: ",") + "]}"
+            }.joined(separator: ",")
+            json += "],\"unparsable\":[" + review.unparsableLines.map(jsonQuoted).joined(separator: ",") + "]"
+            json += ",\"planNotes\":[" + review.notes.map(jsonQuoted).joined(separator: ",") + "]"
+            json += ",\"executed\":["
+            json += executed.map { item in
+                "{\"id\":\(jsonQuoted(item.id)),\"ok\":\(item.ok),\"detail\":\(jsonQuoted(item.detail))}"
+            }.joined(separator: ",")
+            json += "]}"
+            print(json)
+        } else {
+            print("== 计划（\(review.tasks.count) 条）==")
+            for task in review.tasks {
+                let state: String
+                switch task.state {
+                case .pending: state = "待批"
+                case .approved: state = "已批准"
+                case .rejected: state = "已拒绝"
+                case .executed: state = "已执行"
+                case .failed(let reason): state = "失败（\(reason)）"
+                }
+                print("\(task.id) [\(task.kind.rawValue)] \(state) — \(task.summary)")
+                if let sql = task.sql { print("    SQL: \(sql)") }
+                if let command = task.command { print("    命令: \(command)") }
+                for note in task.reviewNotes { print("    · \(note)") }
+            }
+            for line in review.unparsableLines { print("✗ 没看懂：\(line)") }
+            for note in review.notes { print("· \(note)") }
+            for item in executed {
+                print(item.ok ? "✅ \(item.id) 已执行" : "❌ \(item.id) 失败：\(item.detail)")
+            }
+        }
+        return 0
+    }
+
+    private static func splitIDs(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0 == "," || $0 == " " || $0 == "，" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// 从环境变量造一份连接配置（与默认路径同一口径）。
+    private static func makeEnvironmentConfig(name: String) -> ConnectionConfig {
+        let environment = ProcessInfo.processInfo.environment
+        return ConnectionConfig(
+            name: name,
+            dbType: .postgresql,
+            host: environment["PGHOST"] ?? "127.0.0.1",
+            port: Int(environment["PGPORT"] ?? "5432") ?? 5432,
+            database: environment["PGDATABASE"] ?? "",
+            username: environment["PGUSER"] ?? "postgres",
+            sslMode: SSLMode(rawValue: environment["PGSSLMODE"] ?? "prefer") ?? .prefer,
+            timeout: 10
+        )
+    }
+
     /// `doyah diagnose`：把"对话式诊断"里**可以离线验证的两段**做成命令行出口 ——
     /// ① 取证与上下文组装（对真实库跑 `EXPLAIN` / 锁查询 / 统计，如实标注哪些没拿到）；
     /// ② 解析模型回复（`--advice-file` 传入一份回复文本，据此验"无依据断言必须被拒"与建议 SQL 的审批裁决）。

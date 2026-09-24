@@ -179,6 +179,16 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneClear
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
+    case maintenanceRefusedReadOnly
+    case maintenanceNoApprovalNeeded
+    case maintenanceNeedsApproval
+    case maintenanceHighCostRateLimited
+    case maintenanceSandboxedExternal
+    case maintenanceHighCostCounted
+    case maintenanceReadOnlyConnection
+    case maintenanceApprovalCovered
+    case maintenanceApprovedByUser
+    case maintenanceNotApprovedYet
     case diagnosisTarget
     case diagnosisQuestion
     case diagnosisEvidenceHeader
@@ -1704,6 +1714,16 @@ public enum LocalizedStrings {
         .lowerPaneDebugPlaceholder: [.simplifiedChinese: "调试控制台占位：等客户端具备编程 IDE 能力（断点 / 变量查看 / 求值）时接入。", .english: "Debug console placeholder: to be wired up when the client gains IDE-style debugging (breakpoints, variables, evaluation)."],
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
+        .maintenanceRefusedReadOnly: [.simplifiedChinese: "这是只读连接：写操作被拒绝，无法批准执行", .english: "This connection is read-only: the write is refused and cannot be approved"],
+        .maintenanceNoApprovalNeeded: [.simplifiedChinese: "这条只给语句、不改库，不需要审批", .english: "This one only hands you a statement and does not touch the database, so no approval is needed"],
+        .maintenanceNeedsApproval: [.simplifiedChinese: "写操作 / DDL：执行前必须逐条批准", .english: "Write or DDL: each step must be approved before it runs"],
+        .maintenanceHighCostRateLimited: [.simplifiedChinese: "高开销操作超过限流（一次最多 %@ 条）：这条已拒绝，需要的话单独跑", .english: "Too many high-cost operations (at most %@ per run): this one was rejected; run it on its own if you really need it"],
+        .maintenanceSandboxedExternal: [.simplifiedChinese: "这条要起外部程序（pg_dump / pg_restore）：沙箱构建里起不来，请用非沙箱构建或命令行", .english: "This one spawns an external program (pg_dump / pg_restore), which the sandboxed build cannot do; use the unsandboxed build or the CLI"],
+        .maintenanceHighCostCounted: [.simplifiedChinese: "计划里有 %@ 条高开销操作（限流按条数计）", .english: "The plan contains %@ high-cost operations (the limiter counts them)"],
+        .maintenanceReadOnlyConnection: [.simplifiedChinese: "当前连接是只读的：计划里的写操作已全部拒绝", .english: "This connection is read-only, so every write in the plan was refused"],
+        .maintenanceApprovalCovered: [.simplifiedChinese: "已逐条批准（%@ 条）", .english: "Approved step by step (%@)"],
+        .maintenanceApprovedByUser: [.simplifiedChinese: "用户已批准", .english: "Approved by the user"],
+        .maintenanceNotApprovedYet: [.simplifiedChinese: "尚未批准：不会执行", .english: "Not approved yet: it will not run"],
         .diagnosisTarget: [.simplifiedChinese: "目标：%@", .english: "Target: %@"],
         .diagnosisQuestion: [.simplifiedChinese: "问题：%@", .english: "Question: %@"],
         .diagnosisEvidenceHeader: [.simplifiedChinese: "== 证据（编号必须在结论里引用）==", .english: "== Evidence (ids must be cited in every conclusion) =="],
