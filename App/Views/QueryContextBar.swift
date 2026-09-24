@@ -80,7 +80,9 @@ struct QueryContextBar: View {
                 .foregroundStyle(Theme.text(.tertiary))
                 .padding(.leading, Spacing.xs)
                 .contentShape(Rectangle())
-                .help(connectionInfoText)
+                // 用**即时**提示而不是 `.help`：系统 tooltip 要等好几秒（实测反馈），
+                // 而这种"看一眼就走"的信息慢了就等于没有（见 `HoverHint`）。
+                .hoverHint(connectionInfoText)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

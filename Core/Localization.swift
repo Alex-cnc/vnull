@@ -169,6 +169,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case lowerPaneDebugConsole
     case lowerPaneToggle
     case lowerPaneHide
+    case lowerPaneExpand
     case lowerPaneMaximize
     case lowerPaneRestore
     case lowerPaneProblemEmpty
@@ -1559,6 +1560,7 @@ public enum LocalizedStrings {
         .lowerPaneDebugConsole: [.simplifiedChinese: "调试控制台", .english: "Debug Console"],
         .lowerPaneToggle: [.simplifiedChinese: "显示 / 隐藏下方面板", .english: "Show/Hide Bottom Pane"],
         .lowerPaneHide: [.simplifiedChinese: "收起面板", .english: "Collapse pane"],
+        .lowerPaneExpand: [.simplifiedChinese: "展开面板", .english: "Expand pane"],
         .lowerPaneMaximize: [.simplifiedChinese: "最大化面板", .english: "Maximize pane"],
         .lowerPaneRestore: [.simplifiedChinese: "恢复面板", .english: "Restore pane"],
         .lowerPaneProblemSkipped: [.simplifiedChinese: "SQL 超过 %@ 字符，已**暂停实时语法检查**（执行与语法高亮不受影响）", .english: "SQL is longer than %@ characters, so real-time syntax checking is paused (running and highlighting are unaffected)"],

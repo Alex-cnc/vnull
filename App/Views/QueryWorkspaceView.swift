@@ -197,6 +197,13 @@ struct QueryEditorView: View {
                         editorArea(diagnostics)
                     }
                 }
+
+                // 折叠态：把**标题栏**留在底部（向上箭头就在它右边）——
+                // 收起不该把"恢复"的入口也一起收走（2026-09-24 需求提出者实测反馈）。
+                if !appState.isLowerPaneVisible {
+                    Divider()
+                    LowerPaneView(tab: tab, isCollapsed: true)
+                }
             }
         }
         .sheet(isPresented: $isSaveQueryPresented) {

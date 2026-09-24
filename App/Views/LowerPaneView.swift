@@ -12,6 +12,15 @@ struct LowerPaneView: View {
 
     let tab: QueryTab
 
+    /// 折叠态：**只画标题栏**（页签条 + 向上的展开箭头），不画内容。
+    ///
+    /// 2026-09-24 需求提出者实测：「Terminal 所在那个区域，点击向下那个箭头竟然隐藏不见了，
+    /// 所以也就没有办法让它恢复了，应该是折叠到底部，只保留它的标题栏，向上展开的箭头在」。
+    /// 原来"收起"是把整块面板从视图树里拿掉 —— 于是连恢复的入口也一起没了（只剩 ⇧⌘J 菜单，
+    /// 但那个入口不在这块区域里，看不见自然就想不起来）。现在折叠**只收起内容**，
+    /// 标题栏留在底部，箭头翻成向上。
+    var isCollapsed: Bool = false
+
     /// 实时语法诊断（Problem 页签一并展示）。
     ///
     /// 自己算而不是由编辑器传进来：最大化时编辑器整块被盖住，就没人为这里提供诊断了。
@@ -22,11 +31,16 @@ struct LowerPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             tabStrip
-            Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            if !isCollapsed {
+                Divider()
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
-        .frame(minHeight: 90)
+        .frame(minHeight: isCollapsed ? 0 : 90)
+        // 折叠态按**内容自己的理想高度**（标题栏一行）显示：不要让它被拉伸，
+        // 也不要写死一个高度 —— 字号 / 语言变了它会自己跟着变。
+        .fixedSize(horizontal: false, vertical: isCollapsed)
         .background(.background)
         // 终端**不在这里启动**：`onAppear` 时视图还没布局，只能拿模型默认的 80×24，
         // 于是全屏 TUI 的第一帧就按错的列数排（`dsh-tui` 的 13×40 欢迎鲸鱼会挤在一起）。
@@ -68,19 +82,27 @@ struct LowerPaneView: View {
                 }
             }
 
-            iconButton(
-                appState.isLowerPaneMaximized
-                    ? "rectangle.compress.vertical"
-                    : "rectangle.expand.vertical",
-                help: appState.isLowerPaneMaximized ? L(.lowerPaneRestore) : L(.lowerPaneMaximize)
-            ) {
-                appState.isLowerPaneMaximized.toggle()
-            }
+            if isCollapsed {
+                // 折叠态只留一个**向上**的箭头：这是"把它恢复出来"的入口，
+                // 必须跟标题栏一起留在屏幕上。
+                iconButton("chevron.up", help: L(.lowerPaneExpand)) {
+                    appState.isLowerPaneVisible = true
+                }
+            } else {
+                iconButton(
+                    appState.isLowerPaneMaximized
+                        ? "rectangle.compress.vertical"
+                        : "rectangle.expand.vertical",
+                    help: appState.isLowerPaneMaximized ? L(.lowerPaneRestore) : L(.lowerPaneMaximize)
+                ) {
+                    appState.isLowerPaneMaximized.toggle()
+                }
 
-            iconButton("chevron.down", help: L(.lowerPaneHide)) {
-                // 收起时同时取消最大化：下次打开回到常规分栏，而不是又占满编辑区。
-                appState.isLowerPaneMaximized = false
-                appState.isLowerPaneVisible = false
+                iconButton("chevron.down", help: L(.lowerPaneHide)) {
+                    // 收起时同时取消最大化：下次打开回到常规分栏，而不是又占满编辑区。
+                    appState.isLowerPaneMaximized = false
+                    appState.isLowerPaneVisible = false
+                }
             }
         }
         .padding(.horizontal, 8)
@@ -93,6 +115,8 @@ struct LowerPaneView: View {
 
         return Button {
             appState.lowerPaneTab = item
+            // 折叠态点页签 = 想看里面的内容 → 顺手展开（否则点了没反应，又是一次"点了没用"）。
+            if isCollapsed { appState.isLowerPaneVisible = true }
         } label: {
             HStack(spacing: Spacing.xs) {
                 Image(systemName: item.symbolName)
