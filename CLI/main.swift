@@ -1722,7 +1722,17 @@ struct DoyahCLI {
                 FileHandle.standardError.write(Data("连接 \(name) 的类型是 \(saved.config.dbType.displayName)，不是 MySQL 协议族\n".utf8))
                 return 2
             }
-            var arguments = arguments
+            // **必须把 `--connection` 自己摘掉再递归**：不摘就会在递归里再次读到它 ——
+            // 我第一版就是漏了这一步，结果变成无限递归（用户看到的是"一直卡着不动"，
+            // 与"缺少超时"是两个不同的原因，两边都已修）。
+            var forwarded: [String] = []
+            var skipNext = false
+            for argument in arguments {
+                if skipNext { skipNext = false; continue }
+                if argument == "--connection" { skipNext = true; continue }
+                forwarded.append(argument)
+            }
+            var arguments = forwarded
             arguments.append(contentsOf: ["--host", saved.config.host])
             arguments.append(contentsOf: ["--port", String(saved.config.port)])
             arguments.append(contentsOf: ["--user", saved.config.username])
