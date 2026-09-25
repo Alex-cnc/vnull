@@ -111,3 +111,36 @@ final class DatabaseNodeEmptyTextTests: XCTestCase {
         }
     }
 }
+
+/// 空态文案的**方言来源**（2026-09-25 需求提出者两次报同一幕：MySQL 上点开空库，
+/// 却写着「该数据库下暂无 schema」）。
+///
+/// 结构原因：文案原先按 `appState.selectedConnection?.dbType` 选，而**首连 / 切连接的瞬间，
+/// "选中的连接"与"树上这份数据"可以不是同一件事** —— 于是用了另一个连接的方言说话。
+/// 修法是在加载这份树时把方言记下来（`ObjectTreeView.treeDatabaseType`），文案只认它。
+/// 这里钉住 Core 侧那条判据与三种可能的输入。
+final class DatabaseNodeEmptyKeySourceTests: XCTestCase {
+
+    /// 方言已知：按"有没有 schema 层"给话（MySQL / GBase 说表，PG 说 schema）。
+    func testKnownDialects() {
+        XCTAssertEqual(DatabaseType.mysql.databaseNodeEmptyKey, .treeEmptyDatabaseGBase)
+        XCTAssertEqual(DatabaseType.gbase8a.databaseNodeEmptyKey, .treeEmptyDatabaseGBase)
+        XCTAssertEqual(DatabaseType.postgresql.databaseNodeEmptyKey, .treeEmptyDatabase)
+    }
+
+    /// **方言未知时不许冒充 PostgreSQL**：兜底那句话里不能出现 "schema"。
+    func testUnknownDialectDoesNotPretendToBePostgreSQL() {
+        let zh = LocalizedStrings.text(.treeEmptyDatabaseUnknown, language: .simplifiedChinese)
+        let en = LocalizedStrings.text(.treeEmptyDatabaseUnknown, language: .english)
+        XCTAssertFalse(zh.contains("schema"), zh)
+        XCTAssertFalse(en.lowercased().contains("schema"), en)
+        XCTAssertNotEqual(zh, en, "中英文一样等于没翻译")
+    }
+
+    /// 三句话必须**互不相同** —— 否则"改对了"与"改错了"在界面上分不出来。
+    func testThreeEmptyTextsAreDistinct() {
+        let keys: [LKey] = [.treeEmptyDatabase, .treeEmptyDatabaseGBase, .treeEmptyDatabaseUnknown]
+        let zh = keys.map { LocalizedStrings.text($0, language: .simplifiedChinese) }
+        XCTAssertEqual(Set(zh).count, keys.count, "\(zh)")
+    }
+}

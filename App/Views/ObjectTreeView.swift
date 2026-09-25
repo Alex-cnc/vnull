@@ -14,6 +14,15 @@ struct ObjectTreeView: View {
     var onEdit: ((ConnectionConfig) -> Void)?
 
     @State private var roots: [DatabaseObject] = []
+    /// **这份树是哪个方言加载出来的** —— 不是"当前选中的连接是什么"。
+    ///
+    /// 为什么要分开（2026-09-25 需求提出者两次报同一件事）：空态文案原先按
+    /// `appState.selectedConnection?.dbType` 选，而**首连 / 切连接的那一瞬间，两者可以不是同一件事**
+    /// （选中项已经换了、树上还是上一份数据，或反过来）。于是出现了他报的那一幕：
+    /// **MySQL 上点开一个空库，却写着「该数据库下暂无 schema」** —— 用的是另一个连接的方言。
+    /// 改成在**加载这份树的时候**把方言记下来，文案就永远跟眼前这份数据同源。
+    /// （顺带把 `?? .postgresql` 这个兜底去掉了：方言未知时不该冒充 PostgreSQL。）
+    @State private var treeDatabaseType: DatabaseType?
     /// id → 已加载的子节点；值为空数组表示「加载过但没有子节点」。
     @State private var childrenCache: [String: [DatabaseObject]] = [:]
     @State private var expandedIDs: Set<String> = []
@@ -595,15 +604,16 @@ struct ObjectTreeView: View {
         do {
             let children = try await appState.loadMetadataChildren(of: object)
             childrenCache[object.id] = children
-            // **首连时序类的怪事只能靠日志说话**（2026-09-25 需求提出者报"点开没有 schema 的库会出错"，
-            // 而 Core 那条路我单独跑过是干净的 —— 那就得把"到底发生了什么"留下来）：
-            // 数据库节点加载成功但**一个 schema 都没有**时记一行，含方言与连接，
-            // 这样"真没有"与"读错了"在日志里分得开。
+            // **首连时序类的怪事只能靠日志说话**（2026-09-25 需求提出者两次报"点开没有 schema 的库
+            // 会出错"，而 Core 那条路我单独跑过是干净的 —— 那就把"到底发生了什么"留下来）。
+            // 两个方言都记：树上这份数据的方言 vs 当前选中连接的方言 ——
+            // **它们不一致时，就是"文案说错方言"的直接证据**。
             if object.kind == .database, children.isEmpty {
                 StartupLog.write(
-                    "对象树：库 \(object.name) 下 0 个 schema（方言 "
-                        + (appState.selectedConnection?.dbType.rawValue ?? "?")
-                        + "，库节点 id=\(object.id)）"
+                    "对象树：库 \(object.name) 下 0 个子节点"
+                        + "（树方言=\(treeDatabaseType?.rawValue ?? "未记录")"
+                        + "，连接方言=\(appState.selectedConnection?.dbType.rawValue ?? "无")"
+                        + "，节点 id=\(object.id)）"
                 )
             }
         } catch {
@@ -624,6 +634,7 @@ struct ObjectTreeView: View {
             expandedIDs = []
             errors = [:]
             rootError = nil
+            treeDatabaseType = nil
             appState.selectedTreeObject = nil
             return
         }
@@ -641,6 +652,9 @@ struct ObjectTreeView: View {
             let newRoots = try await appState.loadMetadataRoot()
             roots = newRoots
             loaded = newRoots
+            // **与这份数据同时记下方言**：后面所有文案（空态等）只认它，
+            // 于是"树上是什么数据"与"按谁的规矩说话"不可能再对不上。
+            treeDatabaseType = appState.selectedConnection?.dbType
             childrenCache = [:]
             expandedIDs = []
             errors = [:]
@@ -657,6 +671,7 @@ struct ObjectTreeView: View {
             expandedIDs = []
             errors = [:]
             rootError = ErrorPresenter.message(for: error)
+            treeDatabaseType = nil
             appState.selectedTreeObject = nil
         }
         if isLoadingRoot { isLoadingRoot = false }
@@ -711,9 +726,14 @@ struct ObjectTreeView: View {
         case .server:
             return L(.treeEmptyServer)
         case .database:
-            // 空态文案按**方言有没有 schema 层**选（Core 的 `databaseNodeEmptyKey`）：
-            // 以前只有 GBase 被特判，MySQL 上于是会显示「该数据库下暂无 schema」（2026-09-25 实测）。
-            let type = appState.selectedConnection?.dbType ?? .postgresql
+            // 空态文案按**这份树是用哪个方言加载的**来选（见 `treeDatabaseType`），
+            // 而不是"当前选中的连接是什么" —— 首连 / 切连接的瞬间两者可能不是同一件事，
+            // 那正是"MySQL 的库却写「暂无 schema」"的成因（2026-09-25 实测两次）。
+            guard let type = treeDatabaseType else {
+                // 方言未知（还没加载完 / 刚清空）：给一句**不冒充任何方言**的话，
+                // 而不是默认按 PostgreSQL 说"schema"。
+                return L(.treeEmptyDatabaseUnknown)
+            }
             return L(type.databaseNodeEmptyKey)
         case .schema:
             return L(.treeEmptySchema)

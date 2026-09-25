@@ -773,6 +773,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeEmptyServer
     case treeEmptyDatabase
     case treeEmptyDatabaseGBase
+    /// 方言**未知**时的兜底（还没加载完 / 刚清空）：不许冒充 PostgreSQL 说"schema"。
+    case treeEmptyDatabaseUnknown
     case treeEmptySchema
     case treeEmptyTable
     case treeEmptyGeneric
@@ -2434,6 +2436,7 @@ public enum LocalizedStrings {
         .treeEmptyServer: [.simplifiedChinese: "当前用户没有可访问的数据库", .english: "No accessible databases for the current user"],
         .treeEmptyDatabase: [.simplifiedChinese: "该数据库下暂无 schema", .english: "No schemas in this database"],
         .treeEmptyDatabaseGBase: [.simplifiedChinese: "该数据库下暂无表 / 视图", .english: "No tables/views in this database"],
+        .treeEmptyDatabaseUnknown: [.simplifiedChinese: "该数据库下暂无对象", .english: "Nothing to show in this database"],
         .treeEmptySchema: [.simplifiedChinese: "该 schema 下暂无表 / 视图", .english: "No tables/views in this schema"],
         .treeEmptyTable: [.simplifiedChinese: "没有列信息", .english: "No column information"],
         .treeEmptyGeneric: [.simplifiedChinese: "暂无子对象", .english: "No child objects"],
