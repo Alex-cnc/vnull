@@ -662,8 +662,21 @@ struct ConnectionFormView: View {
                 bannerCopyText = nil
                 await service.disconnect()
             } catch {
-                // 失败信息给人看：`String(reflecting:)` 会带上一堆类型名，先截断再说。
-                let detail = String(reflecting: error)
+                // 失败信息**先给人话、再给技术细节**。
+                //
+                // 之前这里只用 `String(reflecting:)`，于是用户看到的是
+                // `DoyahCore.MySQLService.MySQLServiceError.timedOut(5)` 这种类型转储 ——
+                // 它连"超时了多少秒"都要用户自己从括号里读，更别说"该怎么办"。
+                // 现在：有本地化描述就放第一行（`LocalizedError` 会走它），技术细节留在第二行，
+                // 复制全文的按钮照样能拿到完整内容（排障时那句类型转储仍然有用）。
+                let technical = String(reflecting: error)
+                let localized = error.localizedDescription
+                let detail: String
+                if localized.isEmpty || localized == technical {
+                    detail = technical
+                } else {
+                    detail = localized + "\n（技术细节：" + technical + "）"
+                }
                 let preview = detail.count > 600 ? String(detail.prefix(600)) + "..." : detail
                 bannerMessage = L(.connectionFormFailed, preview)
                 // 显示用截断预览，复制用全文 —— 上面那个按钮拿的就是它。
