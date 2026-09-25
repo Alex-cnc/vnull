@@ -45,6 +45,14 @@ let package = Package(
             dependencies: ["DoyahCore"],
             path: "CLI"
         ),
+        // 许可签发工具（**发行方侧**，不进 .app 包）：keygen / issue / verify / inspect。
+        // 为什么单列一个可执行目标：签发要用**私钥**，而私钥不该出现在任何会被分发的东西里 ——
+        // 工具与 App 共用 Core 的 `License` 模型与签名实现，但**打包脚本只打 App**。
+        .executableTarget(
+            name: "doyah-license-tool",
+            dependencies: ["DoyahCore"],
+            path: "Tools/LicenseTool"
+        ),
         // 让 SwiftPM 也能编译 App 源码（Xcode 工程之外的第二条验证路径）。
         // 打包成 .app 由 Scripts/build-app.sh 负责。
         .executableTarget(

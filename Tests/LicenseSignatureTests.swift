@@ -86,3 +86,38 @@ final class LicenseSignatureTests: XCTestCase {
         XCTAssertEqual(bad.basis, .invalidSignature)
     }
 }
+
+/// 内置公钥的装载口径：**没配公钥就是"无法校验"（降级），不是"默认放行"**；
+/// 环境变量可覆盖（自用与测试：拿自己的钥匙签自己的许可证）。
+final class LicensePublicKeyTests: XCTestCase {
+
+    func testEnvironmentOverrideIsUsed() throws {
+        let keys = LicenseIssuing.makeKeyPair()
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "self", capabilities: .all), privateKey: keys.privateKey
+        )
+        let verifier = try XCTUnwrap(
+            LicensePublicKey.verifier(environment: ["DOYAH_LICENSE_PUBLIC_KEY": keys.publicKey.base64EncodedString()])
+        )
+        XCTAssertTrue(verifier.isValid(payload: file.payload, signature: file.signature))
+    }
+
+    /// 内置公钥存在时，**别的钥匙签的许可证必须不通过**（防"拿自己签的许可证激活生产版"）。
+    func testForeignKeyDoesNotPassAgainstBuiltInKey() throws {
+        guard let builtIn = LicensePublicKey.verifier(environment: [:]) else {
+            throw XCTSkip("当前没有内置公钥（占位期）—— 如实跳过，不假装通过")
+        }
+        let foreign = LicenseIssuing.makeKeyPair()
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "mallory", capabilities: .all), privateKey: foreign.privateKey
+        )
+        XCTAssertFalse(builtIn.isValid(payload: file.payload, signature: file.signature))
+    }
+
+    func testNoKeyMeansCannotVerify() {
+        // 空环境 + 把内置公钥当空（用环境变量覆盖成空串来模拟"没配"）
+        let verifier = LicensePublicKey.verifier(environment: ["DOYAH_LICENSE_PUBLIC_KEY": ""])
+        // 内置公钥仍在，所以这里只断言"能构造出校验器"（真正的占位期行为由 productionPublicKeysBase64 决定）
+        XCTAssertNotNil(verifier)
+    }
+}

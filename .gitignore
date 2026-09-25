@@ -48,3 +48,8 @@ App/Resources/AppIcon-1024.png
 /.build-cache-ai14/
 /.build-ai15/
 /.build-cache-ai15/
+
+# 许可签发材料：私钥与签发的许可证一律不入库（私钥不入库是硬纪律）
+issuer*.key
+*.doyahlicense
+Tools/LicenseTool/keys/
