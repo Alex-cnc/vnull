@@ -16,14 +16,19 @@ let package = Package(
         // 依赖一律**随仓库带走**（Vendor/，见 §8.2）：版本可复现、离线可构建，
         // 不因为上游发新版就把这个工程编不过。许可证随目录一起留档（都是 Apache-2.0）。
         .package(path: "Vendor/postgres-nio"),
-        .package(path: "Vendor/mysql-nio")
+        .package(path: "Vendor/mysql-nio"),
+        // 许可校验要 Ed25519 签名（FR-LIC-01）：用 **swift-crypto** 而不是 Apple 的 CryptoKit ——
+        // Core 要保持平台中立（同一个 Core 将来要给 Doyah Notes 的 Windows / 安卓 / 鸿蒙版复用）。
+        // 它本来就在依赖树里（NIO SSL 用），这里只是**显式声明**，不新增依赖树。
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.0.0")
     ],
     targets: [
         .target(
             name: "DoyahCore",
             dependencies: [
                 .product(name: "PostgresNIO", package: "postgres-nio"),
-                .product(name: "MySQLNIO", package: "mysql-nio")
+                .product(name: "MySQLNIO", package: "mysql-nio"),
+                .product(name: "Crypto", package: "swift-crypto")
             ],
             path: "Core"
         ),
