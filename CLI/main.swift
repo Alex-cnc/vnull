@@ -824,7 +824,7 @@ struct DoyahCLI {
 
             print("行详情（\(fields.count) 列）：")
             for field in fields {
-                print("  \(field.columnName) [\(field.typeName)]：\(field.value.summary)")
+                print("  \(field.columnName) [\(field.typeName)]：\(field.value.summary(language: .simplifiedChinese))")
                 if field.value.shape != .null && !field.value.display.isEmpty {
                     for line in field.value.display.split(separator: "\n") {
                         print("      \(line)")
