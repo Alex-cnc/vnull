@@ -27,36 +27,44 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/10 Core 与平台适配层单测"
+echo "==> 1/11 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/10 Core 平台中立性"
+echo "==> 2/11 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/10 Core 展示文本本地化棘轮（R-45）"
+echo "==> 3/11 Core 展示文本本地化棘轮（R-45）"
 python3 Scripts/check-core-localization.py
 
-echo "==> 4/10 文档表格与派生计数"
+echo "==> 4/11 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 # 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
 python3 Scripts/check-terminal-palette.py
 
-echo "==> 5/10 需求状态一致性（索引表 ↔ 正文定义行）"
+echo "==> 5/11 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
 
-echo "==> 6/10 设计令牌棘轮"
+echo "==> 6/11 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 7/10 平台等价矩阵"
+echo "==> 7/11 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 8/10 平台中立性棘轮"
+echo "==> 8/11 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 9/10 命令面板接线（FR-EDIT-25）"
+echo "==> 9/11 命令面板接线（FR-EDIT-25）"
 python3 Scripts/check-palette-wiring.py
 
-echo "==> 10/10 打包 .app（沙箱）"
+echo "==> 10/11 笔记模块解耦（FR-NOTE-23：Doyah Notes 不背数据库代码）"
+if python3 Scripts/check-note-module-isolation.py; then
+    :
+else
+    echo "❌ 笔记模块解耦门禁失败"
+    FAILED=1
+fi
+
+echo "==> 11/11 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
-echo "✅ 验证闭环全部通过（十项）"
+echo "✅ 验证闭环全部通过（十一项）"
