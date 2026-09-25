@@ -24,7 +24,7 @@ USER_NAME="${DOYAH_MYSQL_USER:-}"
 PASSWORD="${DOYAH_MYSQL_PASSWORD:-}"
 DATABASE="${DOYAH_MYSQL_DATABASE:-doyah_test}"
 
-if [ -z "$HOST" ] || [ -z "$USER_NAME" ]; then
+if [ -z "${DOYAH_MYSQL_CONNECTION:-}" ] && { [ -z "$HOST" ] || [ -z "$USER_NAME" ]; }; then
     echo "⏸  未配置 MySQL 实例：本项的真机验收被环境阻塞（本机没有任何 mysql/mariadb 服务）。"
     echo "   需要的是一台可达的 MySQL 5.7 / 8.x 或 MariaDB，只读账号也够跑第 1~5 节。"
     echo "   用法见本脚本头部注释；跑通后把输出贴进 Docs/design/待人工验收清单.md §10.7。"
@@ -33,10 +33,17 @@ fi
 
 fail=0
 check() { if [ "$2" -eq 0 ]; then echo "  ✅ $1"; else echo "  ❌ $1"; fail=1; fi; }
-run_mysql() {
-    "$CLI" mysql --host "$HOST" --port "$PORT" --user "$USER_NAME" \
-        ${PASSWORD:+--password "$PASSWORD"} --database "$DATABASE" --json "$@"
-}
+# 连接来源二选一（**推荐第一条**：口令留在界面/凭据库里，命令行与脚本里都不出现）：
+#   ① DOYAH_MYSQL_CONNECTION=DemoMySQL  —— 用界面上建好的那条连接
+#   ② DOYAH_MYSQL_HOST / USER / PASSWORD / DATABASE —— 显式参数（临时验证用）
+if [ -n "${DOYAH_MYSQL_CONNECTION:-}" ]; then
+    run_mysql() { "$CLI" mysql --connection "$DOYAH_MYSQL_CONNECTION" --json "$@"; }
+else
+    run_mysql() {
+        "$CLI" mysql --host "$HOST" --port "$PORT" --user "$USER_NAME" \
+            ${PASSWORD:+--password "$PASSWORD"} --database "$DATABASE" --json "$@"
+    }
+fi
 run_sql() { run_mysql --sql "$1"; }
 
 echo "== 0) 构建 CLI =="
