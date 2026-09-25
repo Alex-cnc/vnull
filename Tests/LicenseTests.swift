@@ -153,3 +153,85 @@ final class LicenseTests: XCTestCase {
         XCTAssertEqual(LicenseEditionCatalog.features.count, 3)
     }
 }
+
+/// FR-LIC-02 / FR-NOTE-25：**许可证决定界面显示哪几块**，未授权的区**不出现**（不是灰掉诱导）。
+final class LicensePresentationTests: XCTestCase {
+
+    func testStandardShowsOnlyNotes() {
+        let items = LicensePresentation.activityItems(for: .notesOnly)
+        XCTAssertEqual(items, [.notes], "Standard 只显示笔记")
+        XCTAssertFalse(items.contains(.workspace), "Standard 下工作区不可达")
+        XCTAssertFalse(items.contains(.database), "Standard 下数据库不可达")
+    }
+
+    func testProShowsToolsButNotNotes() {
+        let items = LicensePresentation.activityItems(for: [.workspaces, .database])
+        XCTAssertEqual(items, [.workspace, .database])
+        XCTAssertFalse(items.contains(.notes), "Pro 不含笔记（Q10 的口径：纯 IT 工具类）")
+    }
+
+    func testUltraShowsEverythingInDeclarationOrder() {
+        XCTAssertEqual(LicensePresentation.activityItems(for: .all), [.workspace, .database, .notes])
+    }
+
+    /// 任何档位下都能兜底到一个可见项（不会出现"选中项指向不存在的视图"）。
+    func testFallbackAlwaysLandsOnAVisibleItem() {
+        for capabilities in [LicenseCapabilities.notesOnly, [.workspaces, .database], .all] {
+            let fallback = LicensePresentation.fallbackItem(for: capabilities)
+            XCTAssertNotNil(fallback)
+            XCTAssertTrue(LicensePresentation.activityItems(for: capabilities).contains(fallback!))
+        }
+        // 笔记优先（三档里唯一每档都有的能力）
+        XCTAssertEqual(LicensePresentation.fallbackItem(for: [.workspaces, .database]), .workspace)
+        XCTAssertEqual(LicensePresentation.fallbackItem(for: .notesOnly), .notes)
+    }
+
+    /// **Standard 下工作区与数据库真的不可达** —— 不只是"栏上不画"。
+    ///
+    /// 历史偏好里可能存着 `database`（用户先在 Ultra 用过、后换成 Standard），
+    /// 代码里也有直接赋值的入口（对象树命令、工作区页的"去数据库"按钮）。
+    /// 这些入口全部经过 `resolveSelection`，所以只要这里钉住，就不存在"绕过界面配置钻进去"的路。
+    func testStandardMakesWorkspaceAndDatabaseUnreachable() {
+        for attempt in [ActivityBarItem.workspace, .database, .notes] {
+            let resolved = LicensePresentation.resolveSelection(attempt, for: .notesOnly)
+            XCTAssertEqual(resolved, .notes, "Standard 下点 \(attempt.rawValue) 也只能落到笔记")
+        }
+        // 想切到未授权的区：解析结果里绝不会出现它
+        XCTAssertNotEqual(LicensePresentation.resolveSelection(.database, for: .notesOnly), .database)
+        XCTAssertNotEqual(LicensePresentation.resolveSelection(.workspace, for: .notesOnly), .workspace)
+    }
+
+    /// 反过来：授权的档位**不该**把用户从自己选的项上赶走（否则切换视图会"弹回"）。
+    func testResolveKeepsSelectionWhenVisible() {
+        XCTAssertEqual(LicensePresentation.resolveSelection(.database, for: .all), .database)
+        XCTAssertEqual(LicensePresentation.resolveSelection(.workspace, for: .all), .workspace)
+        XCTAssertEqual(LicensePresentation.resolveSelection(.notes, for: .all), .notes)
+        XCTAssertEqual(
+            LicensePresentation.resolveSelection(.database, for: [.workspaces, .database]),
+            .database
+        )
+    }
+
+    func testUpgradeLinesListTheOtherEditions() {
+        let lines = LicensePresentation.upgradeLines(for: .standard)
+        XCTAssertEqual(lines.map(\.edition), [.pro, .ultra])
+        XCTAssertTrue(lines.allSatisfy { !$0.items.isEmpty }, "每一版都要逐条列出功能（Q11 要求）")
+        XCTAssertTrue(LicensePresentation.upgradeLines(for: .ultra).isEmpty, "已是最高档就不推销")
+        // Pro 只看得到往上那一档：**不能向下推销 Standard**（那是降级）。
+        XCTAssertEqual(LicensePresentation.upgradeLines(for: .pro).map(\.edition), [.ultra])
+    }
+
+    /// 每档都要有一个能在界面上念出来的名字（只写 "Pro" 等于没说）。
+    func testEveryEditionHasItsOwnDisplayNameKey() {
+        let keys = LicenseEdition.allCases.map { LicensePresentation.displayNameKey(of: $0) }
+        XCTAssertEqual(Set(keys).count, LicenseEdition.allCases.count, "两档共用一个名字键")
+        for key in keys {
+            XCTAssertFalse(LocalizedStrings.text(key, language: .simplifiedChinese).isEmpty)
+            XCTAssertNotEqual(
+                LocalizedStrings.text(key, language: .simplifiedChinese),
+                LocalizedStrings.text(key, language: .english),
+                "\(key.rawValue) 的中英文一样，等于没翻译"
+            )
+        }
+    }
+}

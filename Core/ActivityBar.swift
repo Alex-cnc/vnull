@@ -12,6 +12,8 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
     // 别在视图里再排一次（两处顺序迟早不一致）。
     case workspace
     case database
+    /// 笔记（DOYAH-01）：**Standard 版只有它**（许可证决定显示哪几项）。
+    case notes
 
     public var id: String { rawValue }
 
@@ -20,6 +22,7 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .database: return "cylinder.split.1x2"
         case .workspace: return "folder"
+        case .notes: return "note.text"
         }
     }
 
@@ -28,6 +31,7 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .database: return .activityDatabase
         case .workspace: return .activityWorkspace
+        case .notes: return .activityNotes
         }
     }
 
@@ -36,6 +40,7 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .database: return .menuViewDatabase
         case .workspace: return .menuViewWorkspace
+        case .notes: return .menuViewNotes
         }
     }
 
@@ -49,15 +54,21 @@ public enum ActivityBarItem: String, CaseIterable, Sendable, Identifiable {
         return ActivityBarItem(rawValue: id) ?? .database
     }
 
-    /// 菜单快捷键：⌘1 / ⌘2（与 VS Code 的"按序号切视图"同一习惯）。
+    /// 菜单快捷键：⌘1 / ⌘2 / ⌘3（与 VS Code 的"按序号切视图"同一习惯）。
     ///
     /// 序号**跟着栏上的顺序**走：栏上第一项就是 ⌘1。写死成"数据库 = ⌘1"会让
     /// "按序号切视图"这条习惯失灵（用户按 ⌘1 期待的是最上面那个）。
-    public var shortcutIndex: Int {
-        switch self {
-        case .workspace: return 1
-        case .database: return 2
-        }
+    ///
+    /// 正因为如此，序号**必须由"当前栏上可见的那几项"算**，不能写死在项上：
+    /// 栏上有哪几项由许可证决定（Standard 只有笔记），Standard 下笔记就是 ⌘1，
+    /// Ultra 下它才是 ⌘3。传可见列表进来，两处顺序就不可能不一致。
+    /// 不可见 = 没有序号（返回 nil）—— 快捷键不该指向一个栏上不存在的视图。
+    public static func shortcutIndex(
+        of item: ActivityBarItem,
+        in visibleItems: [ActivityBarItem]
+    ) -> Int? {
+        guard let position = visibleItems.firstIndex(of: item) else { return nil }
+        return position + 1
     }
 }
 

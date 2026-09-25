@@ -22,7 +22,10 @@ struct ActivityBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(ActivityBarItem.allCases) { item in
+            // **按许可证显示**（FR-LIC-02）：未授权的区不是灰掉，而是不出现 ——
+            // 所以这里必须用 `visibleActivityItems` 而不是 `allCases`。
+            // 忘了改这一行，Standard 用户就会看到两个点了没反应的图标（比"看不到"更糟）。
+            ForEach(appState.visibleActivityItems) { item in
                 viewButton(item)
             }
 
@@ -47,7 +50,13 @@ struct ActivityBarView: View {
                 .frame(width: Metrics.hairline)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(L(.activityDatabase) + " / " + L(.activityWorkspace))
+        .accessibilityLabel(activityBarLabel)
+    }
+
+    /// 无障碍标签也要跟着许可证走：写死"数据库 / 工作区"会让 Standard 用户的读屏
+    /// 念出两个根本不存在的区。
+    private var activityBarLabel: String {
+        appState.visibleActivityItems.map { L($0.titleKey) }.joined(separator: " / ")
     }
 
     // MARK: 视图切换项
@@ -57,7 +66,9 @@ struct ActivityBarView: View {
         let isHovered = hoveredItem == item
 
         return Button {
-            appState.selectedActivityItem = item
+            // 走 AppState 的统一入口：它会再过一遍许可证（这里已经在可见列表里，
+            // 但保持"只有一个写入口"这条结构，将来加别的来源也不会漏）。
+            appState.selectActivityItem(item)
         } label: {
             ZStack(alignment: .leading) {
                 // 选中：左侧强调条

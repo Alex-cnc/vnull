@@ -21,9 +21,20 @@ public enum LicenseLoader {
     }
 
     /// 许可证放哪儿：与应用数据同处，文件名固定。
+    ///
+    /// **`DOYAH_LICENSE_PATH` 可覆盖**（绝对路径）—— 这条存在的理由很实际：
+    /// 验收"三档呈现"要来回换许可证，而真许可证在用户的数据目录里；
+    /// 有了它就能拿一份临时许可证启动一次，**不动用户那份**（与 `DOYAH_SSH_BINARY`、
+    /// `DOYAH_LICENSE_PUBLIC_KEY` 同一套路）。空串视为没设，避免"设成空变量就找不到文件"。
+    public static let licensePathEnvironmentKey = "DOYAH_LICENSE_PATH"
+
     public static func defaultLicenseURL(
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
+        if let override = environment[licensePathEnvironmentKey], !override.isEmpty {
+            return URL(fileURLWithPath: override)
+        }
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base
@@ -34,7 +45,7 @@ public enum LicenseLoader {
     /// 装载并判定。
     ///
     /// - Parameters:
-    ///   - url: 许可证位置（默认 `defaultLicenseURL()`）。
+    ///   - url: 许可证位置（默认 `defaultLicenseURL()`，可被 `DOYAH_LICENSE_PATH` 覆盖）。
     ///   - verifier: 签名校验器（默认取 App 内置公钥；取不到就**无法校验** → 降级）。
     public static func load(
         from url: URL? = nil,
@@ -42,7 +53,7 @@ public enum LicenseLoader {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         now: Date = Date()
     ) -> LoadResult {
-        let target = url ?? defaultLicenseURL()
+        let target = url ?? defaultLicenseURL(environment: environment)
         let resolvedVerifier = verifier ?? LicensePublicKey.verifier(environment: environment)
 
         guard let text = try? String(contentsOf: target, encoding: .utf8) else {
@@ -86,11 +97,9 @@ public enum LicenseLoader {
         case .file:
             switch result.entitlements.basis {
             case .licensed:
-                return LocalizedStrings.format(
-                    .licenseActive,
-                    language: .simplifiedChinese,
-                    result.entitlements.edition.rawValue
-                )
+                // 档位名**不写进这一句**：档位在界面上是单独一行（`licAboutEdition`），
+                // 而且那一行要走 `LicensePresentation.displayNameKey` 才能跟着语言变。
+                return LocalizedStrings.text(.licenseActive, language: .simplifiedChinese)
             case .expired(let date):
                 return LocalizedStrings.format(
                     .licenseExpired,

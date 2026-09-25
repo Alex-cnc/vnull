@@ -10,12 +10,12 @@ final class ActivityBarTests: XCTestCase {
 
     // MARK: 活动栏
 
-    func testTwoViewItemsWithStableIdentifiers() {
-        XCTAssertEqual(ActivityBarItem.allCases.count, 2)
+    func testThreeViewItemsWithStableIdentifiers() {
+        XCTAssertEqual(ActivityBarItem.allCases.count, 3)
         // 顺序 = 栏上的上下位置：工作区在最上面（2026-09-25 需求提出者要求）。
-        XCTAssertEqual(ActivityBarItem.allCases.map(\.rawValue), ["workspace", "database"])
+        XCTAssertEqual(ActivityBarItem.allCases.map(\.rawValue), ["workspace", "database", "notes"])
         XCTAssertEqual(ActivityBarItem.allCases.first, .workspace)
-        XCTAssertEqual(Set(ActivityBarItem.allCases.map(\.id)).count, 2)
+        XCTAssertEqual(Set(ActivityBarItem.allCases.map(\.id)).count, 3)
     }
 
     func testViewItemsHaveDistinctSymbolsTitlesAndMenus() {
@@ -28,13 +28,23 @@ final class ActivityBarTests: XCTestCase {
         }
     }
 
-    /// 切换项的快捷键序号必须是 ⌘1 / ⌘2，**且与栏上顺序一致** ——
+    /// 切换项的快捷键序号必须是 ⌘1 / ⌘2 / ⌘3，**且与栏上顺序一致** ——
     /// 「按序号切视图」是通用习惯，按 ⌘1 应该切到最上面那一项。
+    ///
+    /// 序号是按**传入的可见列表**算的（栏上有哪几项由许可证决定），
+    /// 所以同一项在不同档位下序号不同：Standard 只有笔记 ⇒ 笔记就是 ⌘1。
     func testShortcutIndexesFollowTheOnScreenOrder() {
-        XCTAssertEqual(ActivityBarItem.allCases.map(\.shortcutIndex), [1, 2])
-        XCTAssertEqual(ActivityBarItem.allCases.first?.shortcutIndex, 1)
-        XCTAssertEqual(ActivityBarItem.workspace.shortcutIndex, 1)
-        XCTAssertEqual(ActivityBarItem.database.shortcutIndex, 2)
+        let all = ActivityBarItem.allCases
+        XCTAssertEqual(all.compactMap { ActivityBarItem.shortcutIndex(of: $0, in: all) }, [1, 2, 3])
+        XCTAssertEqual(ActivityBarItem.shortcutIndex(of: .workspace, in: all), 1)
+        XCTAssertEqual(ActivityBarItem.shortcutIndex(of: .database, in: all), 2)
+        XCTAssertEqual(ActivityBarItem.shortcutIndex(of: .notes, in: all), 3)
+
+        // Standard：栏上只剩笔记，它必须占 ⌘1，而不是留一个 ⌘3 让用户去记。
+        XCTAssertEqual(ActivityBarItem.shortcutIndex(of: .notes, in: [.notes]), 1)
+        // 不可见 = 没有序号：快捷键不该指向栏上不存在的视图。
+        XCTAssertNil(ActivityBarItem.shortcutIndex(of: .database, in: [.notes]))
+        XCTAssertNil(ActivityBarItem.shortcutIndex(of: .workspace, in: [.notes]))
     }
 
     func testResolveFallsBackToDatabase() {

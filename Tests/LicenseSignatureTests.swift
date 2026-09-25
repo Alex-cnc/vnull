@@ -151,6 +151,36 @@ final class LicenseLoaderTests: XCTestCase {
         XCTAssertFalse(LicenseLoader.summary(for: result).isEmpty, "要给一句人话（当前呈现 Standard）")
     }
 
+    /// `DOYAH_LICENSE_PATH` 能把"从哪儿读"指到别处 —— 验收三档时用它，
+    /// **不动用户数据目录里那份真许可证**。
+    func testEnvironmentOverridePointsAtAnotherFile() throws {
+        let keys = LicenseIssuing.makeKeyPair()
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "alex", capabilities: [.workspaces, .database], maxDevices: 5),
+            privateKey: keys.privateKey
+        )
+        let url = write(file.encoded(), name: "pro.doyahlicense")
+        let environment = [LicenseLoader.licensePathEnvironmentKey: url.path]
+        XCTAssertEqual(LicenseLoader.defaultLicenseURL(environment: environment), url)
+
+        let result = LicenseLoader.load(
+            verifier: try XCTUnwrap(Ed25519LicenseVerifier(rawPublicKey: keys.publicKey)),
+            environment: environment
+        )
+        XCTAssertEqual(result.entitlements.edition, .pro, "覆盖生效时读的是被指定的文件")
+        XCTAssertEqual(result.source, .file(url))
+    }
+
+    /// 设成空串**当作没设**：否则 `DOYAH_LICENSE_PATH=` 会让它去找一个空路径，
+    /// 症状是"明明放着许可证却一直是 Standard"，而且看不出为什么。
+    func testEmptyEnvironmentOverrideIsIgnored() {
+        let environment = [LicenseLoader.licensePathEnvironmentKey: ""]
+        XCTAssertEqual(
+            LicenseLoader.defaultLicenseURL(environment: environment),
+            LicenseLoader.defaultLicenseURL(environment: [:])
+        )
+    }
+
     func testValidUltraLicenseGivesUltra() throws {
         let keys = LicenseIssuing.makeKeyPair()
         let file = try LicenseIssuing.sign(

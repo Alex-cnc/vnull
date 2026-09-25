@@ -43,6 +43,16 @@ public enum LicenseEdition: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// 档位高低。**只在这里定义一次**：界面上"往上列可升级到哪一档"要用它，
+    /// 靠 `allCases` 的声明顺序去比较是巧合而不是语义（谁把 case 挪一行就全错）。
+    public var rank: Int {
+        switch self {
+        case .standard: return 0
+        case .pro: return 1
+        case .ultra: return 2
+        }
+    }
+
     public static func from(_ capabilities: LicenseCapabilities) -> LicenseEdition? {
         switch capabilities {
         case .notesOnly: return .standard

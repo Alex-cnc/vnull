@@ -49,6 +49,9 @@ struct MainWindow: View {
             )
         case .workspace:
             WorkspaceExplorerView()
+        case .notes:
+            // 笔记的"看哪个视图"= 笔记栏，"视图里看什么" = 选哪一条笔记（列表在侧栏、编辑在右边）。
+            NotesListView()
         }
     }
 
@@ -71,6 +74,8 @@ struct MainWindow: View {
                 QueryWorkspaceView()
             case .workspace:
                 WorkspaceAreaView()
+            case .notes:
+                NotesEditorView()
             }
             }
         }
@@ -147,9 +152,10 @@ struct MainWindow: View {
             MaintenancePanel()
                 .environmentObject(appState)
         }
-        // 笔记（DOYAH-01/03）：建 / 改 / 搜 / 删，来源与「含数据」标记一眼可见。
-        .sheet(isPresented: $appState.isNotesPresented) {
-            NotesPanel()
+        // 版本与许可证（FR-LIC-02）：活动栏上有哪几项由它决定，所以这一页必须能随时打开
+        // （用户看到某个区不见了，第一反应就是找"为什么"）。
+        .sheet(isPresented: $appState.isAboutLicensePresented) {
+            AboutLicenseSheet()
                 .environmentObject(appState)
         }
         // 外部调用审批（FR-AI-10 界面那一半）：外部智能体的写调用在这里等人点。

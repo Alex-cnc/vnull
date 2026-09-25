@@ -274,7 +274,9 @@ struct WorkspaceHomeView: View {
             Button {
                 if let configuration = appState.connections.first(where: { $0.displayTitle(untitled: L(.connectionUntitled)) == entry.path }) {
                     appState.selectedConnectionID = configuration.id
-                    appState.selectedActivityItem = .database
+                    // 走统一入口：工作区首页的"去数据库"也是能钻进未授权区的一条路，
+                    // 当前档位不含数据库时它会照实说一句，而不是切到一个画不出来的视图。
+                    appState.selectActivityItem(.database)
                 }
             } label: {
                 homeRow(title: entry.displayName, detail: entry.path, symbol: "cylinder.split.1x2")

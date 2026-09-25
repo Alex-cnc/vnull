@@ -49,6 +49,11 @@ struct DoyahStudioCommands: Commands {
             Button(L(.menuRelaunchApp)) {
                 localization.isRelaunchPromptPresented = true
             }
+            // 「版本与许可证…」（FR-LIC-02）：住在应用菜单里，紧挨系统自带的"关于" ——
+            // 用户想去的地方就是那儿（"我这个是什么版、为什么少了块功能"）。
+            Button(L(.menuAboutLicense)) {
+                appState.isAboutLicensePresented = true
+            }
         }
 
         CommandGroup(after: .newItem) {
@@ -120,13 +125,18 @@ struct DoyahStudioCommands: Commands {
 
         // 「显示」菜单：下方面板（结果 / 问题 / 输出 / 终端 / 调试控制台）。
         CommandGroup(after: .sidebar) {
-            // 与活动栏一一对应：切换右侧面板看哪个视图（⌘1 / ⌘2 是通用习惯）
-            ForEach(ActivityBarItem.allCases) { item in
+            // 与活动栏一一对应（**按许可证过滤后**的那条栏）：未授权的区在这里也不出现 ——
+            // 菜单是另一个"总能钻进去"的入口，漏了它，"Standard 看不到数据库"就只是画上去的样子。
+            ForEach(appState.visibleActivityItems) { item in
                 Button(L(item.menuKey)) {
-                    appState.selectedActivityItem = item
+                    appState.selectActivityItem(item)
                 }
+                // 序号**由当前可见项算**（Standard 下笔记是 ⌘1，Ultra 下它才是 ⌘3）：
+                // 见 `ActivityBarItem.shortcutIndex(of:in:)` —— 不能写死在项上。
                 .keyboardShortcut(
-                    KeyEquivalent(Character("\(item.shortcutIndex)")),
+                    KeyEquivalent(
+                        Character("\(ActivityBarItem.shortcutIndex(of: item, in: appState.visibleActivityItems) ?? 1)")
+                    ),
                     modifiers: [.command]
                 )
             }

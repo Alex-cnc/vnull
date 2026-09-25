@@ -185,6 +185,8 @@ public enum LKey: String, CaseIterable, Sendable {
     case noteSidecarLost
     case noteLostColor
     case licenseMissing
+    case activityNotes
+    case menuViewNotes
     case licenseUnreadable
     case licenseUnreadableWithReason
     case licenseActive
@@ -192,6 +194,9 @@ public enum LKey: String, CaseIterable, Sendable {
     case licenseInvalidSignature
     case licenseFromFuture
     case licenseUnknownEdition
+    /// 当前档位不含某个区（"%@" 填区名）。**必须说清是版本问题**，
+    /// 否则用户只会觉得"点了没反应"。
+    case licenseAreaNotInEdition
     case licFeatureNotes
     case licFeatureAICapture
     case licFeatureDatabase
@@ -199,6 +204,30 @@ public enum LKey: String, CaseIterable, Sendable {
     case licFeatureAllStandard
     case licFeatureAllPro
     case licFeatureLink
+    // 「版本与许可证」页（FR-LIC-02 界面侧）：把"现在是什么版、许可证在哪、设备几台、
+    // 别的版能做什么"四件事都说清楚 —— 少一件，用户就得去猜为什么某个区不见了。
+    case menuAboutLicense
+    case licAboutTitle
+    case licAboutEdition
+    case licAboutLicensePath
+    case licAboutNoLicenseFile
+    case licAboutInstallHint
+    case licAboutOpenFolder
+    case licAboutReload
+    case licAboutDevicesTitle
+    case licAboutDevices
+    case licAboutNoDevices
+    case licAboutUpgradeTitle
+    case licAboutHidden
+    /// 活动栏上**现在**有哪几项（"%@" 填项名清单）——把"哪一档给了什么"落到用户眼前那条栏上。
+    case licAboutActivityItems
+    /// 一个区都没有（坏许可证的极端情况）：活动栏是空的，得说清是"没有"而不是"加载中"。
+    case licAboutNoActivityItems
+    case licAboutAppVersion
+    case licEditionStandard
+    case licEditionPro
+    case licEditionUltra
+    case licenseNotesNotIncluded
     case noteLostSize
     case noteExportDegraded
     case menuNotes
@@ -207,6 +236,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case notesDelete
     case notesSearchPlaceholder
     case notesEmpty
+    /// 有笔记、但按当前搜索词一条都没命中（与"还没有笔记"是两件事：动作不同——改词 vs 新建）。
+    case noteSearchNoMatch
+    case notesTagsPlaceholder
+    case notesSourceHint
     case notesUntitled
     case notesContainsRowData
     case notesSourcePrefix
@@ -1840,13 +1873,16 @@ public enum LocalizedStrings {
         .noteSidecarLost: [.simplifiedChinese: "旁挂样式定位失败：第 %@ 次出现的「%@」已不存在", .english: "Sidecar style could not be located: occurrence %@ of %@ is gone"],
         .noteLostColor: [.simplifiedChinese: "颜色 %@", .english: "color %@"],
         .licenseMissing: [.simplifiedChinese: "还没有放许可证（当前呈现 Standard）", .english: "No license yet (Standard is shown)"],
+        .activityNotes: [.simplifiedChinese: "笔记", .english: "Notes"],
+        .menuViewNotes: [.simplifiedChinese: "笔记", .english: "Notes"],
         .licenseUnreadable: [.simplifiedChinese: "许可证文件读不出来（格式不对或已损坏）", .english: "The license file cannot be read (bad format or corrupted)"],
         .licenseUnreadableWithReason: [.simplifiedChinese: "许可证读不出来：%@", .english: "Cannot read the license: %@"],
-        .licenseActive: [.simplifiedChinese: "许可证有效：%@ 版", .english: "License is valid: %@ edition"],
+        .licenseActive: [.simplifiedChinese: "许可证有效", .english: "License is valid"],
         .licenseExpired: [.simplifiedChinese: "许可证已于 %@ 到期（已降级到 Standard，数据未受影响）", .english: "The license expired on %@ (downgraded to Standard; your data is untouched)"],
         .licenseInvalidSignature: [.simplifiedChinese: "许可证签名无效（可能被改过，或用的不是我们的公钥）", .english: "The license signature is invalid (it may have been modified, or it is not signed by our key)"],
         .licenseFromFuture: [.simplifiedChinese: "许可证来自更新的版本（v%@），本版无法识别", .english: "The license comes from a newer version (v%@); this build cannot read it"],
         .licenseUnknownEdition: [.simplifiedChinese: "许可证的能力组合不是已知档位", .english: "The license capability set is not a known edition"],
+        .licenseAreaNotInEdition: [.simplifiedChinese: "当前版本不含「%@」——「版本与许可证…」里能看到各版包含什么", .english: "This edition does not include %@ — see Version and License… for what each edition contains"],
         .licFeatureNotes: [.simplifiedChinese: "笔记（记录 / 标签 / 搜索 / 提醒）", .english: "Notes (capture, tags, search, reminders)"],
         .licFeatureAICapture: [.simplifiedChinese: "AI 产物随手沉淀到笔记", .english: "Capture AI output into notes"],
         .licFeatureDatabase: [.simplifiedChinese: "数据库客户端（连接 / 查询 / 元数据 / 结果集）", .english: "Database client (connections, queries, metadata, results)"],
@@ -1854,6 +1890,26 @@ public enum LocalizedStrings {
         .licFeatureAllStandard: [.simplifiedChinese: "Standard 的全部功能", .english: "Everything in Standard"],
         .licFeatureAllPro: [.simplifiedChinese: "Pro 的全部功能", .english: "Everything in Pro"],
         .licFeatureLink: [.simplifiedChinese: "数据库与笔记联动（SQL / 表结构 / 诊断结论入笔记）", .english: "Database-to-notes links (SQL, schema, diagnosis findings)"],
+        .menuAboutLicense: [.simplifiedChinese: "版本与许可证…", .english: "Version and License…"],
+        .licAboutTitle: [.simplifiedChinese: "版本与许可证", .english: "Version and License"],
+        .licAboutEdition: [.simplifiedChinese: "当前版本：%@", .english: "Current edition: %@"],
+        .licAboutLicensePath: [.simplifiedChinese: "许可证文件：%@", .english: "License file: %@"],
+        .licAboutNoLicenseFile: [.simplifiedChinese: "许可证文件：%@（这个文件还不存在）", .english: "License file: %@ (this file does not exist yet)"],
+        .licAboutInstallHint: [.simplifiedChinese: "拿到许可证后，把文件放到上面这个位置，再点「重新读取许可证」——不用重启。", .english: "Once you have a license, put the file at the path above and press Reload License — no restart needed."],
+        .licAboutOpenFolder: [.simplifiedChinese: "打开许可证所在文件夹", .english: "Open license folder"],
+        .licAboutReload: [.simplifiedChinese: "重新读取许可证", .english: "Reload license"],
+        .licAboutDevicesTitle: [.simplifiedChinese: "设备配额", .english: "Device quota"],
+        .licAboutDevices: [.simplifiedChinese: "已用 %@ / %@ 台：%@", .english: "Used %@ of %@: %@"],
+        .licAboutNoDevices: [.simplifiedChinese: "许可证里还没有登记设备（配额 %@ 台）", .english: "No device is registered in the license yet (quota %@)"],
+        .licAboutUpgradeTitle: [.simplifiedChinese: "其它版本能做什么", .english: "What the other editions include"],
+        .licAboutHidden: [.simplifiedChinese: "没授权的区不显示（不是灰掉诱导）：放上对应版本的许可证，它就出现在活动栏上。", .english: "Unauthorized areas are hidden outright (not greyed out as a tease): add the matching license and the area appears on the activity bar."],
+        .licAboutActivityItems: [.simplifiedChinese: "活动栏上现在有：%@", .english: "Currently on the activity bar: %@"],
+        .licAboutNoActivityItems: [.simplifiedChinese: "（一个区都没有：许可证坏了或档位不可识别，见上面的状态）", .english: "(no area at all: the license is broken or its edition is unrecognized — see the status above)"],
+        .licAboutAppVersion: [.simplifiedChinese: "应用版本：%@", .english: "App version: %@"],
+        .licEditionStandard: [.simplifiedChinese: "Standard（笔记）", .english: "Standard (notes)"],
+        .licEditionPro: [.simplifiedChinese: "Pro（工作区 + 数据库）", .english: "Pro (workspace + database)"],
+        .licEditionUltra: [.simplifiedChinese: "Ultra（全部三块）", .english: "Ultra (all three areas)"],
+        .licenseNotesNotIncluded: [.simplifiedChinese: "当前版本不含笔记（Standard / Ultra 才有）", .english: "This edition does not include notes (only Standard and Ultra do)"],
         .noteLostSize: [.simplifiedChinese: "字号 %@", .english: "size %@"],
         .noteExportDegraded: [.simplifiedChinese: "Markdown 表达不了，导出后丢失：「%@」%@", .english: "Markdown cannot express this; lost on export: %@ %@"],
         .menuNotes: [.simplifiedChinese: "笔记…", .english: "Notes…"],
@@ -1862,6 +1918,9 @@ public enum LocalizedStrings {
         .notesDelete: [.simplifiedChinese: "删除", .english: "Delete"],
         .notesSearchPlaceholder: [.simplifiedChinese: "搜索标题 / 正文 / 标签", .english: "Search title, body or tags"],
         .notesEmpty: [.simplifiedChinese: "还没有笔记", .english: "No notes yet"],
+        .noteSearchNoMatch: [.simplifiedChinese: "没有匹配的笔记（笔记还在，换个词试试）", .english: "No matching notes (they are still there — try another word)"],
+        .notesTagsPlaceholder: [.simplifiedChinese: "标签（空格或逗号分开）", .english: "Tags (separate with spaces or commas)"],
+        .notesSourceHint: [.simplifiedChinese: "来源由创建时记下，之后编辑不会改它", .english: "The source is recorded at creation and is not changed by later edits"],
         .notesUntitled: [.simplifiedChinese: "无标题", .english: "Untitled"],
         .notesContainsRowData: [.simplifiedChinese: "含数据", .english: "contains data"],
         .notesSourcePrefix: [.simplifiedChinese: "来源：", .english: "Source: "],

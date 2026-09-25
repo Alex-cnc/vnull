@@ -333,7 +333,8 @@ final class AppState: ObservableObject {
     // 外部调用审批（FR-AI-10 的界面那一半）：待审批队列 + 决定。
     @Published var isMCPApprovalPresented = false
     // 笔记（DOYAH-01/03）：面板状态。判据（检索/来源/安全边界）都在 Core，这里只做搬运。
-    @Published var isNotesPresented = false
+    // 注意：**不再有 `isNotesPresented`** —— 笔记是活动栏上的一栏（`ActivityBarItem.notes`），
+    // 不是浮在上面的弹窗；两个入口并存会让人不确定"关掉这个窗口笔记还在不在"。
     @Published var notes: [Note] = []
     @Published var notesQuery = ""
     @Published var noteEditorTitle = ""
@@ -368,11 +369,95 @@ final class AppState: ObservableObject {
     @Published var pendingForeignKeyJump: ForeignKeyJumpRequest?
 
     /// 活动栏当前选中的视图（FR-EDIT-32）。未知值回退到数据库视图，界面永远起得来。
-    @Published var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
+    ///
+    /// **写入口只有 `selectActivityItem(_:)` 一个**（所以是 `private(set)`）：偏好文件、
+    /// 快捷键、命令面板、代码里的直接赋值都能改它，只要有一条绕过许可证分档，
+    /// "Standard 下工作区与数据库不可达"就成了摆设。收成一个入口、在入口里过一遍
+    /// `LicensePresentation.resolveSelection`，这条口径才是**结构性**的而不是靠自觉。
+    @Published private(set) var selectedActivityItem: ActivityBarItem = ActivityBarItem.resolve(
         id: UserDefaults.standard.string(forKey: ActivityBarItem.storageKey)
-    ) {
-        didSet {
-            UserDefaults.standard.set(selectedActivityItem.rawValue, forKey: ActivityBarItem.storageKey)
+    )
+
+    // MARK: 版本与许可证（FR-LIC-01~05）
+
+    /// 本机许可证的装载结果 —— 界面（活动栏 / 关于页）的**唯一来源**。
+    ///
+    /// 构造 `AppState` 时就同步读一次：读一个小文件而已，而"先按全量画出来、稍后再偷偷改掉"
+    /// 会让用户在心里数过一遍的图标发生变化（启动瞬间闪出未授权的区，然后消失）。
+    @Published private(set) var licenseLoad: LicenseLoader.LoadResult = LicenseLoader.load()
+
+    /// 「版本与许可证」页的呈现开关。
+    @Published var isAboutLicensePresented = false
+
+    /// 当前档位的能力位（没许可证 = Standard，见 `LicenseGate`）。
+    var licenseCapabilities: LicenseCapabilities { licenseLoad.entitlements.capabilities }
+
+    /// 活动栏上**该出现**的那几项（未授权的区不出现，Q11 口径）。
+    var visibleActivityItems: [ActivityBarItem] {
+        LicensePresentation.activityItems(for: licenseCapabilities)
+    }
+
+    /// 当前档位是否含笔记。写笔记的入口都要先问这一句：Pro 里笔记区不显示，
+    /// 但「诊断结论入笔记」「维护计划入笔记」这些按钮住在数据库区里，仍然点得到。
+    var notesEnabled: Bool { licenseCapabilities.contains(.notes) }
+
+    /// 切换活动栏视图。未授权的项会被落到当前档位下可见的项，并**如实说明**为什么没切过去。
+    func selectActivityItem(_ item: ActivityBarItem) {
+        guard let resolved = LicensePresentation.resolveSelection(item, for: licenseCapabilities) else {
+            // 一个区都没授权（坏许可证）：界面照常起来，但不假装切成功了。
+            statusMessage = licenseSummary
+            return
+        }
+        if resolved != item {
+            statusMessage = L(.licenseAreaNotInEdition, L(item.titleKey))
+        }
+        guard resolved != selectedActivityItem else { return }
+        selectedActivityItem = resolved
+        UserDefaults.standard.set(resolved.rawValue, forKey: ActivityBarItem.storageKey)
+    }
+
+    /// 把选中项落到当前档位下可见的项上。
+    ///
+    /// **不提示**：这是修一个自相矛盾的状态（上次选的项这一档看不见了），不是替用户做选择，
+    /// 每次启动都弹一句"已切到笔记"只会变成噪音。
+    func ensureActivitySelectionVisible() {
+        guard let resolved = LicensePresentation.resolveSelection(selectedActivityItem, for: licenseCapabilities),
+              resolved != selectedActivityItem else { return }
+        selectedActivityItem = resolved
+        UserDefaults.standard.set(resolved.rawValue, forKey: ActivityBarItem.storageKey)
+    }
+
+    /// 重新读许可证 —— 用户刚把许可证文件放进去时用，**不用重启**。
+    func reloadLicense() {
+        licenseLoad = LicenseLoader.load()
+        ensureActivitySelectionVisible()
+        statusMessage = licenseSummary
+    }
+
+    /// 许可证状态的一句话，**按界面当前语言取键**。
+    ///
+    /// 为什么不直接用 `LicenseLoader.summary(for:)`：那个 Core 函数固定中文，
+    /// 放在界面上就会"切到英文这一行还是中文"（R-45 记的就是这一类）。
+    /// 界面这一层一律走 `L(...)`；Core 那份留给日志 / CLI。
+    var licenseSummary: String {
+        if case .unreadable = licenseLoad.source {
+            // 文件在但读不出来：与"还没放"分开 —— 两者的用户动作完全不同（去拿 vs 重下）。
+            return L(.licenseUnreadable)
+        }
+        let entitlements = licenseLoad.entitlements
+        switch entitlements.basis {
+        case .licensed:
+            return L(.licenseActive)
+        case .missingLicense:
+            return L(.licenseMissing)
+        case .expired(let date):
+            return L(.licenseExpired, ISO8601DateFormatter().string(from: date))
+        case .invalidSignature:
+            return L(.licenseInvalidSignature)
+        case .unsupportedVersion(let version):
+            return L(.licenseFromFuture, String(version))
+        case .unknownEdition:
+            return L(.licenseUnknownEdition)
         }
     }
 
@@ -976,10 +1061,25 @@ final class AppState: ObservableObject {
         let firstTab = QueryTab(title: L(.workspaceTabTitle, tabNumbers.next()))
         tabs = [firstTab]
         selectedTabID = firstTab.id
+        // 许可证决定栏上有哪几项：上次选的项在这一档可能已经不可见（Ultra 换成 Standard 时
+        // `ui.activityBarItem` 里还存着 `database`）。启动就落到可见项上，否则界面会停在
+        // 一个"选着但画不出来"的视图上 —— 那是最难查的一类"空白界面"。
+        ensureActivitySelectionVisible()
+        // 启动时把"这一档能看到什么"记一行。理由很实际：用户来问「我的工作区 / 数据库不见了」
+        // 时，看一眼 `startup.log` 就知道是哪一档、为什么（不用让他把许可证文件翻出来）。
+        // 只记档位与来源，不记许可证内容。
+        StartupLog.write(
+            "许可证：\(licenseLoad.entitlements.edition.rawValue)"
+                + " / 活动栏 [" + visibleActivityItems.map(\.rawValue).joined(separator: ",") + "]"
+                + " / " + licenseSummary
+        )
         Task {
             await loadConnections()
             await loadSavedQueries()
             await restoreBrowserTabs()
+            // 笔记列表在启动时就载入：它现在是活动栏上的一栏，切过去必须**立刻有内容**，
+            // 不能再依赖"先点一下菜单项"来触发加载。
+            await reloadNotes()
         }
     }
 
@@ -3868,10 +3968,11 @@ final class AppState: ObservableObject {
 
     /// 上述面板都住在**数据库侧栏的对象树**里：命令面板是全局入口，先把它切出来，
     /// 否则请求会落在一个没挂载的视图上 —— 那又是一次"点了没反应"。
+    ///
+    /// 走 `selectActivityItem` 而不是直接赋值：数据库区在当前档位不可见时，
+    /// 它会照实说"当前版本不含数据库"，而不是把界面切到一个画不出来的视图上。
     private func focusObjectTreeSidebar() {
-        if selectedActivityItem != .database {
-            selectedActivityItem = .database
-        }
+        selectActivityItem(.database)
     }
 
     /// 面板里"浏览/DDL/会话"等条目需要宿主视图提供对象；这里用标志位把请求交回界面，
@@ -5797,11 +5898,23 @@ final class AppState: ObservableObject {
     var visibleNotes: [Note] { NoteSearch.match(notes, query: notesQuery) }
 
     func openNotes() {
-        isNotesPresented = true
+        // 笔记有了"活动栏那一栏"这个正式的家（以前只弹一个面板）：入口统一走切换视图，
+        // 于是 Standard 下打开笔记 = 整个界面就是笔记，而不是浮一个窗口在上面。
+        // Pro 不含笔记 —— 那就**照实说**，不要弹一个空面板让人以为坏了。
+        guard visibleActivityItems.contains(.notes) else {
+            statusMessage = L(.licenseNotesNotIncluded)
+            return
+        }
+        selectActivityItem(.notes)
         Task { await reloadNotes() }
     }
 
     func reloadNotes() async {
+        // 不含笔记的档位（Pro）不必读这份文件，更不该把"用户看不见的笔记"留在内存里。
+        guard notesEnabled else {
+            notes = []
+            return
+        }
         do {
             notes = try await NoteStore.defaultStore().load()
         } catch {
@@ -5824,6 +5937,10 @@ final class AppState: ObservableObject {
     }
 
     func saveNoteFromEditor() async {
+        guard notesEnabled else {
+            statusMessage = L(.licenseNotesNotIncluded)
+            return
+        }
         let title = noteEditorTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty || !noteEditorBody.isEmpty else { return }
         let draft = NoteDraft(
@@ -5976,6 +6093,12 @@ final class AppState: ObservableObject {
     /// 为什么要存"被拒绝的条目"：那是**过程事实** —— 不记下来，下次模型还会提同一个被限流拒绝的计划，
     /// 而用户已经拒绝过一次了。
     func saveMaintenanceNote() async {
+        // 「存进笔记」按钮住在数据库区里，而笔记是**独立的一块能力**（Pro 不含它）：
+        // 不先问一句，这个按钮在 Pro 上就会写进一个用户根本看不到的地方。
+        guard notesEnabled else {
+            maintenanceMessage = L(.licenseNotesNotIncluded)
+            return
+        }
         guard let review = maintenanceReview, !review.tasks.isEmpty else {
             maintenanceMessage = L(.maintenanceNoPlan)
             return
@@ -6138,6 +6261,10 @@ final class AppState: ObservableObject {
     /// 只收**采纳的条目**（被拒绝的结论是过程、不是结论），并走 `AICapture` 统一元信息 ——
     /// 界面不自己拼正文，否则来源类型、指纹、安全边界会各拼一份、迟早不一致。
     func saveDiagnosisNote() async {
+        guard notesEnabled else {
+            diagnosisMessage = L(.licenseNotesNotIncluded)
+            return
+        }
         guard let report = diagnosisReport, !report.items.isEmpty else {
             diagnosisMessage = L(.diagnosisEmpty)
             return

@@ -48,6 +48,10 @@ public enum MenuLocalization {
         .menuImportData,
         .menuViewDatabase,
         .menuViewWorkspace,
+        // 笔记（DOYAH-01）：与上面两项同住「显示」菜单，是**视图切换项**，同样要能运行时切语言。
+        .menuViewNotes,
+        // 「版本与许可证…」（FR-LIC-02）：住在应用菜单里，同属自有菜单项。
+        .menuAboutLicense,
         // 下面这几个是 2026-09-24 补登的**历史遗漏**：它们是自有菜单项，但键没有 `menu` 前缀
         // （`.archiveTitle` / `.databaseStatsTitle` / `.schemaDiffTitle` / `.lowerPaneToggle`），
         // 于是"所有 menu 前缀的键都已登记"那条测试一直没抓到它们 —— 实测切到中文后
