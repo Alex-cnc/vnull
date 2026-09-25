@@ -236,6 +236,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case mcpApprovalDecided
     case mcpApprovalBadLines
     case mcpApprovalDenied
+    case mysqlConnectTimedOut
     case mcpNeedsApproval
     case mcpInitialized
     case mcpToolNotExposed
@@ -1835,6 +1836,7 @@ public enum LocalizedStrings {
         .mcpApprovalDecided: [.simplifiedChinese: "已%@：%@", .english: "%@: %@"],
         .mcpApprovalBadLines: [.simplifiedChinese: "队列里有 %@ 行读不出来（已跳过，不影响其余）", .english: "%@ unreadable lines in the queue (skipped; the rest still work)"],
         .mcpApprovalDenied: [.simplifiedChinese: "外部调用被拒绝或等待审批超时：没有执行", .english: "The external call was denied or the approval timed out: nothing ran"],
+        .mysqlConnectTimedOut: [.simplifiedChinese: "连接（含 TLS 与认证）超过 %@ 秒没有完成，已放弃", .english: "The connection (TLS and authentication included) did not finish within %@ seconds; giving up"],
         .mcpNeedsApproval: [.simplifiedChinese: "工具 %@ 需要审批：请先在界面上确认这一次外部调用", .english: "Tool %@ needs approval: confirm this external call in the app first"],
         .mcpInitialized: [.simplifiedChinese: "已就绪：能力继承当前会话，调用进审批与审计", .english: "Ready: capabilities inherit the current session, and every call is approved and audited"],
         .mcpToolNotExposed: [.simplifiedChinese: "没有暴露这个工具：%@", .english: "This tool is not exposed: %@"],

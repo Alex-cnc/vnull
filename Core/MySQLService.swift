@@ -60,7 +60,7 @@ public actor MySQLService: DatabaseService {
         public var errorDescription: String? {
             switch self {
             case .timedOut(let seconds):
-                return "连接（含 TLS 与认证）超过 \(seconds) 秒没有完成，已放弃"
+                return LocalizedStrings.format(.mysqlConnectTimedOut, language: .simplifiedChinese, String(seconds))
             }
         }
     }
