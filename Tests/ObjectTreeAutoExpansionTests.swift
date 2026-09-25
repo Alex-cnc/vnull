@@ -46,3 +46,34 @@ final class ObjectTreeAutoExpansionTests: XCTestCase {
         XCTAssertNil(ObjectTreeAutoExpansion.schema(in: []))
     }
 }
+
+/// **空结果不算"查过了"**（R-59，2026-09-25 需求提出者实测）。
+///
+/// 症状：别的客户端在库里建了表，树里一直停在「该数据库下暂无表 / 视图」；
+/// 折叠再展开也不重查 —— 因为"空数组"被当成了"已加载"。
+final class ObjectTreeReloadPolicyTests: XCTestCase {
+
+    private func object(_ name: String) -> DatabaseObject {
+        DatabaseObject(id: "db:\(name)", name: name, kind: .database, database: name)
+    }
+
+    func testNeverLoadedShouldLoad() {
+        XCTAssertTrue(ObjectTreeReloadPolicy.shouldLoad(cached: nil, isLoading: false))
+    }
+
+    /// **这条就是缺陷本身**：空缓存也要再查一次。
+    func testEmptyResultIsNotTreatedAsLoaded() {
+        XCTAssertTrue(ObjectTreeReloadPolicy.shouldLoad(cached: [], isLoading: false))
+    }
+
+    /// 非空缓存算数：不再无谓地打服务端。
+    func testNonEmptyCacheIsAuthoritative() {
+        XCTAssertFalse(ObjectTreeReloadPolicy.shouldLoad(cached: [object("t")], isLoading: false))
+    }
+
+    /// 正在查的时候不重复发起（与原来的幂等包装同一条纪律）。
+    func testInFlightIsNotDuplicated() {
+        XCTAssertFalse(ObjectTreeReloadPolicy.shouldLoad(cached: nil, isLoading: true))
+        XCTAssertFalse(ObjectTreeReloadPolicy.shouldLoad(cached: [], isLoading: true))
+    }
+}

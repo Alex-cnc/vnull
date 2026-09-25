@@ -591,7 +591,12 @@ struct ObjectTreeView: View {
         }
 
         expandedIDs.insert(object.id)
-        guard childrenCache[object.id] == nil, !loadingIDs.contains(object.id) else { return }
+        // **空结果不算"查过了"**：别人在别的客户端建了表，这个节点也得能重查出来
+        // （规则与理由在 Core 的 `ObjectTreeReloadPolicy`，有单测）。
+        guard ObjectTreeReloadPolicy.shouldLoad(
+            cached: childrenCache[object.id],
+            isLoading: loadingIDs.contains(object.id)
+        ) else { return }
         Task { await loadChildren(of: object) }
     }
 
@@ -715,7 +720,10 @@ struct ObjectTreeView: View {
     /// `loadChildren` 的幂等包装：已经加载过、或正在加载中就不再打一次
     /// （自动展开与用户手点可能撞在同一节点上）。
     private func loadChildrenIfNeeded(of object: DatabaseObject) async {
-        guard childrenCache[object.id] == nil, !loadingIDs.contains(object.id) else { return }
+        guard ObjectTreeReloadPolicy.shouldLoad(
+            cached: childrenCache[object.id],
+            isLoading: loadingIDs.contains(object.id)
+        ) else { return }
         await loadChildren(of: object)
     }
 

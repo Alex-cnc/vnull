@@ -29,3 +29,25 @@ public enum ObjectTreeAutoExpansion {
         return names.count == 1 ? names.first : nil
     }
 }
+
+/// 什么时候该去**重新查**一个节点的子节点。
+///
+/// 为什么单独有这条规则（2026-09-25 需求提出者实测，R-59）：**空结果不能被当成"查过了"**。
+/// 树原先是 `childrenCache[id] == nil` 才去查，而"加载过但一个子节点都没有"存的是**空数组**
+/// —— 它也不是 nil，于是那个节点**再也不会重查**：折叠再展开、点了又点，都停在
+/// 「该数据库下暂无表 / 视图」；只有换连接或在本应用里建对象（根节点重载）才会刷新。
+/// 别人在别的客户端建了表，用户看到的就是"这软件看不到我的表"。
+///
+/// 所以：**非空的缓存算数，空的缓存不算** —— 看起来是空的节点每次展开都再问一次服务端
+/// （代价只有一次元数据往返，且只在"看起来是空"的那种节点上）。
+public enum ObjectTreeReloadPolicy {
+
+    /// - Parameters:
+    ///   - cached: 已缓存的子节点（`nil` = 从没查过）。
+    ///   - isLoading: 这个节点当前正在查（避免重复发起）。
+    public static func shouldLoad(cached: [DatabaseObject]?, isLoading: Bool) -> Bool {
+        if isLoading { return false }
+        guard let cached else { return true }
+        return cached.isEmpty
+    }
+}
