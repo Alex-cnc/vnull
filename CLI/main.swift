@@ -1470,6 +1470,14 @@ struct DoyahCLI {
         return 0
     }
 
+    /// 笔记库位置：`DOYAH_NOTE_STORE` 可整体指到别处（脚本用临时文件，不碰真实数据目录）。
+    private static func noteStore() -> NoteStore {
+        if let path = ProcessInfo.processInfo.environment["DOYAH_NOTE_STORE"], !path.isEmpty {
+            return NoteStore(fileURL: URL(fileURLWithPath: path))
+        }
+        return NoteStore.defaultStore()
+    }
+
     private static func splitIDs(_ text: String) -> [String] {
         text.split(whereSeparator: { $0 == "," || $0 == " " || $0 == "，" })
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -1605,6 +1613,36 @@ struct DoyahCLI {
                     databaseType: dialect.databaseType,
                     policy: policy
                 )
+            }
+
+            // `--save-note`：把**采纳的结论 + 可复跑取证**存进笔记（AI 产物→笔记的桥，DOYAH-10）。
+            // 位置很关键：必须挂在**解析之后** —— 挂在解析之前拿到的永远是 nil，
+            // 会退化成"开关存在但不生效"（上一版就是这么错的，已回退重做）。
+            if arguments.contains("--save-note"), let report = adviceReport {
+                do {
+                    let store = noteStore()
+                    let existing = try await store.load()
+                    let draft = AICapture.diagnosisNote(
+                        question: question,
+                        target: username + "@" + host + ":" + String(port) + "/" + database,
+                        context: context,
+                        report: report
+                    )
+                    let duplicate = draft.source.fingerprint.map { fingerprint in
+                        existing.contains { $0.source.fingerprint == fingerprint }
+                    } ?? false
+                    let saved = try await store.upsert(draft)
+                    if isJSON {
+                        print("{\"ok\":true,\"noteId\":\"" + saved.id.uuidString + "\",\"duplicate\":" + (duplicate ? "true" : "false") + "}")
+                    } else {
+                        print("已存进笔记：" + saved.title + (duplicate ? "（同一份产物之前存过，指纹一致）" : ""))
+                    }
+                    await service.disconnect()
+                    return 0
+                } catch {
+                    FileHandle.standardError.write(Data(("存笔记失败：" + error.localizedDescription + "\n").utf8))
+                    return 1
+                }
             }
 
             if isJSON {
