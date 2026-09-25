@@ -12,81 +12,6 @@ import Foundation
 ///   ③ 指纹可复算（同一份产物重复保存能识别出来）。
 public enum AICapture {
 
-    /// 诊断结果 → 一条笔记（**只收采纳的条目**；被拒绝的结论不进笔记，它们是过程不是结论）。
-    public static func diagnosisNote(
-        question: String,
-        target: String,
-        context: DiagnosisContext,
-        report: DiagnosisAdviceReport
-    ) -> NoteDraft {
-        var lines: [String] = []
-        lines.append(t(.aiNoteGoal, target))
-        lines.append(t(.aiNoteQuestion, question))
-        lines.append("")
-        for item in report.items {
-            lines.append("## \(item.conclusion)")
-            lines.append(t(.aiNoteEvidence, item.citations.joined(separator: ", ")))
-            if let sql = item.suggestedSQL {
-                lines.append("")
-                lines.append("```sql")
-                lines.append(sql)
-                lines.append("```")
-            }
-            lines.append("")
-        }
-        lines.append(t(.aiNoteEvidenceSection))
-        for evidence in context.evidence {
-            // **只写"取了什么、取没取到"，不写行数据** —— 行数据属于结果集，不属于笔记。
-            lines.append(t(.aiNoteEvidenceLine, evidence.id, evidence.kind.displayName, evidence.note))
-            lines.append(t(.aiNoteEvidenceSQL, evidence.sql))
-        }
-        return NoteDraft(
-            title: question.isEmpty ? t(.aiNoteDiagnosisTitle) : question,
-            body: lines.joined(separator: "\n"),
-            tags: [t(.aiNoteTagDiagnosis)],
-            source: NoteSource(
-                kind: .diagnosis,
-                connectionName: connectionName(from: target),
-                fingerprint: fingerprint(of: context, report: report)
-            )
-        )
-    }
-
-    /// 维护计划 → 一条笔记（含逐条状态与理由：**为什么被拒也要记**，否则下次还会再提一遍）。
-    public static func maintenanceNote(
-        planText: String,
-        review: MaintenancePlanReview,
-        target: String
-    ) -> NoteDraft {
-        var lines: [String] = []
-        lines.append(t(.aiNoteGoal, target))
-        lines.append("")
-        lines.append("```")
-        lines.append(planText.trimmingCharacters(in: .whitespacesAndNewlines))
-        lines.append("```")
-        lines.append("")
-        lines.append(t(.aiNotePlanSection))
-        for task in review.tasks {
-            lines.append(t(.aiNotePlanLine, task.id, task.kind.rawValue, stateText(task.state), task.summary))
-            for note in task.reviewNotes {
-                lines.append(t(.aiNotePlanReason, note))
-            }
-        }
-        if !review.unparsableLines.isEmpty {
-            lines.append("")
-            lines.append(t(.aiNoteUnparsableSection))
-            for line in review.unparsableLines {
-                lines.append(t(.aiNoteUnparsableLine, line))
-            }
-        }
-        return NoteDraft(
-            title: t(.aiNotePlanTitle, String(review.tasks.count)),
-            body: lines.joined(separator: "\n"),
-            tags: [t(.aiNoteTagMaintenance)],
-            source: NoteSource(kind: .maintenance, connectionName: connectionName(from: target))
-        )
-    }
-
     /// **skill 草稿**：AI 攒出来的提示词 / 步骤 / 写法（DOYAH-10 的核心场景）。
     public static func skillNote(
         title: String,
@@ -145,7 +70,8 @@ public enum AICapture {
         return line.count > 60 ? String(line.prefix(60)) + "…" : line
     }
 
-    private static func stateText(_ state: MaintenanceTask.State) -> String {
+    /// 维护任务状态的人话（Ultra 侧的适配器在另一个文件里用 → 不能 private）。
+    static func stateText(_ state: MaintenanceTask.State) -> String {
         switch state {
         case .pending: return t(.aiNoteStatePending)
         case .approved: return t(.aiNoteStateApproved)

@@ -31,6 +31,8 @@ NOTE_SOURCES = [
     "Core/Note.swift",
     "Core/NoteBody.swift",
     "Core/License.swift",
+    # 拆分后 `AICapture` 只剩"笔记侧"的映射（诊断 / 维护那两个已移到 AICaptureUltra）
+    "Core/AICapture.swift",
 ]
 
 BANNED_IMPORTS = re.compile(r"^\s*import\s+(?!Foundation\b)(\w+)", re.M)
