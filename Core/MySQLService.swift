@@ -45,7 +45,46 @@ public actor MySQLService: DatabaseService {
         eventLoopGroup?.shutdownGracefully { _ in }
     }
 
+    /// **带超时地连接**（修 R-52）：连接配置里的 `timeout` 过去在 MySQL 侧完全没用上 ——
+    /// TCP 通了但对端不回应时会**永远等下去**，用户看到的是"卡着不动"，比报错更难排查。
+    /// 超时覆盖**连接 + TLS 协商 + 认证**整段（只给 TCP 连接设超时挡不住"连上之后卡在认证"）。
     public func connect() async throws -> ServerInfo {
+        try await Self.withTimeout(TimeInterval(config.timeout)) { [self] in
+            try await connectWithoutTimeout()
+        }
+    }
+
+    /// 超时只看这层：错误要**可区分**（上层才知道是"到点了"而不是被谁取消了）。
+    enum MySQLServiceError: Error, LocalizedError {
+        case timedOut(Int)
+        public var errorDescription: String? {
+            switch self {
+            case .timedOut(let seconds):
+                return "连接（含 TLS 与认证）超过 \(seconds) 秒没有完成，已放弃"
+            }
+        }
+    }
+
+    static func withTimeout<T: Sendable>(
+        _ seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        let limit = max(1, Int(seconds))
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(limit) * 1_000_000_000)
+                throw MySQLServiceError.timedOut(limit)
+            }
+            guard let result = try await group.next() else {
+                throw MySQLServiceError.timedOut(limit)
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func connectWithoutTimeout() async throws -> ServerInfo {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.eventLoopGroup = group
 

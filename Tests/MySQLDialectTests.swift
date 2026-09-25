@@ -163,4 +163,26 @@ final class MySQLDialectTests: XCTestCase {
         XCTAssertFalse(MySQLService.isIPLiteral("localhost"))
         XCTAssertFalse(MySQLService.isIPLiteral(""))
     }
+
+    // MARK: - 连接超时（R-52：以前超时没用上，卡住不结束）
+
+    func testWithTimeoutReturnsFastResult() async throws {
+        let value = try await MySQLService.withTimeout(5) { 42 }
+        XCTAssertEqual(value, 42)
+    }
+
+    func testWithTimeoutThrowsOnSlowOperation() async {
+        do {
+            _ = try await MySQLService.withTimeout(1) {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return 0
+            }
+            XCTFail("慢操作应当超时")
+        } catch let error as MySQLService.MySQLServiceError {
+            guard case .timedOut(let seconds) = error else { return XCTFail("应当是超时错误") }
+            XCTAssertEqual(seconds, 1, "超时秒数要如实回报（1 秒下限）")
+        } catch {
+            XCTFail("应当是 timedOut，实际 \(error)")
+        }
+    }
 }
