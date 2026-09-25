@@ -323,27 +323,20 @@ struct TableDesignSheet: View {
 
     private var previewText: String {
         guard isEditing else {
-            // 新建：先建表，再把它带的索引 / 约束按同一份顺序补上（都是独立语句）。
+            // 新建：**预览就是执行计划本身**（`createTablePlan`），不在这里另拼一份 ——
+            // 拼两份必然分叉：曾经预览是"建表 + 索引/约束"，执行却拿到完整变更集，
+            // 于是每列又 ADD COLUMN 一次（MySQL：Duplicate column name 'id'，2026-09-25 实测）。
             let target = tableName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "table_name"
                 : tableName
-            let create = SQLGenerator.createTable(
+            let plan = TableDesignChangeSet.createTablePlan(
                 table: target,
                 columns: columns,
                 schema: trimmedSchema,
+                extras: changeSet,
                 dialect: SQLDialectFactory.make(for: databaseType)
             )
-            let extras = TableDesignChangeSet.statements(
-                for: TableDesignChangeSet(
-                    newIndexes: changeSet.newIndexes,
-                    newForeignKeys: changeSet.newForeignKeys,
-                    newConstraints: changeSet.newConstraints
-                ),
-                table: target,
-                schema: trimmedSchema,
-                dialect: SQLDialectFactory.make(for: databaseType)
-            )
-            return ([create] + extras).joined(separator: "\n")
+            return plan.isEmpty ? L(.tableDesignInvalid) : plan.joined(separator: "\n")
         }
         return statements.isEmpty ? L(.tableDesignNoChanges) : statements.joined(separator: "\n")
     }

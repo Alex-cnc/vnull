@@ -706,19 +706,32 @@ struct ConnectionFormView: View {
             } catch {
                 // 失败信息**先给人话、再给技术细节**。
                 //
-                // 之前这里只用 `String(reflecting:)`，于是用户看到的是
-                // `DoyahCore.MySQLService.MySQLServiceError.timedOut(5)` 这种类型转储 ——
-                // 它连"超时了多少秒"都要用户自己从括号里读，更别说"该怎么办"。
-                // 现在：有本地化描述就放第一行（`LocalizedError` 会走它），技术细节留在第二行，
-                // 复制全文的按钮照样能拿到完整内容（排障时那句类型转储仍然有用）。
+                // 2026-09-25 实测补了一课：这条路以前**完全没用 `ConnectionFailure`**，
+                // 直接用 `error.localizedDescription` —— 于是「测试连接」失败时看到的是
+                // `未能完成操作。（PostgresNIO.PSQLError错误1。）`（等于没说），
+                // 而真正有用的判据（SQLSTATE 28000 = 服务端 pg_hba.conf 没放行本机）躺在第二行的
+                // 类型转储里，还带着一串 GBK 乱码。现在：**先走连接失败的可读化**（人话 + 建议），
+                // 再接技术细节；「复制完整错误」照旧拿全文，排障时不丢信息。
                 let technical = String(reflecting: error)
-                let localized = error.localizedDescription
-                let detail: String
-                if localized.isEmpty || localized == technical {
-                    detail = technical
+                let failure = ConnectionFailure.describe(
+                    error,
+                    target: ConnectionFailure.Target(
+                        host: host.trimmingCharacters(in: .whitespacesAndNewlines),
+                        port: Int(port) ?? dbType.defaultPort,
+                        database: database.trimmingCharacters(in: .whitespacesAndNewlines),
+                        username: username.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                )
+                var head: [String] = []
+                if let failure {
+                    head.append(failure.summary)
+                    if let suggestion = failure.suggestion { head.append("建议：" + suggestion) }
+                    if let code = failure.code { head.append("错误码：" + code) }
                 } else {
-                    detail = localized + "\n（技术细节：" + technical + "）"
+                    let localized = error.localizedDescription
+                    if !localized.isEmpty, localized != technical { head.append(localized) }
                 }
+                let detail = (head + ["（技术细节：" + technical + "）"]).joined(separator: "\n")
                 let preview = detail.count > 600 ? String(detail.prefix(600)) + "..." : detail
                 bannerMessage = L(.connectionFormFailed, preview)
                 // 显示用截断预览，复制用全文 —— 上面那个按钮拿的就是它。

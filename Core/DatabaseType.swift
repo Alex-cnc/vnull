@@ -67,6 +67,21 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
         sslModes.contains(mode)
     }
 
+    /// **数据库节点没有子节点时**该说哪句话（FR-META 的树空态）。
+    ///
+    /// 判据是"这个方言有没有 schema 层"，不是"它是不是 GBase"。
+    /// 2026-09-25 需求提出者实测：以前只有 GBase 被特判，于是 **MySQL** 上打开一个空库会显示
+    /// 「该数据库下暂无 schema」—— 对着一个**根本没有 schema 概念**的库说"暂无 schema"，
+    /// 用户只会以为是自己建错了。MySQL / GBase（同族）都该说"暂无表 / 视图"。
+    ///
+    /// 用 `defaultSchema == nil` 当"没有 schema 层"的判据：它与树形结构用的是同一个事实
+    /// （见 `defaultSchema` 的注释），不会两处打架。
+    ///
+    /// 键名里的 `GBase` 是历史（它最早只给 GBase 用），语义已经是"**没有 schema 层**的方言"。
+    public var databaseNodeEmptyKey: LKey {
+        defaultSchema == nil ? .treeEmptyDatabaseGBase : .treeEmptyDatabase
+    }
+
     /// 把不属于这个方言的模式收敛到方言默认值，**并如实报告"改过"**。
     ///
     /// 不静默改配置：老配置（或手改过的文件）里可能存着 `allow`，界面得说一句

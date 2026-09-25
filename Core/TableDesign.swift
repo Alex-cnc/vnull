@@ -346,6 +346,47 @@ public struct TableDesignChangeSet: Equatable, Sendable {
     /// 有改动 —— 界面用它决定提交按钮是否可用（比 `!isEmpty` 读起来清楚）。
     public var hasChanges: Bool { !isEmpty }
 
+    /// **新建表时真正要额外执行的那一部分**：只有新索引 / 新外键 / 新约束。
+    ///
+    /// 为什么单独有这一条（一次真实缺陷，2026-09-25 需求提出者实测）：
+    /// 表设计面板的**预览**只拼了「`CREATE TABLE` + 索引 / 约束」，而**执行**那条路
+    /// 把**完整变更集**（`editedColumns` = 全部列、`originalColumns` = 空）交给了
+    /// `statements(...)` —— 于是每个列又发了一次 `ALTER TABLE … ADD COLUMN`。
+    /// 用户在 MySQL 上看到的就是「第 1 条变更执行失败：`Duplicate column name 'id'`」
+    /// （表已经建出来了，第一列却加不进去）。
+    ///
+    /// 预览与执行必须是**同一份语句**，这个属性就是那条边界的唯一落点：
+    /// 列已经写在 `CREATE TABLE` 里了，不需要也不该再"加"一次；而"删"更没有对象可删
+    /// （表还是新的）。
+    public var createTableExtras: TableDesignChangeSet {
+        TableDesignChangeSet(
+            newIndexes: newIndexes,
+            newForeignKeys: newForeignKeys,
+            newConstraints: newConstraints
+        )
+    }
+
+    /// 新建一张表的**完整执行计划**：第一句是 `CREATE TABLE`（列都在里面），
+    /// 其后是索引 / 外键 / 约束。**预览与执行都走它**，因此不可能再分叉。
+    ///
+    /// 返回空数组表示"有一条生成不出来"（列不合法或索引 / 约束非法）——
+    /// 与 `statements(...)` 同一口径：**宁可什么都不做，也不给一份残缺的计划**。
+    public static func createTablePlan(
+        table: String,
+        columns: [TableColumnDefinition],
+        schema: String?,
+        extras: TableDesignChangeSet?,
+        dialect: any SQLDialect
+    ) -> [String] {
+        let wanted = (extras ?? TableDesignChangeSet()).createTableExtras
+        let create = SQLGenerator.createTable(table: table, columns: columns, schema: schema, dialect: dialect)
+        guard !wanted.isEmpty else { return [create] }
+        let rest = statements(for: wanted, table: table, schema: schema, dialect: dialect)
+        // `statements(...)` 用空数组表示"有一条生成不出来"；只有**确实有东西要生成**时才算失败。
+        guard !rest.isEmpty else { return [] }
+        return [create] + rest
+    }
+
     /// 生成要执行的语句，**顺序固定**：
     /// ① 删约束（旧主键 / 唯一 / 外键先让路）→ ② 删索引 → ③ 列变更 → ④ 新索引 → ⑤ 新外键 → ⑥ 新约束。
     ///

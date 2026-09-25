@@ -194,3 +194,117 @@ final class TableDesignChangeSetTests: XCTestCase {
         XCTAssertNil(BareDialect().tableConstraintsQuery(table: "t", schema: nil))
     }
 }
+
+/// **新建表的执行计划**（2026-09-25 需求提出者实测的真实缺陷）。
+///
+/// 症状：新建表时界面报「第 1 条变更执行失败：MySQL error: Server error: Duplicate column name 'id'」。
+/// 真凶：**预览与执行不是同一份语句** —— 预览只拼了 `CREATE TABLE` + 索引 / 约束，
+/// 而执行那条路把整份变更集（`editedColumns` = 全部列）交给了 `statements(...)`，
+/// 于是每一列又发了一次 `ALTER TABLE … ADD COLUMN`，第一列就撞上"列已存在"。
+///
+/// 这一组测试钉的就是那条边界：**新建表的计划里不该出现任何列变更语句**。
+final class TableDesignCreatePlanTests: XCTestCase {
+
+    private let pg = PostgresDialect()
+    private let mysql = MySQLDialect()
+
+    private func column(_ name: String, type: String = "text", pk: Bool = false) -> TableColumnDefinition {
+        TableColumnDefinition(name: name, typeName: type, isNullable: !pk, defaultValue: "", isPrimaryKey: pk)
+    }
+
+    private var twoColumns: [TableColumnDefinition] {
+        [column("id", type: "integer", pk: true), column("name")]
+    }
+
+    /// 新建表：计划第一句是 `CREATE TABLE`，**且后面没有一句 ADD COLUMN**。
+    func testCreatePlanNeverReAddsColumns() {
+        let extras = TableDesignChangeSet(
+            originalColumns: [],
+            editedColumns: twoColumns,
+            newIndexes: [SQLGenerator.IndexDefinition(name: "t_name_idx", table: "t", schema: nil, columns: ["name"], isUnique: false, whereClause: nil)]
+        )
+        let plan = TableDesignChangeSet.createTablePlan(
+            table: "t", columns: twoColumns, schema: nil, extras: extras, dialect: pg
+        )
+        XCTAssertEqual(plan.count, 2, "应当是 CREATE TABLE + CREATE INDEX 两句")
+        XCTAssertTrue(plan[0].hasPrefix("CREATE TABLE"), "第一句必须是建表：\(plan[0])")
+        XCTAssertTrue(plan[0].contains("\"id\"") && plan[0].contains("\"name\""), "列要写进建表语句里")
+        for statement in plan.dropFirst() {
+            XCTAssertFalse(
+                statement.contains("ADD COLUMN"),
+                "列已经在 CREATE TABLE 里了，不该再 ADD 一次（这正是用户看到的 Duplicate column name）：\(statement)"
+            )
+        }
+        XCTAssertTrue(plan[1].contains("CREATE INDEX"), "索引仍要补上：\(plan[1])")
+    }
+
+    /// **回归**：把"整份变更集"当 extras 传进来（界面之前就是这么传的），也不许产生 ADD COLUMN。
+    func testFullChangeSetPassedAsExtrasIsStillSafe() {
+        let full = TableDesignChangeSet(originalColumns: [], editedColumns: twoColumns)
+        let plan = TableDesignChangeSet.createTablePlan(
+            table: "t", columns: twoColumns, schema: nil, extras: full, dialect: mysql
+        )
+        XCTAssertEqual(plan.count, 1, "没有索引 / 约束时就只有建表一句：\(plan)")
+        XCTAssertFalse(plan[0].contains("ADD COLUMN"))
+    }
+
+    /// `createTableExtras` 只留"新的"，把列变更与删除项都丢掉（新表没有东西可删）。
+    func testCreateTableExtrasDropsColumnsAndDrops() {
+        let set = TableDesignChangeSet(
+            originalColumns: [column("old")],
+            editedColumns: twoColumns,
+            newIndexes: [SQLGenerator.IndexDefinition(name: "i", table: "t", schema: nil, columns: ["name"], isUnique: false, whereClause: nil)],
+            droppedIndexes: ["gone"],
+            newConstraints: [TableConstraintDraft(name: "ck", definition: "CHECK (true)")],
+            droppedConstraints: ["also_gone"]
+        )
+        let extras = set.createTableExtras
+        XCTAssertTrue(extras.originalColumns.isEmpty)
+        XCTAssertTrue(extras.editedColumns.isEmpty)
+        XCTAssertTrue(extras.droppedIndexes.isEmpty)
+        XCTAssertTrue(extras.droppedConstraints.isEmpty)
+        XCTAssertEqual(extras.newIndexes.count, 1)
+        XCTAssertEqual(extras.newConstraints.count, 1)
+        XCTAssertFalse(extras.isEmpty, "确实有东西要补，不能被当成空")
+    }
+
+    /// 没有任何 extras 时，计划就只有建表那一句。
+    func testPlanWithoutExtrasIsJustCreate() {
+        XCTAssertEqual(
+            TableDesignChangeSet.createTablePlan(table: "t", columns: twoColumns, schema: nil, extras: nil, dialect: pg),
+            [SQLGenerator.createTable(table: "t", columns: twoColumns, schema: nil, dialect: pg)]
+        )
+    }
+
+    /// 索引非法（没有列）时**整批返回空** —— 与 `statements(...)` 同一口径：不给残缺计划。
+    func testPlanIsEmptyWhenAnExtraCannotBeGenerated() {
+        let bad = TableDesignChangeSet(
+            newIndexes: [SQLGenerator.IndexDefinition(name: "i", table: "t", schema: nil, columns: [], isUnique: false, whereClause: nil)]
+        )
+        XCTAssertTrue(
+            TableDesignChangeSet.createTablePlan(table: "t", columns: twoColumns, schema: nil, extras: bad, dialect: pg).isEmpty
+        )
+    }
+
+    /// 编辑已有表那条路**不受影响**：列变更照旧生成（别把建表的规则误用到 ALTER 上）。
+    func testEditingStillEmitsColumnChanges() {
+        let edited = TableDesignChangeSet(originalColumns: [column("id", type: "integer", pk: true)], editedColumns: twoColumns)
+        let statements = TableDesignChangeSet.statements(for: edited, table: "t", schema: nil, dialect: pg)
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].contains("ADD COLUMN"), "ALTER 路径该有的列变更不能少：\(statements[0])")
+    }
+
+    /// MySQL 方言下的建表计划同样干净（用户就是在 MySQL 上撞到的）。
+    func testMySQLCreatePlanIsClean() {
+        let plan = TableDesignChangeSet.createTablePlan(
+            table: "t",
+            columns: twoColumns,
+            schema: nil,
+            extras: TableDesignChangeSet(originalColumns: [], editedColumns: twoColumns),
+            dialect: mysql
+        )
+        XCTAssertEqual(plan.count, 1)
+        XCTAssertTrue(plan[0].contains("`id`"), "MySQL 用反引号：\(plan[0])")
+        XCTAssertFalse(plan.joined().contains("ADD COLUMN"))
+    }
+}

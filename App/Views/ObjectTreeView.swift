@@ -697,10 +697,10 @@ struct ObjectTreeView: View {
         case .server:
             return L(.treeEmptyServer)
         case .database:
-            if appState.selectedConnection?.dbType == .gbase8a {
-                return L(.treeEmptyDatabaseGBase)
-            }
-            return L(.treeEmptyDatabase)
+            // 空态文案按**方言有没有 schema 层**选（Core 的 `databaseNodeEmptyKey`）：
+            // 以前只有 GBase 被特判，MySQL 上于是会显示「该数据库下暂无 schema」（2026-09-25 实测）。
+            let type = appState.selectedConnection?.dbType ?? .postgresql
+            return L(type.databaseNodeEmptyKey)
         case .schema:
             return L(.treeEmptySchema)
         case .table, .view, .sequence:

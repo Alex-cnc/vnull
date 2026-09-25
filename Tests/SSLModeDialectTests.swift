@@ -86,3 +86,28 @@ final class SSLModeDialectTests: XCTestCase {
         XCTAssertEqual(DatabaseType.mysql.normalizedSSLMode(.allow).mode, .prefer)
     }
 }
+
+/// 数据库节点的**空态文案**按"有没有 schema 层"选（2026-09-25 需求提出者实测）。
+///
+/// 症状：在 MySQL 上打开一个空库，树里写「该数据库下暂无 schema」——
+/// 而 MySQL **根本没有 schema 概念**（库即 schema），这句话会让用户以为是自己建错了。
+final class DatabaseNodeEmptyTextTests: XCTestCase {
+
+    func testSchemaLessDialectsSayTablesNotSchemas() {
+        XCTAssertEqual(DatabaseType.mysql.databaseNodeEmptyKey, .treeEmptyDatabaseGBase)
+        XCTAssertEqual(DatabaseType.gbase8a.databaseNodeEmptyKey, .treeEmptyDatabaseGBase)
+    }
+
+    func testPostgreSQLStillTalksAboutSchemas() {
+        XCTAssertEqual(DatabaseType.postgresql.databaseNodeEmptyKey, .treeEmptyDatabase)
+    }
+
+    /// 判据是"有没有 schema 层"这件事本身（`defaultSchema`），不是逐个方言特判 ——
+    /// 这样将来加一个没有 schema 层的方言，空态文案自动就是对的。
+    func testRuleFollowsSchemaLayerCapability() {
+        for type in DatabaseType.allCases {
+            let expected: LKey = type.defaultSchema == nil ? .treeEmptyDatabaseGBase : .treeEmptyDatabase
+            XCTAssertEqual(type.databaseNodeEmptyKey, expected, type.rawValue)
+        }
+    }
+}

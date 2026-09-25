@@ -123,3 +123,77 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertFalse(ConnectionFailure.requiresPassword(Wrapper()))
     }
 }
+
+/// **pg_hba.conf 拒绝** 与 **乱码服务端消息**（2026-09-25 需求提出者实测的两处）。
+///
+/// 报的原话：`连接失败：未能完成操作。（PostgresNIO.PSQLError错误1。）` +
+/// 技术细节里一串 `û���������� "192.168.5.223" … no encryption … pg_hba.conf`。
+///
+/// 两件事都要修：① 28000 不许一律说成"口令不对"（他的口令没变，是服务端没放行本机）；
+/// ② 服务端消息是 GBK 字节被当 UTF-8 解出来的，中文读不出来 —— 至少要把能懂的 ASCII 部分
+/// 捞出来，并**如实说明**中文为什么看不见。
+final class ConnectionFailurePGHBATests: XCTestCase {
+
+    /// 真实抓到的那句（乱码原样，含 U+FFFD）。
+    private let garbled = "û���������� \"192.168.5.223\", �û� \"zxvmax\", ���ݿ� \"zxvmax\", no encryption �� pg_hba.conf ��¼"
+
+    private let target = ConnectionFailure.Target(
+        host: "192.168.5.217", port: 5432, database: "zxvmax", username: "zxvmax"
+    )
+
+    /// 28000 + `pg_hba.conf` → 说清是**服务端规则**问题，并给一条能照抄的 pg_hba 记录。
+    func testPGHBARejectionIsNotReportedAsWrongPassword() throws {
+        let described = try XCTUnwrap(
+            ConnectionFailure.describe(sqlState: "28000", message: garbled, target: target)
+        )
+        XCTAssertTrue(described.summary.contains("pg_hba.conf"), described.summary)
+        XCTAssertFalse(described.summary.contains("口令"), "不许把它说成口令问题：\(described.summary)")
+        let suggestion = try XCTUnwrap(described.suggestion)
+        // 提取到服务端视角的客户端地址 —— 建议里要能直接照抄
+        XCTAssertTrue(suggestion.contains("192.168.5.223/32"), suggestion)
+        XCTAssertTrue(suggestion.contains("zxvmax"), suggestion)
+        // 明文连接要给"改客户端 SSL 模式"这条备选路径
+        XCTAssertTrue(suggestion.contains("no encryption") || suggestion.contains("不加密"), suggestion)
+        XCTAssertEqual(described.code, "28000")
+    }
+
+    /// 加密连接被拒时，规则要用 `hostssl`（别让人去加一条 `host` 然后还是连不上）。
+    func testPGHBARejectionMentionsHostsslWhenEncrypted() throws {
+        let message = "no pg_hba.conf entry for host \"10.0.0.5\", user \"u\", database \"d\", SSL encryption"
+        let described = try XCTUnwrap(
+            ConnectionFailure.describe(sqlState: "28000", message: message, target: nil)
+        )
+        XCTAssertTrue(try XCTUnwrap(described.suggestion).contains("hostssl"))
+    }
+
+    /// 真正的口令错误（消息里没有 pg_hba）仍走原来那条。
+    func testPasswordFailureKeepsItsOwnMessage() throws {
+        let described = try XCTUnwrap(
+            ConnectionFailure.describe(
+                sqlState: "28P01",
+                message: "password authentication failed for user \"u\"",
+                target: target
+            )
+        )
+        XCTAssertTrue(described.summary.contains("认证失败"), described.summary)
+        XCTAssertFalse(described.summary.contains("pg_hba"), described.summary)
+    }
+
+    /// 乱码消息：抽出能看懂的 ASCII，并明说中文读不出来（**不假装修好了**）。
+    func testGarbledServerTextKeepsReadablePartsAndSaysWhy() {
+        let readable = ConnectionFailure.readableServerText(garbled)
+        XCTAssertTrue(readable.contains("192.168.5.223"), readable)
+        XCTAssertTrue(readable.contains("zxvmax"), readable)
+        XCTAssertTrue(readable.contains("no encryption"), readable)
+        XCTAssertTrue(readable.contains("pg_hba.conf"), readable)
+        XCTAssertTrue(readable.contains("非 UTF-8"), readable)
+        XCTAssertFalse(readable.contains("\u{FFFD}"), "不该把替换字符原样留在给人看的文本里")
+    }
+
+    /// 干净消息**原样返回** —— 不许给正常文案套一层"乱码"的帽子。
+    func testCleanServerTextIsUntouched() {
+        let clean = "relation \"t\" does not exist"
+        XCTAssertEqual(ConnectionFailure.readableServerText(clean), clean)
+        XCTAssertEqual(ConnectionFailure.readableServerText("  "), "")
+    }
+}

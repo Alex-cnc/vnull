@@ -916,29 +916,32 @@ final class AppState: ObservableObject {
 
         let dialect = SQLDialectFactory.make(for: configuration.dbType)
         let trimmedSchema = schema?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sql = SQLGenerator.createTable(
+        let resolvedSchema = (trimmedSchema?.isEmpty ?? true) ? nil : trimmedSchema
+        // **计划由 Core 给**（`createTablePlan`）：预览与执行同一份语句。
+        // 以前这里自己拼"建表 + 完整变更集"，而预览拼的是"建表 + 索引/约束" ——
+        // 于是每个列又被 `ADD COLUMN` 一次（MySQL：Duplicate column name 'id'，2026-09-25 实测）。
+        let plan = TableDesignChangeSet.createTablePlan(
             table: name,
             columns: columns,
-            schema: (trimmedSchema?.isEmpty ?? true) ? nil : trimmedSchema,
+            schema: resolvedSchema,
+            extras: extras,
             dialect: dialect
         )
+        guard let createStatement = plan.first else {
+            errorMessage = L(.tableDesignInvalid)
+            return false
+        }
 
         do {
             let service = try await ensureService(
                 for: configuration,
                 database: currentDatabaseName(for: configuration)
             )
-            _ = try await runSingleQuery(sql, on: service)
+            _ = try await runSingleQuery(createStatement, on: service)
 
             // 建表带的索引 / 约束：建表成功后按同一份顺序补上（各自独立语句）。
             // 中途失败要**说清第几条**并让对象树刷新 —— 表已经建出来了，不能让人以为什么都没发生。
-            let extraStatements = TableDesignChangeSet.statements(
-                for: extras ?? TableDesignChangeSet(),
-                table: name,
-                schema: (trimmedSchema?.isEmpty ?? true) ? nil : trimmedSchema,
-                dialect: dialect
-            )
-            for (index, statement) in extraStatements.enumerated() {
+            for (index, statement) in plan.dropFirst().enumerated() {
                 do {
                     _ = try await runSingleQuery(statement, on: service)
                 } catch {
