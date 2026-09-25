@@ -121,3 +121,87 @@ final class LicensePublicKeyTests: XCTestCase {
         XCTAssertNotNil(verifier)
     }
 }
+
+/// 装载口径（FR-LIC-02 的 Core 半边）：**"没放许可证"与"许可证坏了"必须分得开**，
+/// 因为用户该做的事完全不同。
+final class LicenseLoaderTests: XCTestCase {
+
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("doyah-license-load-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func write(_ text: String, name: String = "license.doyahlicense") -> URL {
+        let url = directory.appendingPathComponent(name)
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    func testMissingFileMeansStandardWithItsOwnReason() {
+        let result = LicenseLoader.load(from: directory.appendingPathComponent("nope.doyahlicense"))
+        XCTAssertEqual(result.entitlements.edition, .standard)
+        XCTAssertEqual(result.source, .missing)
+        XCTAssertFalse(LicenseLoader.summary(for: result).isEmpty, "要给一句人话（当前呈现 Standard）")
+    }
+
+    func testValidUltraLicenseGivesUltra() throws {
+        let keys = LicenseIssuing.makeKeyPair()
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "alex", capabilities: .all, maxDevices: 5), privateKey: keys.privateKey
+        )
+        let url = write(file.encoded())
+        let verifier = try XCTUnwrap(Ed25519LicenseVerifier(rawPublicKey: keys.publicKey))
+        let result = LicenseLoader.load(from: url, verifier: verifier)
+        XCTAssertEqual(result.entitlements.edition, .ultra)
+        XCTAssertEqual(result.entitlements.basis, .licensed)
+        XCTAssertEqual(result.source, .file(url))
+        XCTAssertEqual(result.license?.issuedTo, "alex")
+    }
+
+    /// **坏文件与"没放"要分开说**（这是本轮特意分开的两个 source）。
+    func testCorruptFileIsDistinguishedFromMissing() {
+        let url = write("DOYAH-LICENSE-1\n不是 base64\n也不是")
+        let result = LicenseLoader.load(from: url)
+        XCTAssertEqual(result.entitlements.edition, .standard)
+        guard case .unreadable = result.source else { return XCTFail("应当是 unreadable，实际 \(result.source)") }
+        XCTAssertFalse(LicenseLoader.summary(for: result).isEmpty)
+    }
+
+    func testTamperedFileDegradesAndSaysSignatureInvalid() throws {
+        let keys = LicenseIssuing.makeKeyPair()
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "alex", capabilities: .all), privateKey: keys.privateKey
+        )
+        var lines = file.encoded().split(separator: "\n").map(String.init)
+        let payload = String(decoding: file.payload, as: UTF8.self).replacingOccurrences(of: "alex", with: "mallory")
+        lines[1] = Data(payload.utf8).base64EncodedString()
+        let url = write(lines.joined(separator: "\n"))
+        let verifier = try XCTUnwrap(Ed25519LicenseVerifier(rawPublicKey: keys.publicKey))
+        let result = LicenseLoader.load(from: url, verifier: verifier)
+        XCTAssertEqual(result.entitlements.edition, .standard)
+        XCTAssertEqual(result.entitlements.basis, .invalidSignature)
+        // 许可证本身仍能被解析出来（数据没被动过），只是签名不过 —— 界面上要能同时说这两件事
+        XCTAssertEqual(result.license?.issuedTo, "mallory")
+    }
+
+    func testExpiredLicenseSaysExpiredAndKeepsData() throws {
+        let keys = LicenseIssuing.makeKeyPair()
+        let expired = Date(timeIntervalSince1970: 1_000)
+        let file = try LicenseIssuing.sign(
+            License(issuedTo: "alex", capabilities: .all, expiresAt: expired), privateKey: keys.privateKey
+        )
+        let url = write(file.encoded())
+        let verifier = try XCTUnwrap(Ed25519LicenseVerifier(rawPublicKey: keys.publicKey))
+        let result = LicenseLoader.load(from: url, verifier: verifier, now: Date(timeIntervalSince1970: 5_000))
+        XCTAssertEqual(result.entitlements.edition, .standard)
+        XCTAssertEqual(result.entitlements.basis, .expired(expired))
+        XCTAssertNotNil(result.license, "到期只是降级：许可证与数据都还在")
+    }
+}

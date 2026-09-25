@@ -184,6 +184,14 @@ public enum LKey: String, CaseIterable, Sendable {
     case notesTitle
     case noteSidecarLost
     case noteLostColor
+    case licenseMissing
+    case licenseUnreadable
+    case licenseUnreadableWithReason
+    case licenseActive
+    case licenseExpired
+    case licenseInvalidSignature
+    case licenseFromFuture
+    case licenseUnknownEdition
     case licFeatureNotes
     case licFeatureAICapture
     case licFeatureDatabase
@@ -1831,6 +1839,14 @@ public enum LocalizedStrings {
         .notesTitle: [.simplifiedChinese: "笔记", .english: "Notes"],
         .noteSidecarLost: [.simplifiedChinese: "旁挂样式定位失败：第 %@ 次出现的「%@」已不存在", .english: "Sidecar style could not be located: occurrence %@ of %@ is gone"],
         .noteLostColor: [.simplifiedChinese: "颜色 %@", .english: "color %@"],
+        .licenseMissing: [.simplifiedChinese: "还没有放许可证（当前呈现 Standard）", .english: "No license yet (Standard is shown)"],
+        .licenseUnreadable: [.simplifiedChinese: "许可证文件读不出来（格式不对或已损坏）", .english: "The license file cannot be read (bad format or corrupted)"],
+        .licenseUnreadableWithReason: [.simplifiedChinese: "许可证读不出来：%@", .english: "Cannot read the license: %@"],
+        .licenseActive: [.simplifiedChinese: "许可证有效：%@ 版", .english: "License is valid: %@ edition"],
+        .licenseExpired: [.simplifiedChinese: "许可证已于 %@ 到期（已降级到 Standard，数据未受影响）", .english: "The license expired on %@ (downgraded to Standard; your data is untouched)"],
+        .licenseInvalidSignature: [.simplifiedChinese: "许可证签名无效（可能被改过，或用的不是我们的公钥）", .english: "The license signature is invalid (it may have been modified, or it is not signed by our key)"],
+        .licenseFromFuture: [.simplifiedChinese: "许可证来自更新的版本（v%@），本版无法识别", .english: "The license comes from a newer version (v%@); this build cannot read it"],
+        .licenseUnknownEdition: [.simplifiedChinese: "许可证的能力组合不是已知档位", .english: "The license capability set is not a known edition"],
         .licFeatureNotes: [.simplifiedChinese: "笔记（记录 / 标签 / 搜索 / 提醒）", .english: "Notes (capture, tags, search, reminders)"],
         .licFeatureAICapture: [.simplifiedChinese: "AI 产物随手沉淀到笔记", .english: "Capture AI output into notes"],
         .licFeatureDatabase: [.simplifiedChinese: "数据库客户端（连接 / 查询 / 元数据 / 结果集）", .english: "Database client (connections, queries, metadata, results)"],
