@@ -514,6 +514,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionFormPassword
     case connectionFormPasswordKeep
     case connectionFormSSLMode
+    /// R-53：载入时把方言不支持的模式收敛掉了，**得说一声**。
+    case connectionFormSSLModeAdjusted
+    /// R-53：这个方言的 SSL 模式比 PostgreSQL 少（MySQL 系没有 `allow`）。
+    case connectionFormSSLModeNarrowed
     case connectionFormTimeout
     case connectionFormTest
     case connectionFormTesting
@@ -2191,6 +2195,8 @@ public enum LocalizedStrings {
         .connectionFormPassword: [.simplifiedChinese: "密码", .english: "Password"],
         .connectionFormPasswordKeep: [.simplifiedChinese: "留空则保持原密码", .english: "Leave blank to keep current password"],
         .connectionFormSSLMode: [.simplifiedChinese: "SSL 模式", .english: "SSL Mode"],
+        .connectionFormSSLModeAdjusted: [.simplifiedChinese: "这个数据库类型不支持「%@」，已改为「%@」", .english: "This database type does not support %@; switched to %@"],
+        .connectionFormSSLModeNarrowed: [.simplifiedChinese: "MySQL 系没有 PostgreSQL 的 Allow 模式，所以这里只列它实际支持的几档", .english: "The MySQL family has no PostgreSQL-style Allow mode, so only the modes it actually supports are listed here"],
         .connectionFormTimeout: [.simplifiedChinese: "连接超时：%d 秒", .english: "Timeout: %d s"],
         .connectionFormTest: [.simplifiedChinese: "测试连接", .english: "Test Connection"],
         .connectionFormTesting: [.simplifiedChinese: "测试中...", .english: "Testing..."],

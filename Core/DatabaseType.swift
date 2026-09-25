@@ -41,6 +41,41 @@ public enum DatabaseType: String, Codable, CaseIterable, Hashable, Sendable, Ide
         }
     }
 
+    /// 这个方言**实际支持**的 SSL 模式（顺序即界面上的顺序）。
+    ///
+    /// 为什么必须有这一条（**R-53**，2026-09-25 界面实测：「MySQL 连接上出现了 PG 专属的 Allow」）：
+    /// `SSLMode` 一份枚举服务三个方言，但 **`allow` 是 PostgreSQL 独有的** ——
+    /// MySQL 的 `--ssl-mode` 只有 `DISABLED / PREFERRED / REQUIRED / VERIFY_CA / VERIFY_IDENTITY`。
+    /// 更糟的是我们 MySQL 驱动把 `.allow` 与 `.prefer` / `.require` 放在同一分支（"加密但不校验证书"），
+    /// 于是 MySQL 连接上选 `Allow` 时**标签写的是一个不存在的模式、行为却是 Require** —— 标签撒谎。
+    /// 收窄列表比在文档里解释"这个选项其实没用"要诚实得多。
+    public var sslModes: [SSLMode] {
+        switch self {
+        case .postgresql:
+            return [.disable, .allow, .prefer, .require, .verifyCA, .verifyFull]
+        case .mysql:
+            return [.disable, .prefer, .require, .verifyCA, .verifyFull]
+        case .gbase8a:
+            // 同族（MySQL 协议）故同一份清单；**GBase 的 TLS 能力未实测**（无实例，见 FR-DRV-08），
+            // 如实跟着同族走，不假装验过。
+            return [.disable, .prefer, .require, .verifyCA, .verifyFull]
+        }
+    }
+
+    /// 这个方言认不认这个模式。
+    public func supports(_ mode: SSLMode) -> Bool {
+        sslModes.contains(mode)
+    }
+
+    /// 把不属于这个方言的模式收敛到方言默认值，**并如实报告"改过"**。
+    ///
+    /// 不静默改配置：老配置（或手改过的文件）里可能存着 `allow`，界面得说一句
+    /// "这个数据库类型不支持，已改为默认值"，否则用户会发现"我明明选的 Allow，怎么变成 Prefer 了"。
+    public func normalizedSSLMode(_ mode: SSLMode) -> (mode: SSLMode, didChange: Bool) {
+        if supports(mode) { return (mode, false) }
+        return (defaultSSLMode, true)
+    }
+
     public var defaultSchema: String? {
         switch self {
         case .postgresql:
@@ -78,6 +113,20 @@ public enum SSLMode: String, Codable, CaseIterable, Hashable, Sendable, Identifi
             return "Verify CA"
         case .verifyFull:
             return "Verify Full"
+        }
+    }
+
+    /// 在**某个方言**下的显示名（R-53）：`verify-full` 是 PostgreSQL 的叫法，
+    /// MySQL 那一档叫 `VERIFY_IDENTITY`（要校验主机名）。同一个枚举、两个名字，
+    /// 界面上必须按方言显示 —— 否则用户拿着 MySQL 去查 `verify-full` 会查不到东西。
+    ///
+    /// 名字保持协议原文（英文）：它们是**协议关键字**，翻译反而会让人对不上官方文档。
+    public func displayName(for type: DatabaseType) -> String {
+        switch (self, type) {
+        case (.verifyFull, .mysql), (.verifyFull, .gbase8a):
+            return "Verify Identity"
+        default:
+            return displayName
         }
     }
 }

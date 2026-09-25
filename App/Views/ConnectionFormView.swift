@@ -35,6 +35,9 @@ struct ConnectionFormView: View {
     @State private var group: String
     @State private var password: String
     @State private var sslMode: SSLMode
+    /// 载入时被收敛掉的 SSL 模式（R-53）：非 nil 就在 SSL 那一行下面说一句，
+    /// 免得用户以为是自己记错了。
+    @State private var sslModeWasAdjusted: SSLMode?
     @State private var timeout: Int
     @State private var bannerMessage: String?
     /// **可复制的完整文本**：显示层为了不撑爆对话框会截断，但用户要复制的是**全文**
@@ -95,7 +98,13 @@ struct ConnectionFormView: View {
         _database = State(initialValue: configuration?.database ?? "")
         _username = State(initialValue: configuration?.username ?? "")
         _password = State(initialValue: "")
-        _sslMode = State(initialValue: configuration?.sslMode ?? DatabaseType.postgresql.defaultSSLMode)
+        // SSL 模式按**方言**收窄（R-53）：老配置 / 手改过的文件里可能存着该方言不支持的模式
+        // （典型：MySQL 上存着 PG 专属的 `allow`）。这里收敛到方言默认值，并留一句话给界面显示 ——
+        // 不静默改，否则用户会觉得"我明明选的 Allow 怎么变成 Prefer 了"。
+        let storedSSLMode = configuration?.sslMode ?? DatabaseType.postgresql.defaultSSLMode
+        let resolvedSSLMode = (configuration?.dbType ?? .postgresql).normalizedSSLMode(storedSSLMode)
+        _sslMode = State(initialValue: resolvedSSLMode.mode)
+        _sslModeWasAdjusted = State(initialValue: resolvedSSLMode.didChange ? storedSSLMode : nil)
         _timeout = State(initialValue: configuration?.timeout ?? 5)
         // 编辑已有连接时把标签带进来 —— 否则"编辑一次就丢标签"（这类丢失很难被发现）。
         _environment = State(initialValue: configuration?.environment)
@@ -206,7 +215,11 @@ struct ConnectionFormView: View {
                 }
                 .onChange(of: dbType) { _, newValue in
                     port = String(newValue.defaultPort)
+                    // 换方言 = 换一份支持清单（R-53）：`allow` 是 PG 专属，MySQL 没有它。
+                    // 无脑重置为方言默认值是**有意的**：把 PG 的 `allow` 原样带到 MySQL 上
+                    // 就是一个"标签撒谎"的组合（见 `DatabaseType.sslModes`）。
                     sslMode = newValue.defaultSSLMode
+                    sslModeWasAdjusted = nil
                 }
 
                 TextField(L(.connectionFormHost), text: $host)
@@ -288,9 +301,24 @@ struct ConnectionFormView: View {
 
                 sshSection
 
-                Picker(L(.connectionFormSSLMode), selection: $sslMode) {
-                    ForEach(SSLMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+                // SSL 模式**按方言列出**（R-53）：MySQL 系没有 PG 的 `allow`，
+                // 摊开六个选项等于让用户选一个我们不认识、也没法真的照做的模式。
+                VStack(alignment: .leading, spacing: 2) {
+                    Picker(L(.connectionFormSSLMode), selection: $sslMode) {
+                        ForEach(dbType.sslModes) { mode in
+                            Text(mode.displayName(for: dbType)).tag(mode)
+                        }
+                    }
+                    if let adjusted = sslModeWasAdjusted {
+                        Text(L(.connectionFormSSLModeAdjusted, adjusted.displayName, sslMode.displayName(for: dbType)))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.status(.warning))
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if dbType.sslModes.count != SSLMode.allCases.count {
+                        Text(L(.connectionFormSSLModeNarrowed))
+                            .font(Theme.font(.caption))
+                            .foregroundStyle(Theme.text(.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -606,7 +634,11 @@ struct ConnectionFormView: View {
             port = String(config.port)
             database = config.database
             username = config.username
-            sslMode = config.sslMode
+            // 从 URL 导入也要过一遍方言收窄（R-53）：`sslmode=allow` 贴到 MySQL URL 上
+            // 同样会出现"PG 专属模式"，不能只在"载入老配置"那条路上过滤。
+            let importedSSL = config.dbType.normalizedSSLMode(config.sslMode)
+            sslMode = importedSSL.mode
+            sslModeWasAdjusted = importedSSL.didChange ? config.sslMode : nil
             // 两条合并规则在 Core 里（`ConnectionURL.FormMerge`，有单测）：
             // 名称只在空着的时候采用 URL 推断值；密码只在 URL 里带了才覆盖。
             password = ConnectionURL.FormMerge.resolvedPassword(current: password, imported: imported.password)
