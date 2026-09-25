@@ -1832,6 +1832,10 @@ struct DoyahCLI {
         var resultRows: [[String]] = []
         var resultColumns: [String] = []
         var affected: Int?
+        // 逐条语句的**附带交代**（MySQL 侧典型是"最后一个自增 ID = N"）。
+        // 以前 `--json` 把它整个丢了：结果里只有 affectedRows，脚本没法断言"自增 ID 有交代"，
+        // 人读路径更是压根看不到 —— 而"这条 INSERT 到底拿到几号自增 ID"是用户关心的事实。
+        var notices: [String] = []
         if let sql = value(for: "--sql") {
             do {
                 var statements = 0
@@ -1843,7 +1847,12 @@ struct DoyahCLI {
                         resultColumns = result.columns.map(\.name)
                         resultRows = result.rows.map { $0.map { $0 ?? "NULL" } }
                         affected = result.affectedRows
-                    case .finished, .notice:
+                        // notice 有两个来源（结果集自带的字段 / 独立事件），两个都收：
+                        // 不同方言走哪条不该让调用方去猜。
+                        if let notice = result.notice { notices.append(notice) }
+                    case .notice(let text):
+                        notices.append(text)
+                    case .finished:
                         break
                     }
                 }
@@ -1865,6 +1874,7 @@ struct DoyahCLI {
                 "[" + row.map(jsonQuoted).joined(separator: ",") + "]"
             }.joined(separator: ",")
             let affectedText = affected.map(String.init) ?? "null"
+            let noticesText = notices.map(jsonQuoted).joined(separator: ",")
             var json = "{"
             json += "\"ok\":true"
             json += ",\"version\":\(jsonQuoted(info.version))"
@@ -1875,6 +1885,7 @@ struct DoyahCLI {
             json += "],\"rows\":["
             json += rows
             json += "],\"affectedRows\":\(affectedText)"
+            json += ",\"notices\":[\(noticesText)]"
             json += "}"
             print(json)
         } else {
@@ -1890,6 +1901,9 @@ struct DoyahCLI {
             }
             if let affected {
                 print("影响行数：\(affected)")
+            }
+            for notice in notices {
+                print(notice)
             }
         }
 

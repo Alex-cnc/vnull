@@ -37,7 +37,14 @@ check() { if [ "$2" -eq 0 ]; then echo "  ✅ $1"; else echo "  ❌ $1"; fail=1;
 #   ① DOYAH_MYSQL_CONNECTION=DemoMySQL  —— 用界面上建好的那条连接
 #   ② DOYAH_MYSQL_HOST / USER / PASSWORD / DATABASE —— 显式参数（临时验证用）
 if [ -n "${DOYAH_MYSQL_CONNECTION:-}" ]; then
-    run_mysql() { "$CLI" mysql --connection "$DOYAH_MYSQL_CONNECTION" --json "$@"; }
+    # **显式给了 `DOYAH_MYSQL_DATABASE` 就以它为准**（2026-09-25 补）：连接里存的库可能是业务库，
+    # 而这个脚本会**建表 / 删表**，必须能把它赶进一个专用测试库（本工程 §0.9 的环境纪律）。
+    # CLI 取第一个 `--database`，所以这里先给的会赢过连接里的那个。
+    if [ -n "${DOYAH_MYSQL_DATABASE:-}" ]; then
+        run_mysql() { "$CLI" mysql --database "$DOYAH_MYSQL_DATABASE" --connection "$DOYAH_MYSQL_CONNECTION" --json "$@"; }
+    else
+        run_mysql() { "$CLI" mysql --connection "$DOYAH_MYSQL_CONNECTION" --json "$@"; }
+    fi
 else
     run_mysql() {
         "$CLI" mysql --host "$HOST" --port "$PORT" --user "$USER_NAME" \
@@ -77,6 +84,16 @@ JSON="$(run_mysql)"
 echo "$JSON" | grep -q '"ok":true' && check "连接成功（真实认证插件）" 0 || check "连接成功（真实认证插件）" 1
 echo "$JSON" | grep -q '"version":"' && check "读到了服务端版本" 0 || check "读到了服务端版本" 1
 
+# **库名以服务端回报的为准**（2026-09-25 修正）：用 `--connection <名字>` 时库来自那条连接，
+# 未必是 `doyah_test`；以前拿变量去 `SHOW TABLES FROM` 会查错库，第 6 节因此恒假。
+SERVER_DB="$(printf '%s' "$JSON" | sed -n 's/.*"database":"\([^"]*\)".*/\1/p')"
+if [ -n "$SERVER_DB" ]; then
+    DATABASE="$SERVER_DB"
+    check "拿到了当前库名（$DATABASE）" 0
+else
+    check "拿到了当前库名（--database 为空时服务端可能回报空串）" 1
+fi
+
 echo ""
 echo "== 2) 真实类型与字符集（中文 / NULL / 空串 / 小数 / 日期 / 时间） =="
 run_sql "DROP TABLE IF EXISTS doyah_mysql_probe" >/dev/null 2>&1
@@ -97,15 +114,22 @@ run_sql "DROP TABLE IF EXISTS doyah_mysql_auto" >/dev/null 2>&1
 run_sql "CREATE TABLE doyah_mysql_auto (id INT AUTO_INCREMENT PRIMARY KEY, v INT)" >/dev/null 2>&1
 AUTO="$(run_sql "INSERT INTO doyah_mysql_auto (v) VALUES (7), (8), (9)")"
 echo "$AUTO" | grep -q '"affectedRows":3' && check "影响行数 = 3" 0 || check "影响行数 = 3" 1
-echo "$AUTO" | grep -q "自增 ID" && check "自增 ID 有交代" 0 || check "自增 ID 有交代" 1
+# `--json` 从 2026-09-25 起带 `notices`（以前这一格在 JSON 里被丢掉了，脚本无从断言）。
+echo "$AUTO" | grep -q '自增 ID' && check "自增 ID 有交代（notices 里）" 0 || check "自增 ID 有交代（notices 里）" 1
 
 echo ""
-echo "== 4) 事务：回滚之后数据真的不在 =="
-run_sql "START TRANSACTION" >/dev/null 2>&1
-run_sql "INSERT INTO doyah_mysql_auto (v) VALUES (99)" >/dev/null 2>&1
-run_sql "ROLLBACK" >/dev/null 2>&1
+echo "== 4) 事务：回滚之后数据真的不在（**必须在同一个会话里**） =="
+# 2026-09-25 修正：以前是四次独立调用（START TRANSACTION / INSERT / ROLLBACK / SELECT），
+# 每次调用都是一条**新连接** —— 事务根本不存在，INSERT 早就自动提交了，这条断言恒假。
+# 现在把整段事务放进**一次** `--sql`：驱动在同一连接上按顺序发这几条语句，
+# 于是"回滚"验的才是真的回滚语义。
+run_sql "START TRANSACTION; INSERT INTO doyah_mysql_auto (v) VALUES (99); ROLLBACK" >/dev/null 2>&1
 COUNT="$(run_sql "SELECT COUNT(*) FROM doyah_mysql_auto WHERE v = 99")"
 echo "$COUNT" | grep -q '\[\["0"\]\]' && check "回滚生效（查不到 99）" 0 || check "回滚生效（查不到 99）" 1
+# 对照组：同样一次调用、但没有 ROLLBACK —— 必须查得到，否则上一条可能只是"没写进去"
+run_sql "START TRANSACTION; INSERT INTO doyah_mysql_auto (v) VALUES (100); COMMIT" >/dev/null 2>&1
+COUNT2="$(run_sql "SELECT COUNT(*) FROM doyah_mysql_auto WHERE v = 100")"
+echo "$COUNT2" | grep -q '\[\["1"\]\]' && check "对照：提交的数据查得到（100）" 0 || check "对照：提交的数据查得到（100）" 1
 
 echo ""
 echo "== 5) 错误路径（真实服务端的报错要原样说人话） =="
