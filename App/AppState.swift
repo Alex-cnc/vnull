@@ -6033,6 +6033,36 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// 把当前诊断结果**存进笔记**（DOYAH-10 的界面入口）。
+    ///
+    /// 只收**采纳的条目**（被拒绝的结论是过程、不是结论），并走 `AICapture` 统一元信息 ——
+    /// 界面不自己拼正文，否则来源类型、指纹、安全边界会各拼一份、迟早不一致。
+    func saveDiagnosisNote() async {
+        guard let report = diagnosisReport, !report.items.isEmpty else {
+            diagnosisMessage = L(.diagnosisEmpty)
+            return
+        }
+        do {
+            let store = NoteStore.defaultStore()
+            let existing = try await store.load()
+            let draft = AICapture.diagnosisNote(
+                question: diagnosisQuestion,
+                target: selectedConnection.map { "\($0.username)@\($0.endpointDescription)" } ?? "",
+                context: diagnosisContext,
+                report: report
+            )
+            let duplicate = draft.source.fingerprint.map { fingerprint in
+                existing.contains { $0.source.fingerprint == fingerprint }
+            } ?? false
+            let saved = try await store.upsert(draft)
+            diagnosisMessage = duplicate
+                ? L(.diagnosisNoteDuplicate, saved.title)
+                : L(.diagnosisNoteSaved, saved.title)
+        } catch {
+            diagnosisMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
     /// 把建议的 SQL 放进编辑器（**不执行**：执行仍然走用户自己那一步与那道审批闸门）。
     func putDiagnosisSQLInEditor(_ sql: String) {
         guard let tab = selectedTab else { return }

@@ -238,6 +238,9 @@ public enum LKey: String, CaseIterable, Sendable {
     case mcpApprovalDenied
     case mysqlConnectTimedOut
     case aiNoteGoal
+    case diagnosisSaveNote
+    case diagnosisNoteSaved
+    case diagnosisNoteDuplicate
     case aiNoteQuestion
     case aiNoteEvidence
     case aiNoteEvidenceSection
@@ -1860,6 +1863,9 @@ public enum LocalizedStrings {
         .mcpApprovalDenied: [.simplifiedChinese: "外部调用被拒绝或等待审批超时：没有执行", .english: "The external call was denied or the approval timed out: nothing ran"],
         .mysqlConnectTimedOut: [.simplifiedChinese: "连接（含 TLS 与认证）超过 %@ 秒没有完成，已放弃", .english: "The connection (TLS and authentication included) did not finish within %@ seconds; giving up"],
         .aiNoteGoal: [.simplifiedChinese: "目标：%@", .english: "Target: %@"],
+        .diagnosisSaveNote: [.simplifiedChinese: "存进笔记", .english: "Save to notes"],
+        .diagnosisNoteSaved: [.simplifiedChinese: "已存进笔记：%@", .english: "Saved to notes: %@"],
+        .diagnosisNoteDuplicate: [.simplifiedChinese: "已存进笔记：%@（同一份产物之前存过）", .english: "Saved to notes: %@ (the same output was captured before)"],
         .aiNoteQuestion: [.simplifiedChinese: "问题：%@", .english: "Question: %@"],
         .aiNoteEvidence: [.simplifiedChinese: "依据：%@", .english: "Evidence: %@"],
         .aiNoteEvidenceSection: [.simplifiedChinese: "### 取证（可复跑）", .english: "### Evidence (re-runnable)"],

@@ -206,6 +206,11 @@ struct DiagnosisPanel: View {
             HStack {
                 Button(L(.diagnosisParse)) { appState.parseDiagnosisReply() }
                     .disabled(appState.diagnosisReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                // 存进笔记（DOYAH-10）：只存**采纳的结论 + 可复跑取证**，不含结果行数据。
+                Button(L(.diagnosisSaveNote)) {
+                    Task { await appState.saveDiagnosisNote() }
+                }
+                .disabled((appState.diagnosisReport?.items.isEmpty ?? true))
                 Spacer()
             }
         }
