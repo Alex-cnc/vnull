@@ -1729,6 +1729,13 @@ struct DoyahCLI {
             arguments.append(contentsOf: ["--database", saved.config.database])
             if let password = saved.password, !password.isEmpty {
                 arguments.append(contentsOf: ["--password", password])
+            } else {
+                // **取不到口令要说话**：以前是静默地按"没口令"去连，如果服务端其实要求口令，
+                // 用户看到的会是认证失败或（更糟）一直等 —— 而真正该做的是先在界面上输一次口令。
+                // 不直接退出：确实存在无口令的本地账号，所以只警告、继续。
+                FileHandle.standardError.write(Data(
+                    ("提示：连接 \(name) 没有已保存的口令。如果它需要口令，请先在界面上编辑该连接并输入一次（留空 = 不改动已存口令）。\n").utf8
+                ))
             }
             return await runMySQLCommand(arguments: arguments)
         }
