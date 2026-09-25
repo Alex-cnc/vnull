@@ -182,6 +182,10 @@ public enum LKey: String, CaseIterable, Sendable {
     case maintenanceTitle
     case maintenanceSaveNote
     case notesTitle
+    case noteSidecarLost
+    case noteLostColor
+    case noteLostSize
+    case noteExportDegraded
     case menuNotes
     case notesNew
     case notesSave
@@ -1818,6 +1822,10 @@ public enum LocalizedStrings {
         .maintenanceTitle: [.simplifiedChinese: "维护任务编排", .english: "Maintenance tasks"],
         .maintenanceSaveNote: [.simplifiedChinese: "存进笔记", .english: "Save to notes"],
         .notesTitle: [.simplifiedChinese: "笔记", .english: "Notes"],
+        .noteSidecarLost: [.simplifiedChinese: "旁挂样式定位失败：第 %@ 次出现的「%@」已不存在", .english: "Sidecar style could not be located: occurrence %@ of %@ is gone"],
+        .noteLostColor: [.simplifiedChinese: "颜色 %@", .english: "color %@"],
+        .noteLostSize: [.simplifiedChinese: "字号 %@", .english: "size %@"],
+        .noteExportDegraded: [.simplifiedChinese: "Markdown 表达不了，导出后丢失：「%@」%@", .english: "Markdown cannot express this; lost on export: %@ %@"],
         .menuNotes: [.simplifiedChinese: "笔记…", .english: "Notes…"],
         .notesNew: [.simplifiedChinese: "新建", .english: "New"],
         .notesSave: [.simplifiedChinese: "保存", .english: "Save"],
