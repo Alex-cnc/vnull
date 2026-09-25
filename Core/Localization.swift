@@ -184,6 +184,13 @@ public enum LKey: String, CaseIterable, Sendable {
     case notesTitle
     case noteSidecarLost
     case noteLostColor
+    case licFeatureNotes
+    case licFeatureAICapture
+    case licFeatureDatabase
+    case licFeatureWorkspace
+    case licFeatureAllStandard
+    case licFeatureAllPro
+    case licFeatureLink
     case noteLostSize
     case noteExportDegraded
     case menuNotes
@@ -1824,6 +1831,13 @@ public enum LocalizedStrings {
         .notesTitle: [.simplifiedChinese: "笔记", .english: "Notes"],
         .noteSidecarLost: [.simplifiedChinese: "旁挂样式定位失败：第 %@ 次出现的「%@」已不存在", .english: "Sidecar style could not be located: occurrence %@ of %@ is gone"],
         .noteLostColor: [.simplifiedChinese: "颜色 %@", .english: "color %@"],
+        .licFeatureNotes: [.simplifiedChinese: "笔记（记录 / 标签 / 搜索 / 提醒）", .english: "Notes (capture, tags, search, reminders)"],
+        .licFeatureAICapture: [.simplifiedChinese: "AI 产物随手沉淀到笔记", .english: "Capture AI output into notes"],
+        .licFeatureDatabase: [.simplifiedChinese: "数据库客户端（连接 / 查询 / 元数据 / 结果集）", .english: "Database client (connections, queries, metadata, results)"],
+        .licFeatureWorkspace: [.simplifiedChinese: "工作区（文件树 / 编辑器 / 终端）", .english: "Workspace (file tree, editor, terminal)"],
+        .licFeatureAllStandard: [.simplifiedChinese: "Standard 的全部功能", .english: "Everything in Standard"],
+        .licFeatureAllPro: [.simplifiedChinese: "Pro 的全部功能", .english: "Everything in Pro"],
+        .licFeatureLink: [.simplifiedChinese: "数据库与笔记联动（SQL / 表结构 / 诊断结论入笔记）", .english: "Database-to-notes links (SQL, schema, diagnosis findings)"],
         .noteLostSize: [.simplifiedChinese: "字号 %@", .english: "size %@"],
         .noteExportDegraded: [.simplifiedChinese: "Markdown 表达不了，导出后丢失：「%@」%@", .english: "Markdown cannot express this; lost on export: %@ %@"],
         .menuNotes: [.simplifiedChinese: "笔记…", .english: "Notes…"],
