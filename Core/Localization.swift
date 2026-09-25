@@ -237,6 +237,28 @@ public enum LKey: String, CaseIterable, Sendable {
     case mcpApprovalBadLines
     case mcpApprovalDenied
     case mysqlConnectTimedOut
+    case aiNoteGoal
+    case aiNoteQuestion
+    case aiNoteEvidence
+    case aiNoteEvidenceSection
+    case aiNoteEvidenceLine
+    case aiNoteEvidenceSQL
+    case aiNotePlanTitle
+    case aiNotePlanSection
+    case aiNotePlanLine
+    case aiNotePlanReason
+    case aiNoteUnparsableSection
+    case aiNoteUnparsableLine
+    case aiNoteDiagnosisTitle
+    case aiNoteTagDiagnosis
+    case aiNoteTagMaintenance
+    case aiNoteTagSkill
+    case aiNoteTagSQL
+    case aiNoteStatePending
+    case aiNoteStateApproved
+    case aiNoteStateRejected
+    case aiNoteStateExecuted
+    case aiNoteStateFailed
     case mcpNeedsApproval
     case mcpInitialized
     case mcpToolNotExposed
@@ -1837,6 +1859,28 @@ public enum LocalizedStrings {
         .mcpApprovalBadLines: [.simplifiedChinese: "队列里有 %@ 行读不出来（已跳过，不影响其余）", .english: "%@ unreadable lines in the queue (skipped; the rest still work)"],
         .mcpApprovalDenied: [.simplifiedChinese: "外部调用被拒绝或等待审批超时：没有执行", .english: "The external call was denied or the approval timed out: nothing ran"],
         .mysqlConnectTimedOut: [.simplifiedChinese: "连接（含 TLS 与认证）超过 %@ 秒没有完成，已放弃", .english: "The connection (TLS and authentication included) did not finish within %@ seconds; giving up"],
+        .aiNoteGoal: [.simplifiedChinese: "目标：%@", .english: "Target: %@"],
+        .aiNoteQuestion: [.simplifiedChinese: "问题：%@", .english: "Question: %@"],
+        .aiNoteEvidence: [.simplifiedChinese: "依据：%@", .english: "Evidence: %@"],
+        .aiNoteEvidenceSection: [.simplifiedChinese: "### 取证（可复跑）", .english: "### Evidence (re-runnable)"],
+        .aiNoteEvidenceLine: [.simplifiedChinese: "- 证据 [%@] %@：%@", .english: "- [%@] %@: %@"],
+        .aiNoteEvidenceSQL: [.simplifiedChinese: "  - 取证 SQL：%@", .english: "  - SQL: %@"],
+        .aiNotePlanTitle: [.simplifiedChinese: "维护计划（%@ 条）", .english: "Maintenance plan (%@ steps)"],
+        .aiNotePlanSection: [.simplifiedChinese: "### 审阅结果", .english: "### Review"],
+        .aiNotePlanLine: [.simplifiedChinese: "- %@ %@ 状态（%@）%@", .english: "- %@ %@ (%@) %@"],
+        .aiNotePlanReason: [.simplifiedChinese: "  - 说明：%@", .english: "  - %@"],
+        .aiNoteUnparsableSection: [.simplifiedChinese: "### 没看懂的行", .english: "### Lines we could not parse"],
+        .aiNoteUnparsableLine: [.simplifiedChinese: "- 原样：%@", .english: "- %@"],
+        .aiNoteDiagnosisTitle: [.simplifiedChinese: "诊断结论", .english: "Diagnosis"],
+        .aiNoteTagDiagnosis: [.simplifiedChinese: "诊断", .english: "diagnosis"],
+        .aiNoteTagMaintenance: [.simplifiedChinese: "维护", .english: "maintenance"],
+        .aiNoteTagSkill: [.simplifiedChinese: "技能", .english: "skill"],
+        .aiNoteTagSQL: [.simplifiedChinese: "SQL 片段", .english: "sql"],
+        .aiNoteStatePending: [.simplifiedChinese: "待批", .english: "pending"],
+        .aiNoteStateApproved: [.simplifiedChinese: "已批准", .english: "approved"],
+        .aiNoteStateRejected: [.simplifiedChinese: "已拒绝", .english: "rejected"],
+        .aiNoteStateExecuted: [.simplifiedChinese: "已执行", .english: "done"],
+        .aiNoteStateFailed: [.simplifiedChinese: "失败：%@", .english: "failed: %@"],
         .mcpNeedsApproval: [.simplifiedChinese: "工具 %@ 需要审批：请先在界面上确认这一次外部调用", .english: "Tool %@ needs approval: confirm this external call in the app first"],
         .mcpInitialized: [.simplifiedChinese: "已就绪：能力继承当前会话，调用进审批与审计", .english: "Ready: capabilities inherit the current session, and every call is approved and audited"],
         .mcpToolNotExposed: [.simplifiedChinese: "没有暴露这个工具：%@", .english: "This tool is not exposed: %@"],
