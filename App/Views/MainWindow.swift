@@ -77,7 +77,8 @@ struct MainWindow: View {
         .sheet(item: $formMode) { mode in
             ConnectionFormView(
                 configuration: mode.configuration,
-                existingConnections: appState.connections
+                existingConnections: appState.connections,
+                storedPassword: { mode.configuration.flatMap { appState.password(for: $0) } }
             ) { configuration, password, sshPassword in
                 Task {
                     if mode.isNew {

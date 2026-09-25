@@ -12,6 +12,13 @@ struct ConnectionFormView: View {
     /// 为什么把 SSH 口令单独穿出来而不是塞进 `ConnectionConfig`：口令**不落配置文件**
     /// （NFR-SEC-01），配置结构里连字段都不该有 —— 存进 `SecretStore` 的动作由 AppState 做。
     let onSave: (ConnectionConfig, String, String?) -> Void
+    /// 取"这条连接已保存的口令"（编辑已有连接时用）。
+    ///
+    /// **为什么必须有它**：口令框在编辑已有连接时留空表示"不改动已存口令"，
+    /// 但 `testConnection` 原来用的是**框里那份**（空的）——于是"测试连接"测的是空口令，
+    /// 报 `Access denied … (using password: YES)`，而真正连接（用已存口令）其实是好的。
+    /// 界面与命令行得出相反结论，就是这么来的（本轮实测踩到）。
+    let storedPassword: () -> String?
 
     @State private var name: String
     @State private var dbType: DatabaseType
@@ -73,10 +80,12 @@ struct ConnectionFormView: View {
     init(
         configuration: ConnectionConfig?,
         existingConnections: [ConnectionConfig] = [],
+        storedPassword: @escaping () -> String? = { nil },
         onSave: @escaping (ConnectionConfig, String, String?) -> Void
     ) {
         self.configuration = configuration
         self.existingConnections = existingConnections
+        self.storedPassword = storedPassword
         self.onSave = onSave
 
         _name = State(initialValue: configuration?.name ?? "")
@@ -614,7 +623,8 @@ struct ConnectionFormView: View {
 
     private func testConnection() {
         let config = makeConfiguration()
-        let testPassword = password
+        // 框里没填就用已存的口令 —— 与"保存后再连接"用的是同一份，界面与真实连接才一致。
+        let testPassword = password.isEmpty ? (storedPassword() ?? "") : password
         let tunnelConfig = sshEnabled ? makeSSHTunnelConfig() : nil
         let secret = sshPassword.isEmpty ? nil : sshPassword
         bannerMessage = L(.connectionFormConnecting, config.endpointDescription)
