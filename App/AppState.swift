@@ -332,6 +332,14 @@ final class AppState: ObservableObject {
 
     // 外部调用审批（FR-AI-10 的界面那一半）：待审批队列 + 决定。
     @Published var isMCPApprovalPresented = false
+    // 笔记（DOYAH-01/03）：面板状态。判据（检索/来源/安全边界）都在 Core，这里只做搬运。
+    @Published var isNotesPresented = false
+    @Published var notes: [Note] = []
+    @Published var notesQuery = ""
+    @Published var noteEditorTitle = ""
+    @Published var noteEditorBody = ""
+    @Published var noteEditorTags = ""
+    private var noteBeingEdited: UUID?
     @Published var mcpPendingApprovals: [MCPApprovalRequest] = []
     @Published var mcpApprovalMessage: String?
     @Published var mcpApprovalBadLines = 0
@@ -3821,6 +3829,7 @@ final class AppState: ObservableObject {
         case "diagnoseQuery": openDiagnosis()
         case "maintenanceTasks": openMaintenance()
         case "mcpApprovals": openMCPApprovals()
+        case "notes": openNotes()
         case "schemaDiff": isSchemaDiffPresented = true
         case "erDiagram": isERDiagramPresented = true
         case "serverObjects":
@@ -5781,6 +5790,74 @@ final class AppState: ObservableObject {
         sshTunnels[configuration.id] = tunnel
         statusMessage = L(.sshTunnelReady, String(localPort))
         return (SSHTunnelEndpoint.loopbackHost, localPort)
+    }
+
+    // MARK: - 笔记（DOYAH-01 / 03）
+
+    var visibleNotes: [Note] { NoteSearch.match(notes, query: notesQuery) }
+
+    func openNotes() {
+        isNotesPresented = true
+        Task { await reloadNotes() }
+    }
+
+    func reloadNotes() async {
+        do {
+            notes = try await NoteStore.defaultStore().load()
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    func beginNewNote() {
+        noteBeingEdited = nil
+        noteEditorTitle = ""
+        noteEditorBody = ""
+        noteEditorTags = ""
+    }
+
+    func edit(_ note: Note) {
+        noteBeingEdited = note.id
+        noteEditorTitle = note.title
+        noteEditorBody = note.body
+        noteEditorTags = note.tags.joined(separator: " ")
+    }
+
+    func saveNoteFromEditor() async {
+        let title = noteEditorTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty || !noteEditorBody.isEmpty else { return }
+        let draft = NoteDraft(
+            title: title.isEmpty ? L(.notesUntitled) : title,
+            body: noteEditorBody,
+            tags: noteEditorTags.split(whereSeparator: { $0 == " " || $0 == "," || $0 == "，" }).map(String.init),
+            source: NoteSource(kind: .manual)
+        )
+        do {
+            let store = NoteStore.defaultStore()
+            if let id = noteBeingEdited {
+                // 编辑已有笔记：**保留原来源与创建时间**（来源是事实，不该因为改了几个字就丢掉）。
+                let existing = notes.first { $0.id == id }
+                var merged = draft
+                merged.source = existing?.source ?? draft.source
+                _ = try await store.upsert(merged, id: id)
+            } else {
+                _ = try await store.upsert(draft)
+            }
+            await reloadNotes()
+            beginNewNote()
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
+    func deleteNote(id: UUID) async {
+        do {
+            try await NoteStore.defaultStore().delete(id: id)
+            if noteBeingEdited == id { beginNewNote() }
+            await reloadNotes()
+        } catch {
+            errorMessage = ErrorPresenter.message(for: error)
+        }
     }
 
     // MARK: - 外部调用审批（FR-AI-10 界面那一半）

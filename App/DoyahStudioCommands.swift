@@ -88,6 +88,11 @@ struct DoyahStudioCommands: Commands {
                 appState.openMaintenance()
             }
 
+            // 笔记（DOYAH-01/03）：与 ⌘K 的 `notes` 打开同一个面板。
+            Button(L(.menuNotes)) {
+                appState.openNotes()
+            }
+
             // 外部调用审批（FR-AI-10 界面那一半）：与 ⌘K 的 `mcpApprovals` 打开同一个面板。
             Button(L(.menuMCPApprovals)) {
                 appState.openMCPApprovals()

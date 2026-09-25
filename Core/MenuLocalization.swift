@@ -32,6 +32,8 @@ public enum MenuLocalization {
         .menuMaintenanceTasks,
         // 外部调用审批（FR-AI-10 界面那一半）：同上。
         .menuMCPApprovals,
+        // 笔记（DOYAH-01/03）。
+        .menuNotes,
         .menuDataTask,
         .menuAgentAudit,
         .menuEgressLog,

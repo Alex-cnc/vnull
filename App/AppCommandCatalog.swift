@@ -48,6 +48,8 @@ enum AppCommandCatalog {
             // 维护任务编排（FR-AI-04）：审阅 → 逐条批准 / 拒绝 → 执行已批准的。
             item("maintenanceTasks", .maintenanceTitle, "maintenance vacuum analyze reindex backup grant 维护 任务 编排 整理 索引 授权", "maintenance tasks vacuum analyze", .paletteCategoryAgent),
             // 外部调用审批（FR-AI-10 的界面那一半）：外部智能体的写调用在这里等人点。
+            // 笔记（DOYAH-01/03）：与数据库、工作区并列的第三块。
+            item("notes", .notesTitle, "notes note memo 笔记 记录 灵感", "notes memo", .paletteCategoryAgent),
             item("mcpApprovals", .mcpApprovalTitle, "mcp approval external agent 外部 调用 审批 允许 拒绝 智能体", "mcp approval external", .paletteCategoryAgent),
             item("syntheticData", .commandSyntheticData, "synthetic data 合成 测试数据", "synthetic data", .paletteCategoryAgent),
             item("egressLog", .commandEgressLog, "egress log 外发 日志", "egress log", .paletteCategoryAgent),

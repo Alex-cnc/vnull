@@ -147,6 +147,11 @@ struct MainWindow: View {
             MaintenancePanel()
                 .environmentObject(appState)
         }
+        // 笔记（DOYAH-01/03）：建 / 改 / 搜 / 删，来源与「含数据」标记一眼可见。
+        .sheet(isPresented: $appState.isNotesPresented) {
+            NotesPanel()
+                .environmentObject(appState)
+        }
         // 外部调用审批（FR-AI-10 界面那一半）：外部智能体的写调用在这里等人点。
         .sheet(isPresented: $appState.isMCPApprovalPresented) {
             MCPApprovalPanel()
