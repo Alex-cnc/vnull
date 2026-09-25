@@ -180,6 +180,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case treeMenuEmpty
     // SSH 隧道（FR-CONN-18）：Core 只给键，界面按当前语言取
     case maintenanceTitle
+    case maintenanceSaveNote
     case menuMaintenanceTasks
     case maintenancePlanLabel
     case maintenancePlanHint
@@ -1805,6 +1806,7 @@ public enum LocalizedStrings {
         .lowerPaneClear: [.simplifiedChinese: "清空", .english: "Clear"],
         .treeMenuEmpty: [.simplifiedChinese: "这一行没有可用的操作", .english: "No actions for this row"],
         .maintenanceTitle: [.simplifiedChinese: "维护任务编排", .english: "Maintenance tasks"],
+        .maintenanceSaveNote: [.simplifiedChinese: "存进笔记", .english: "Save to notes"],
         .menuMaintenanceTasks: [.simplifiedChinese: "维护任务…", .english: "Maintenance tasks…"],
         .maintenancePlanLabel: [.simplifiedChinese: "计划（每行一条：task: 类别 ｜ 人话描述 ｜ sql: 语句）", .english: "Plan (one per line: task: kind | description | sql: statement)"],
         .maintenancePlanHint: [.simplifiedChinese: "写操作与 DDL 一律要逐条批准；高开销（REINDEX / 备份 / 恢复）默认一次只放一条。", .english: "Writes and DDL always need step-by-step approval; high-cost ones (REINDEX / backup / restore) are limited to one per run by default."],

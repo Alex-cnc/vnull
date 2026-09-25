@@ -195,6 +195,11 @@ struct MaintenancePanel: View {
     private var footer: some View {
         HStack(spacing: Spacing.m) {
             Button(L(.maintenanceReviewAction)) { appState.reviewMaintenancePlan() }
+            // 存进笔记：计划 + 逐条状态与理由（含被拒绝的条目与"没看懂的行"）。
+            Button(L(.maintenanceSaveNote)) {
+                Task { await appState.saveMaintenanceNote() }
+            }
+            .disabled(appState.maintenanceReview?.tasks.isEmpty ?? true)
             Spacer()
             Button(appState.maintenanceIsRunning ? L(.diagnosisGathering) : L(.maintenanceExecuteAction)) {
                 Task { await appState.executeApprovedMaintenanceTasks() }

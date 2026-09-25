@@ -5894,6 +5894,29 @@ final class AppState: ObservableObject {
         maintenanceReview = MaintenancePlanner.reject(review, ids: [id])
     }
 
+    /// 把当前维护计划**存进笔记**（含逐条状态与理由、以及"没看懂的行"）。
+    ///
+    /// 为什么要存"被拒绝的条目"：那是**过程事实** —— 不记下来，下次模型还会提同一个被限流拒绝的计划，
+    /// 而用户已经拒绝过一次了。
+    func saveMaintenanceNote() async {
+        guard let review = maintenanceReview, !review.tasks.isEmpty else {
+            maintenanceMessage = L(.maintenanceNoPlan)
+            return
+        }
+        do {
+            let store = NoteStore.defaultStore()
+            let draft = AICapture.maintenanceNote(
+                planText: maintenancePlanText,
+                review: review,
+                target: selectedConnection.map { "\($0.username)@\($0.endpointDescription)" } ?? ""
+            )
+            let saved = try await store.upsert(draft)
+            maintenanceMessage = L(.diagnosisNoteSaved, saved.title)
+        } catch {
+            maintenanceMessage = ErrorPresenter.message(for: error)
+        }
+    }
+
     /// 执行**已批准且可执行**的任务。失败要带服务端原话，且失败的任务不会因为再批准而复活。
     func executeApprovedMaintenanceTasks() async {
         guard var review = maintenanceReview else { return }
