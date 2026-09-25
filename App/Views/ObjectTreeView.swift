@@ -593,12 +593,26 @@ struct ObjectTreeView: View {
         defer { loadingIDs.remove(object.id) }
         errors[object.id] = nil
         do {
-            childrenCache[object.id] = try await appState.loadMetadataChildren(of: object)
+            let children = try await appState.loadMetadataChildren(of: object)
+            childrenCache[object.id] = children
+            // **首连时序类的怪事只能靠日志说话**（2026-09-25 需求提出者报"点开没有 schema 的库会出错"，
+            // 而 Core 那条路我单独跑过是干净的 —— 那就得把"到底发生了什么"留下来）：
+            // 数据库节点加载成功但**一个 schema 都没有**时记一行，含方言与连接，
+            // 这样"真没有"与"读错了"在日志里分得开。
+            if object.kind == .database, children.isEmpty {
+                StartupLog.write(
+                    "对象树：库 \(object.name) 下 0 个 schema（方言 "
+                        + (appState.selectedConnection?.dbType.rawValue ?? "?")
+                        + "，库节点 id=\(object.id)）"
+                )
+            }
         } catch {
             // 取消不是故障（见 `CancellationNoise`）：展开/折叠与切连接时 `.task` 会被取消，
             // 不区分的话树上会莫名出现一条"加载失败"。
             guard !CancellationNoise.isNoise(error, taskIsCancelled: Task.isCancelled) else { return }
-            errors[object.id] = ErrorPresenter.message(for: error)
+            let message = ErrorPresenter.message(for: error)
+            errors[object.id] = message
+            StartupLog.write("对象树加载失败：\(object.kind.rawValue) \(object.name)（id=\(object.id)）→ \(message)")
         }
         loadingIDs.remove(object.id)
     }
