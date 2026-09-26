@@ -7,9 +7,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 LEFT_DB="doyah_schema_left"
 RIGHT_DB="doyah_schema_right"
 STARTED=0
@@ -30,15 +34,15 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
+doyah_test_env_export_connection
 # 准备阶段**必须验成功**：上一版把 DROP/CREATE 的输出与退出码全丢了，
 # 结果库没被重置（残留连接挡住了 DROP），后面全在旧状态上跑，故障看起来像"生成器与服务器对不上"。
 for db in "$LEFT_DB" "$RIGHT_DB"; do
-    if ! PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${db} WITH (FORCE);" >/dev/null 2>&1; then
+    if ! PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${db} WITH (FORCE);" >/dev/null 2>&1; then
         echo "  ❌ 无法重建数据库 ${db}（DROP 失败）"
         exit 1
     fi
-    if ! PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${db};" >/dev/null 2>&1; then
+    if ! PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${db};" >/dev/null 2>&1; then
         echo "  ❌ 无法创建数据库 ${db}"
         exit 1
     fi
@@ -62,7 +66,7 @@ grep -q "orders" "$PWD/.build/left.json" && check "快照里含 orders 表" 0 ||
 
 echo ""
 echo "== 2) 安全模式（默认）：只做加法与安全修改，破坏性跳过 =="
-SAFE="$(PGDATABASE=postgres "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --json 2>&1)"
+SAFE="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --json 2>&1)"
 SAFE_CODE=$?
 echo "$SAFE" > "$PWD/.build/safe.json"
 python3 - "$PWD/.build/safe.json" <<'PYEOF'
@@ -103,7 +107,7 @@ PYEOF
 [ $? -eq 0 ] || fail=1
 
 PGDATABASE="$RIGHT_DB" "$CLI" schema-snapshot --schema public --out "$PWD/.build/right.json" >/dev/null 2>&1
-AFTER="$(PGDATABASE=postgres "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --json 2>&1)"
+AFTER="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --json 2>&1)"
 echo "$AFTER" > "$PWD/.build/after.json"
 python3 - "$PWD/.build/after.json" <<'PYEOF'
 import json, pathlib, sys
@@ -124,7 +128,7 @@ echo "== 4) 开 --allow-drop 再来一遍 → 应当完全一致 =="
 # **必须先重新快照目标库**：right.json 是"应用改动之前"的状态，拿它再生成脚本
 # 会把已经建好的表当成缺失，于是重复 CREATE → `already exists`（我上一版就这么错的）
 PGDATABASE="$RIGHT_DB" "$CLI" schema-snapshot --schema public --out "$PWD/.build/right.json" >/dev/null 2>&1
-AGGR="$(PGDATABASE=postgres "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --allow-drop --json 2>&1)"
+AGGR="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --allow-drop --json 2>&1)"
 echo "$AGGR" > "$PWD/.build/aggr.json"
 python3 - "$CLI" "$RIGHT_DB" "$PWD/.build/aggr.json" <<'PYEOF'
 import json, os, pathlib, subprocess, sys
@@ -144,7 +148,7 @@ PYEOF
 [ $? -eq 0 ] || fail=1
 
 PGDATABASE="$RIGHT_DB" "$CLI" schema-snapshot --schema public --out "$PWD/.build/right.json" >/dev/null 2>&1
-FINAL="$(PGDATABASE=postgres "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --allow-drop 2>&1)"
+FINAL="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" schema-diff --left "$PWD/.build/left.json" --right "$PWD/.build/right.json" --allow-drop 2>&1)"
 FINAL_CODE=$?
 echo "$FINAL" | sed 's/^/  /'
 [ "$FINAL_CODE" -eq 0 ] && echo "$FINAL" | grep -q "结构一致" \

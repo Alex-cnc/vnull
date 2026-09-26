@@ -11,11 +11,17 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
 ACCOUNT="D264B21B-1880-4E73-A2D0-59A3F8E4D7EC"
-TOOL_DIR="$HOME/tools/pgserver/pgserver/pginstall/bin"
+# 本脚本用 querytest 档集群（端口 / 数据目录与默认档不同，见 test-env.sh 的档位表）
+DOYAH_TEST_LOCAL_PROFILE=querytest
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+TOOL_DIR="${DOYAH_TEST_PG_BIN}"
 SRC="doyah_backup_src"
 DUMP="$(mktemp -t doyah-backup).dump"
 
-export PGHOST=192.168.5.217 PGUSER=zxvmax PGSSLMODE=disable
+export PGHOST="${DOYAH_TEST_REMOTE_HOST}" PGUSER="${DOYAH_TEST_REMOTE_USER}" PGSSLMODE="${DOYAH_TEST_PGSSLMODE}"
 PGPASSWORD="$("$CLI" secret get --id "$ACCOUNT")"
 export PGPASSWORD
 
@@ -63,8 +69,8 @@ echo ""
 echo "== 4) 版本匹配的服务器上做**完整往返**（本机 16.2 服务端）=="
 # 用本机内置的 16.2 服务器：客户端与服务端主版本一致，pg_dump 才肯干活。
 PGBIN="$TOOL_DIR"
-LOCAL_DATADIR="${PGSERVER_DATADIR:-$HOME/tools/pgdata-querytest}"
-LOCAL_PORT=55432
+LOCAL_DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+LOCAL_PORT="${DOYAH_TEST_PGPORT}"
 if [ ! -f "${LOCAL_DATADIR}/PG_VERSION" ]; then
     "${PGBIN}/initdb" -D "${LOCAL_DATADIR}" -U postgres --auth=trust -E UTF8 >/dev/null 2>&1
 fi
@@ -74,8 +80,9 @@ if ! "${PGBIN}/pg_ctl" -D "${LOCAL_DATADIR}" status >/dev/null 2>&1; then
     sleep 2
 fi
 LOCAL_DB="doyah_backup_local"
-export PGHOST=127.0.0.1 PGPORT="$LOCAL_PORT" PGUSER=postgres PGDATABASE=postgres
-export PGPASSWORD=""
+doyah_test_env_export_connection
+export PGDATABASE="${DOYAH_TEST_ADMIN_DB}"
+export PGPASSWORD="${DOYAH_TEST_PGPASSWORD}"
 "$CLI" -c "DROP DATABASE IF EXISTS $LOCAL_DB;" >/dev/null 2>&1
 "$CLI" -c "CREATE DATABASE $LOCAL_DB;" >/dev/null 2>&1
 PGDATABASE="$LOCAL_DB" "$CLI" -c "CREATE TABLE t (id int primary key, note text);

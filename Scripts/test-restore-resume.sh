@@ -8,9 +8,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 SRC_DB="doyah_restore_src"
 DST_DB="doyah_restore_dst"
 RETRY_DB="doyah_restore_retry"
@@ -39,10 +43,10 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
+doyah_test_env_export_connection
 for db in "$SRC_DB" "$DST_DB" "$RETRY_DB"; do
-    PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${db} WITH (FORCE);" >/dev/null 2>&1
-    PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${db};" >/dev/null 2>&1
+    PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${db} WITH (FORCE);" >/dev/null 2>&1
+    PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${db};" >/dev/null 2>&1
 done
 PGDATABASE="$SRC_DB" "$CLI" -c "CREATE TABLE items (id integer primary key, note text);
 INSERT INTO items VALUES (1, 'a'), (2, 'b'), (3, 'c');" >/dev/null 2>&1
@@ -51,13 +55,13 @@ SRC_COUNT="$(scalar "$SRC_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
 
 echo ""
 echo "== 1) 备份成自定义格式（pg_restore 只能吃自定义 / 目录格式）=="
-PGDATABASE=postgres "$CLI" backup --kind dump --format custom --out "$ARCHIVE" \
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" backup --kind dump --format custom --out "$ARCHIVE" \
     --tool "$PGBIN/pg_dump" --database "$SRC_DB" --no-version-check >/dev/null 2>&1
 [ -f "$ARCHIVE" ] && check "归档文件已生成" 0 || { check "应生成归档" 1; exit 1; }
 
 echo ""
 echo "== 2) 逐段恢复到**指定库** → 数据应完整 =="
-RESTORE="$(PGDATABASE=postgres "$CLI" backup --kind restore --out "$ARCHIVE" --database "$DST_DB" \
+RESTORE="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" backup --kind restore --out "$ARCHIVE" --database "$DST_DB" \
     --restore-sections --tool "$PGBIN/pg_restore" --no-version-check 2>&1)"
 echo "$RESTORE" | grep -E "^==>|三段全部完成" | sed 's/^/  /'
 echo "$RESTORE" | grep -q "结构（pre-data）" && echo "$RESTORE" | grep -q "数据（data）" \
@@ -67,7 +71,7 @@ COUNT="$(scalar "$DST_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
 
 echo ""
 echo "== 3) 造一个真实的失败：把 data 段单独恢复到**空库**（没有表，必然失败）=="
-FAILED="$(PGDATABASE=postgres "$CLI" backup --kind restore --out "$ARCHIVE" --database "$RETRY_DB" \
+FAILED="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" backup --kind restore --out "$ARCHIVE" --database "$RETRY_DB" \
     --section data --fail-fast --tool "$PGBIN/pg_restore" --no-version-check 2>&1)"; CODE=$?
 echo "$FAILED" | tail -4 | sed 's/^/  /'
 [ "$CODE" -ne 0 ] && check "失败时返回非零（不假装成功）" 0 || check "应返回非零" 1
@@ -77,7 +81,7 @@ LEFTOVER="$(scalar "$RETRY_DB" "SELECT count(*) FROM information_schema.tables W
 
 echo ""
 echo "== 4) 失败续跑：按建议从 pre-data 起逐段做完 =="
-RESUME="$(PGDATABASE=postgres "$CLI" backup --kind restore --out "$ARCHIVE" --database "$RETRY_DB" \
+RESUME="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" backup --kind restore --out "$ARCHIVE" --database "$RETRY_DB" \
     --restore-sections --tool "$PGBIN/pg_restore" --no-version-check 2>&1)"
 echo "$RESUME" | grep -q "三段全部完成" && check "续跑把三段做完" 0 || { check "续跑应完成" 1; echo "$RESUME" | tail -4; }
 RESUME_COUNT="$(scalar "$RETRY_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')"
@@ -86,10 +90,10 @@ RESUME_COUNT="$(scalar "$RETRY_DB" "SELECT count(*) FROM items;" | tr -dc '0-9')
 echo ""
 echo "== 5) 逐段模式下的失败：必须**打印可直接粘的续跑命令** =="
 # 造一个"结构与归档冲突"的场景：目标库里已有一张同名表 → pre-data 段的 CREATE TABLE 会失败
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS doyah_restore_conflict WITH (FORCE);" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE doyah_restore_conflict;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS doyah_restore_conflict WITH (FORCE);" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE doyah_restore_conflict;" >/dev/null 2>&1
 PGDATABASE=doyah_restore_conflict "$CLI" -c "CREATE TABLE items (other text);" >/dev/null 2>&1
-HINT="$(PGDATABASE=postgres "$CLI" backup --kind restore --out "$ARCHIVE" --database doyah_restore_conflict \
+HINT="$(PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" backup --kind restore --out "$ARCHIVE" --database doyah_restore_conflict \
     --restore-sections --tool "$PGBIN/pg_restore" --no-version-check 2>&1)"; HINT_CODE=$?
 echo "$HINT" | grep -A2 "下一步：" | sed 's/^/  /'
 [ "$HINT_CODE" -ne 0 ] && check "冲突时返回非零" 0 || check "冲突时应返回非零" 1

@@ -10,9 +10,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_synth_check"
 STARTED=0
 
@@ -36,9 +40,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
 fi
 "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1 && echo "  ✅ 实例在跑（端口 ${PORT}）" || { echo "  ❌ 实例没起来"; exit 1; }
 
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 export PGDATABASE="$DB"
 
 echo ""
@@ -79,8 +83,8 @@ DUPS="$("$CLI" -c "SELECT count(*) AS n FROM (SELECT id FROM orders GROUP BY id 
 
 echo ""
 echo "== 4) 可复现：同 seed 再生成一次，行应当**逐字段一致** =="
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_again;" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB}_again;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_again;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB}_again;" >/dev/null 2>&1
 PGDATABASE="${DB}_again" "$CLI" -c "CREATE TABLE orders (id integer PRIMARY KEY, email varchar(120) NOT NULL, amount numeric(10,2) NOT NULL, note text, active boolean, created_at timestamp NOT NULL);" >/dev/null 2>&1
 PGDATABASE="${DB}_again" "$CLI" synth --table orders --rows 200 --seed 7 --write >/dev/null 2>&1
 FIRST="$("$CLI" -c "SELECT md5(string_agg(id || '|' || email || '|' || amount || '|' || coalesce(note,'') || '|' || coalesce(active::text,''), ',' ORDER BY id)) FROM orders;" 2>/dev/null | grep -E "^[0-9a-f]{32}$" | head -1)"
@@ -93,8 +97,8 @@ fi
 
 echo ""
 echo "== 5) 换 seed 应当换数据（否则 seed 形同虚设）=="
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_seed2;" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB}_seed2;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_seed2;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB}_seed2;" >/dev/null 2>&1
 PGDATABASE="${DB}_seed2" "$CLI" -c "CREATE TABLE orders (id integer PRIMARY KEY, email varchar(120) NOT NULL, amount numeric(10,2) NOT NULL, note text, active boolean, created_at timestamp NOT NULL);" >/dev/null 2>&1
 PGDATABASE="${DB}_seed2" "$CLI" synth --table orders --rows 200 --seed 8 --write >/dev/null 2>&1
 THIRD="$(PGDATABASE="${DB}_seed2" "$CLI" -c "SELECT md5(string_agg(id || '|' || email || '|' || amount || '|' || coalesce(note,'') || '|' || coalesce(active::text,''), ',' ORDER BY id)) FROM orders;" 2>/dev/null | grep -E "^[0-9a-f]{32}$" | head -1)"
@@ -113,9 +117,9 @@ rm -f "$BAD_SPEC"
 
 echo ""
 echo "== 7) 清理现场 =="
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_again;" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_seed2;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_again;" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB}_seed2;" >/dev/null 2>&1
 echo "  ✅ 已删除三个临时库"
 
 echo ""

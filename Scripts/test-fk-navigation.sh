@@ -8,9 +8,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_fk_nav"
 STARTED=0
 
@@ -35,9 +39,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 PGDATABASE="$DB" "$CLI" -c "
 CREATE TABLE customers (id integer primary key, name text);
 CREATE TABLE orders (id integer primary key, customer_id integer references customers(id), note text);

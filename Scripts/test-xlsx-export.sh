@@ -8,14 +8,18 @@
 #   ③ 表头 / 数据行 / 中文 / 空值 / 数字与文本的类型都对
 #   ④ 同样输入两次导出**逐字节一致**（时间戳固定）
 #
-# 环境：本机临时集群（PG 二进制在 ~/tools/pgserver/...，端口 55433）。
+# 环境：真库连接信息由 `Scripts/lib/test-env.sh` 决定（过渡期默认本机临时集群，档位见该文件的档位表）。
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_xlsx_check"
 STARTED=0
 
@@ -34,9 +38,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 export PGDATABASE="$DB"
 "$CLI" -c "CREATE TABLE orders (id integer primary key, name text, phone text, amount numeric(10,2), note text);
 INSERT INTO orders VALUES

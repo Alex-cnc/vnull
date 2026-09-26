@@ -9,11 +9,15 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
 ACCOUNT="D264B21B-1880-4E73-A2D0-59A3F8E4D7EC"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-# 数据目录放在**工作区内**：本轮实测 ~/tools/pgdata-querytest 在当前沙箱下起不来
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+# 数据目录放在**工作区内**（默认档）：早先实测外部数据目录在当前沙箱下起不来
 # （could not create lock file "postmaster.pid": Operation not permitted）。
-DATADIR="${PGSERVER_DATADIR:-$PWD/.build/pgdata-session-test}"
-PORT="${TEST_PGPORT:-55433}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 STARTED=0
 
 fail=0
@@ -21,7 +25,7 @@ check() { if [ "$2" -eq 0 ]; then echo "  ✅ $1"; else echo "  ❌ $1"; fail=1;
 
 cleanup() {
     # 收尾：确保没有留下那条长跑语句
-    PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -c \
+    PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h "${DOYAH_TEST_PGHOST}" -p "${DOYAH_TEST_PGPORT}" -U "${DOYAH_TEST_PGUSER}" -d "${DOYAH_TEST_ADMIN_DB}" -c \
         "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE query LIKE '%pg_sleep%' AND pid <> pg_backend_pid();" \
         >/dev/null 2>&1
     [ "$STARTED" = "1" ] && "$PGBIN/pg_ctl" -D "$DATADIR" stop >/dev/null 2>&1
@@ -41,7 +45,8 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
 fi
 "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1 && echo "  ✅ 本机实例在跑（端口 ${PORT}）" || { echo "  ❌ 实例没起来"; exit 1; }
 
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGDATABASE=postgres PGPASSWORD=""
+doyah_test_env_export_connection
+export PGDATABASE="${DOYAH_TEST_ADMIN_DB}"
 
 echo ""
 echo "== 2) 会话查询（代码里那条 pg_stat_activity 查询）在真机上跑得通 =="
@@ -55,7 +60,7 @@ echo "$OUT" | grep -q "pid:INT4\|pid:" && check "查询返回了会话列" 0 || 
 echo ""
 echo "== 3) 造一条长跑语句，确认它出现在会话列表里 =="
 # 后台跑一条 60 秒的 pg_sleep，然后从另一个连接里把它找出来。
-PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres \
+PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h "${DOYAH_TEST_PGHOST}" -p "${DOYAH_TEST_PGPORT}" -U "${DOYAH_TEST_PGUSER}" -d "${DOYAH_TEST_ADMIN_DB}" \
     -c "SELECT pg_sleep(60);" >/dev/null 2>&1 &
 SLEEPER=$!
 sleep 2
@@ -100,16 +105,16 @@ fi
 echo ""
 echo "== 5) 权限如实反馈：取消别人的会话应当得到 false（而不是假装成功）=="
 # 用 postgres 之外的普通角色去取消 postgres 的会话：PG 要求同用户或 pg_signal_backend。
-PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -c \
+PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h "${DOYAH_TEST_PGHOST}" -p "${DOYAH_TEST_PGPORT}" -U "${DOYAH_TEST_PGUSER}" -d "${DOYAH_TEST_ADMIN_DB}" -c \
     "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'doyah_probe') THEN CREATE ROLE doyah_probe LOGIN; END IF; END \$\$;" >/dev/null 2>&1
-PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres \
+PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h "${DOYAH_TEST_PGHOST}" -p "${DOYAH_TEST_PGPORT}" -U "${DOYAH_TEST_PGUSER}" -d "${DOYAH_TEST_ADMIN_DB}" \
     -c "SELECT pg_sleep(30);" >/dev/null 2>&1 &
 SLEEPER2=$!
 sleep 2
-TARGET_PID=$(PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
+TARGET_PID=$(PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
     "SELECT pid FROM pg_stat_activity WHERE query LIKE '%pg_sleep%' AND usename = 'postgres' LIMIT 1;" 2>/dev/null | tr -d ' ')
 if [ -n "${TARGET_PID:-}" ]; then
-    DENIED="$(PGUSER=doyah_probe PGDATABASE=postgres "$CLI" -c "SELECT pg_cancel_backend(${TARGET_PID}) AS cancelled;" 2>&1)"
+    DENIED="$(PGUSER=doyah_probe PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "SELECT pg_cancel_backend(${TARGET_PID}) AS cancelled;" 2>&1)"
     DENIED_CODE=$?
     if [ "$DENIED_CODE" -ne 0 ]; then
         echo "$DENIED" | grep -qi "permission denied" && check "权限不足时如实报错（permission denied）" 0 || { check "应报 permission denied" 1; echo "$DENIED" | tail -3; }
@@ -122,14 +127,14 @@ if [ -n "${TARGET_PID:-}" ]; then
 else
     echo "  ⚠️ 没找到目标会话，跳过该检查"
 fi
-PGPASSWORD="" "$PGBIN/pg_ctl" -D "$DATADIR" stop >/dev/null 2>&1
+PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/pg_ctl" -D "$DATADIR" stop >/dev/null 2>&1
 "$PGBIN/pg_ctl" -D "$DATADIR" -o "-p $PORT -k /tmp" -l /tmp/doyah-session-pg.log start >/dev/null 2>&1
 sleep 2
-PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -c "DROP ROLE IF EXISTS doyah_probe;" >/dev/null 2>&1
+PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -c "DROP ROLE IF EXISTS doyah_probe;" >/dev/null 2>&1
 
 echo ""
 echo "== 6) 217 只读核对：会话查询在 18.6 上同样可用 =="
-export PGHOST=192.168.5.217 PGPORT=5432 PGUSER=zxvmax PGSSLMODE=disable
+export PGHOST="${DOYAH_TEST_REMOTE_HOST}" PGPORT="${DOYAH_TEST_REMOTE_PORT}" PGUSER="${DOYAH_TEST_REMOTE_USER}" PGSSLMODE="${DOYAH_TEST_PGSSLMODE}"
 PGPASSWORD="$("$CLI" secret get --id "$ACCOUNT")"
 export PGPASSWORD
 OUT217="$("$CLI" -c "$QUERY" 2>&1)"

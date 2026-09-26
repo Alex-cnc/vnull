@@ -16,7 +16,7 @@ trap cleanup EXIT
 
 echo "== 1) 老配置（没有标签字段）必须照常读出来 =="
 cat > "$DIR/connections.json" <<'JSON'
-[{"id":"D264B21B-1880-4E73-A2D0-59A3F8E4D7EC","name":"老配置","host":"192.168.5.217",
+[{"id":"D264B21B-1880-4E73-A2D0-59A3F8E4D7EC","name":"老配置","host":"10.0.0.4",
   "database":"zxvmax","username":"zxvmax","schemaVersion":1}]
 JSON
 OUT="$("$CLI" connections --dir "$DIR" 2>&1)"

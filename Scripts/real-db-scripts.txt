@@ -1,0 +1,57 @@
+# 连**真实数据库**的脚本清单（开发循环 L-06 起）。
+#
+# 规矩：这份清单里的脚本**一律不许自己写死连接信息** —— 必须 `source Scripts/lib/test-env.sh`
+# 并调用 `doyah_test_env_summary` 把「这一轮连的是谁」打印进日志。三档本机集群的端口与数据目录、
+# 217 的地址与账号，只允许写在 `Scripts/lib/test-env.sh` 一处。
+#
+# 为什么要有这份清单（而不是让门禁自己去 grep 端口）：**迁移改完字面量就没了** ——
+# `grep -l 55433 Scripts/*.sh` 会返回空，门禁于是「永远通过」，而它也再也发现不了新脚本里
+# 新写死的连接信息。所以清单是**声明**，门禁拿它跟事实对账：
+#   ① 清单里的每个脚本：存在 + source 了 lib + 打印了目标摘要；
+#   ② **清单之外**的任何 `Scripts/*.sh`：不许出现本机集群 / 217 的连接字面量（新脚本一律直接连 217，
+#      或用 lib —— 前者要连库，后者才需要登记）；
+#   ③ lib 自己必须真的持有那三档与本机集群的默认值（否则「把字面量删掉」也能骗过 ① ②）；
+#   ④ 本清单与 `Scripts/real-db-evidence-baseline.json` 的条目对账（两份事实不许各说各话）。
+#
+# 门禁：`python3 Scripts/check-script-env-parameterization.py`（闭环第 13 项）
+# 负例：`python3 Scripts/test-script-env-gates.py`
+#
+# 两类（判据一视同仁，分开只为记账）：
+#   [local-cluster] 本机过渡期要起一份本机集群（拿到 217 专用库后，这段会逐脚本消失）
+#   [remote-only]   不建集群、不建库，只对一台常驻实例做只读核对
+
+# [local-cluster]
+test-backup-restore
+test-connection-errors
+test-copy-import
+test-csv-encoding
+test-data-import
+test-database-stats
+test-diagnosis
+test-er-diagram
+test-fk-navigation
+test-inline-edit
+test-keepalive
+test-local-query-path
+test-maintenance
+test-mcp
+test-object-search
+test-query-parameters
+test-restore-resume
+test-result-copy
+test-row-detail
+test-schema-diff
+test-server-objects
+test-session-management
+test-slow-queries
+test-ssh-tunnel
+test-synthetic-data
+test-table-export
+test-xlsx-export
+test-xlsx-import
+
+# [remote-only]
+test-cursor-export
+test-object-ddl
+test-table-index-fk
+test-table-structure

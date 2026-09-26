@@ -8,18 +8,28 @@ set -euo pipefail
 # 覆盖：多语句、字符串内分号、NULL、美元引号函数、SQL 错误码返回。
 #
 # 前置条件（一次性）：
-#   pip3 install --target $HOME/tools/pgserver <pgserver wheel>
+#   pip3 install --target <pgserver 安装目录> <pgserver wheel>
 #
 # 可用环境变量：
-#   PGSERVER_PREFIX   pginstall 目录，默认 $HOME/tools/pgserver/pgserver/pginstall
-#   PGSERVER_DATADIR  测试数据目录，默认 $HOME/tools/pgdata-querytest
-#   TEST_PGPORT       测试端口，默认 55432
+#   PGSERVER_PREFIX   pginstall 目录，默认由 Scripts/lib/test-env.sh 给出
+#   PGSERVER_DATADIR  测试数据目录，默认由 Scripts/lib/test-env.sh 的 querytest 档给出
+#   TEST_PGPORT       测试端口，默认由 Scripts/lib/test-env.sh 的 querytest 档给出
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-PGSERVER_PREFIX="${PGSERVER_PREFIX:-$HOME/tools/pgserver/pgserver/pginstall}"
-PGBIN="${PGSERVER_PREFIX}/bin"
-TEST_PGPORT="${TEST_PGPORT:-55432}"
-DATADIR="${PGSERVER_DATADIR:-$HOME/tools/pgdata-querytest}"
+# 本脚本用 querytest 档集群（端口 / 数据目录与默认档不同，见 test-env.sh 的档位表）
+DOYAH_TEST_LOCAL_PROFILE=querytest
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+# `PGSERVER_PREFIX`（pginstall 目录）仍是可覆盖的开关：给了就用它下面的 bin/，否则用 lib 给的。
+# 两个口径差一层目录（lib 给的是 `…/pginstall/bin`）—— 原先这里就是 `dirname` 的关系。
+PGBIN="${DOYAH_TEST_PG_BIN}"
+if [ -n "${PGSERVER_PREFIX:-}" ]; then
+    PGBIN="${PGSERVER_PREFIX}/bin"
+fi
+TEST_PGPORT="${DOYAH_TEST_PGPORT}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
 
 if [ ! -x "${PGBIN}/initdb" ]; then
   echo "未找到内置 PostgreSQL：${PGBIN}/initdb"
@@ -73,11 +83,11 @@ cleanup() {
 trap cleanup EXIT
 
 run_cli() {
-  PGHOST=127.0.0.1 \
-  PGPORT="${TEST_PGPORT}" \
-  PGUSER=postgres \
-  PGPASSWORD="" \
-  PGDATABASE=postgres \
+  PGHOST="${DOYAH_TEST_PGHOST}" \
+  PGPORT="${DOYAH_TEST_PGPORT}" \
+  PGUSER="${DOYAH_TEST_PGUSER}" \
+  PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" \
+  PGDATABASE="${DOYAH_TEST_ADMIN_DB}" \
   PGSSLMODE=disable \
   "${CLI}" "$@"
 }
@@ -85,10 +95,10 @@ run_cli() {
 run_cli_db() {
   local database="$1"
   shift
-  PGHOST=127.0.0.1 \
-  PGPORT="${TEST_PGPORT}" \
-  PGUSER=postgres \
-  PGPASSWORD="" \
+  PGHOST="${DOYAH_TEST_PGHOST}" \
+  PGPORT="${DOYAH_TEST_PGPORT}" \
+  PGUSER="${DOYAH_TEST_PGUSER}" \
+  PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" \
   PGDATABASE="${database}" \
   PGSSLMODE=disable \
   "${CLI}" "$@"
@@ -142,7 +152,7 @@ echo "==> 用例 4：对象树（MetadataService）"
 run_cli -c "CREATE SCHEMA IF NOT EXISTS ic_empty_schema;" >/dev/null
 
 OUTPUT="$(run_cli --tree)"
-# 端口必须用同一个变量：写死 55432 时，一旦用 TEST_PGPORT 换端口就会**假失败**
+# 端口必须用同一个变量：写死端口时，一旦换端口就会**假失败**
 assert_contains "根节点是服务器" "${OUTPUT}" "server postgres@127.0.0.1:${TEST_PGPORT}"
 assert_contains "服务器下列出数据库" "${OUTPUT}" "database postgres"
 assert_contains "列出 schema" "${OUTPUT}" "schema public"

@@ -8,14 +8,18 @@
 #   ② 导入后**回到数据库逐项核对**（中文 / 日期 / 布尔 / NULL 与空串分得开）；
 #   ③ 负例：非 xlsx 的二进制（.xls 改名那种）要给出**能读懂的原因**，工作表序号越界要报错。
 #
-# 环境：本机临时集群（PG 二进制在 ~/tools/pgserver/...，端口 55433）。
+# 环境：真库连接信息由 `Scripts/lib/test-env.sh` 决定（过渡期默认本机临时集群，档位见该文件的档位表）。
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_xlsx_import_check"
 WORK="$(mktemp -d -t doyah-xlsx-import)"
 STARTED=0
@@ -35,9 +39,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB} WITH (FORCE);" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 export PGDATABASE="$DB"
 "$CLI" -c "CREATE TABLE 导入目标 (id integer, 名称 text, 金额 numeric(10,2), 下单日期 date, 已付 boolean, 备注 text);" >/dev/null 2>&1
 

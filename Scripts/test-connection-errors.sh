@@ -6,14 +6,18 @@
 # 既看不出"是密码错、库不存在、还是网络不通"，也不知道下一步查什么。
 # 这里逐种失败造一遍，断言**人话 + 建议 + 错误码**都在，且**原始串没被丢掉**。
 #
-# 环境：本机临时集群（PG 二进制在 ~/tools/pgserver/...，端口 55433）用于"库不存在"这一档。
+# 环境：真库连接信息由 `Scripts/lib/test-env.sh` 决定（过渡期默认本机临时集群，档位见该文件）；本脚本用它验「库不存在」这一档。
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 STARTED=0
 
 fail=0
@@ -35,7 +39,7 @@ fi
 
 echo ""
 echo "== 1) 端口没人监听（连接超时 / 被拒）=="
-OUT="$(PGHOST=127.0.0.1 PGPORT=59999 PGUSER=nobody PGPASSWORD="" PGDATABASE=nothing \
+OUT="$(PGHOST="${DOYAH_TEST_PGHOST}" PGPORT=59999 PGUSER=nobody PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE=nothing \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
 check "失败退出码非 0（实际 ${code}）" "$([ "$code" -ne 0 ] && echo 0 || echo 1)"
@@ -47,7 +51,7 @@ echo "$OUT" | grep -q "调试详情" && echo "$OUT" | grep -q "PSQLError" \
 
 echo ""
 echo "== 2) 主机名解析不了 =="
-OUT2="$(PGHOST=no-such-host.invalid PGPORT=5432 PGUSER=x PGPASSWORD="" PGDATABASE=x \
+OUT2="$(PGHOST=no-such-host.invalid PGPORT=5432 PGUSER=x PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE=x \
     "$CLI" -c "SELECT 1" 2>&1)"
 # 本环境把"主机名解析不了"报成 connect timeout（实测），因此这里断言的是**可读且指向解析**：
 # 文案要点出目标、并提醒先确认主机名 —— 而不是硬套一个"解析失败"的标签（那样在别的环境会假红）。
@@ -70,7 +74,7 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-OUT3="$(PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD="" PGDATABASE=no_such_db_xyz \
+OUT3="$(PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${DOYAH_TEST_PGPORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE=no_such_db_xyz \
     "$CLI" -c "SELECT 1" 2>&1)"
 echo "$OUT3" | grep -q "数据库不存在或无权连接" && check "识别为库不存在 / 无权连接" 0 \
     || { echo "$OUT3" | head -12; check "识别为库不存在 / 无权连接" 1; }
@@ -78,7 +82,7 @@ echo "$OUT3" | grep -q "no_such_db_xyz" && check "把库名写进文案" 0 || ch
 
 echo ""
 echo "== 4) 对照：能连上时不出现任何失败文案 =="
-OUT4="$(PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD="" PGDATABASE=postgres \
+OUT4="$(PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${DOYAH_TEST_PGPORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE="${DOYAH_TEST_ADMIN_DB}" \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
 check "正常连接退出码 0（实际 ${code}）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"
@@ -86,7 +90,7 @@ echo "$OUT4" | grep -q "连接失败" && check "正常路径没有多余的失�
 
 echo ""
 echo "== 5) SQL 类错误**不**被说成连接问题（负例，单测同口径）=="
-OUT5="$(PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD="" PGDATABASE=postgres \
+OUT5="$(PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${DOYAH_TEST_PGPORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE="${DOYAH_TEST_ADMIN_DB}" \
     "$CLI" -c "SELECT * FROM no_such_table_xyz" 2>&1)"
 if echo "$OUT5" | grep -q "连接中断\|连接超时\|解析不了"; then
     check "SQL 错误没被翻译成连接失败" 1
@@ -99,7 +103,7 @@ echo "== 6) **不带口令**（不是空口令，是根本没给）连 trust 库
 # 这一档守的是「无口令认证」这条路：服务端是 trust / peer / 证书时本来就不需要口令，
 # 客户端在连接前无从判断 —— 所以 `password = nil` 必须能一路走到底。
 # （App 侧原先"没存口令就直接拒绝"，本机 trust 集群于是**永远连不上**；本轮修掉。）
-OUT6="$(env -u PGPASSWORD PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGDATABASE=postgres \
+OUT6="$(env -u PGPASSWORD PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${DOYAH_TEST_PGPORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGDATABASE="${DOYAH_TEST_ADMIN_DB}" \
     "$CLI" -c "SELECT 1" 2>&1)"
 code=$?
 check "无口令连接退出码 0（实际 ${code}）" "$([ "$code" -eq 0 ] && echo 0 || echo 1)"

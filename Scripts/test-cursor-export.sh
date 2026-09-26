@@ -12,7 +12,13 @@ S="doyah_cursor_check"
 ROWS=1000000
 OUT="$(mktemp -t doyah-export).csv"
 
-export PGHOST=192.168.5.217 PGUSER=zxvmax PGDATABASE=zxvmax PGSSLMODE=disable
+# 本脚本不建集群、不建库，只对一台常驻实例做只读核对 —— 没有「迁移第 2 步」要改的段落
+DOYAH_TEST_SCRIPT_READY_FOR_REMOTE=1
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+export PGHOST="${DOYAH_TEST_REMOTE_HOST}" PGUSER="${DOYAH_TEST_REMOTE_USER}" PGDATABASE="${DOYAH_TEST_REMOTE_DATABASE}" PGSSLMODE="${DOYAH_TEST_PGSSLMODE}"
 PGPASSWORD="$("$CLI" secret get --id "$ACCOUNT")"
 export PGPASSWORD
 

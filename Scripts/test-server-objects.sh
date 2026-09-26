@@ -42,9 +42,13 @@ if ! codesign -dv "${CLI}" >/dev/null 2>&1; then
     codesign --force --sign - "${CLI}" >/dev/null 2>&1
 fi
 
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="${PGSERVER_DATADIR:-$PWD/.build/pgdata-session-test}"
-PORT="${TEST_PGPORT:-55433}"
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 PROBE="doyah_ss3_probe"           # 一次性角色：带脚本前缀，不会撞上别人的对象
 PROBE_PW="ss3_probe_pw"
 PROBE_PW2="ss3_probe_pw2"
@@ -81,19 +85,19 @@ assert_contains() {  # 描述 期望子串 实际文本
 }
 
 psql_q() {  # 只跑一条幂等 / 只读语句，返回单值
-    PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc "$1" 2>/dev/null | tr -d '[:space:]'
+    PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc "$1" 2>/dev/null | tr -d '[:space:]'
 }
 
 cleanup() {
     # 清账要**无条件**做：中途失败留下的角色会让下一次复跑卡在「角色已存在」。
     if [ "${READY}" = "1" ]; then
-        PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
+        PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
             "DROP ROLE IF EXISTS ${PROBE};" >/dev/null 2>&1
-        PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
+        PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
             "DROP ROLE IF EXISTS ${CLI_PROBE};" >/dev/null 2>&1
-        PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
+        PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
             "DROP EXTENSION IF EXISTS pg_stat_statements;" >/dev/null 2>&1
-        PGPASSWORD="" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
+        PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" "$PGBIN/psql" -h 127.0.0.1 -p "$PORT" -U postgres -d postgres -tAc \
             "DROP EXTENSION IF EXISTS vector;" >/dev/null 2>&1
     fi
     [ "${STARTED}" = "1" ] && "$PGBIN/pg_ctl" -D "$DATADIR" stop >/dev/null 2>&1
@@ -184,7 +188,7 @@ else
 fi
 
 # CLI 从环境变量取连接参数（默认端口是 5432，必须显式指到临时集群）。
-export PGHOST=127.0.0.1 PGPORT="${PORT}" PGUSER=postgres PGPASSWORD="" PGDATABASE=postgres
+export PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${PORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE="${DOYAH_TEST_ADMIN_DB}"
 
 echo "  · 用 CLI：${CLI}"
 SERVER_VERSION="$(psql_q 'SHOW server_version;')"

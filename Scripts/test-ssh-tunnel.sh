@@ -11,9 +11,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PGPORT_TEST=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PGPORT_TEST="${DOYAH_TEST_PGPORT}"
 STUB_DIR="$PWD/.build/stub-ssh"
 STUB_LOG="$STUB_DIR/argv.log"
 TUNNEL_LOG="$STUB_DIR/tunnel.out"

@@ -15,9 +15,13 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PGPORT_TEST=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PGPORT_TEST="${DOYAH_TEST_PGPORT}"
 WORK="$PWD/.build/mcp-$$"
 STARTED_PG=0
 
@@ -49,7 +53,8 @@ fi
 "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1 && check "本机 PG 在跑" 0 || check "本机 PG 在跑" 1
 
 mkdir -p "$WORK"
-export PGHOST=127.0.0.1 PGPORT="$PGPORT_TEST" PGUSER=postgres PGDATABASE=doyah_manual_test PGSSLMODE=disable
+doyah_test_env_export_connection
+export PGDATABASE="${DOYAH_TEST_PGDATABASE}"
 
 echo ""
 echo "== 1) 方向 A：我们当 server（假 MCP host 驱动） =="

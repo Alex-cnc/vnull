@@ -4,7 +4,7 @@ set -euo pipefail
 # 本工程的一条命令验证闭环。
 #
 # 拆开跑过很多次、也就漏跑过很多次（尤其是文档计数与设计令牌这两项），
-# 所以合成一条：**改完代码跑它，十二项全过才算完**。
+# 所以合成一条：**改完代码跑它，十三项全过才算完**。
 #
 #   1. Core 单测（SwiftPM，不需要数据库）+ 平台适配层单测
 #   2. Core 平台中立性（Core 里不得出现平台专属依赖 —— 否则 Linux 编译不过）
@@ -18,6 +18,7 @@ set -euo pipefail
 #  10. 插件装配链（笔记模块解耦 FR-PLUG-07 + 装配与许可 FR-PLUG-01/02/03/06 + ADR-35）
 #  11. 打包 .app（沙箱构建）
 #  12. 脚本 shell 多字节安全（bash 3.2 的变量名坑，见 `check-shell-locale-safety.py`）
+#  13. 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号，见 `check-script-env-parameterization.py`）
 #
 # 第 8 项是 2026-09-23 补的：那天发现命令面板有 9 条命令「设了标志位但没人读」，
 # 用户点了完全没反应，而当时已有的 7 项门禁**全部看不见**这类缺陷（编译、单测、
@@ -40,43 +41,46 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/12 Core 与平台适配层单测"
+echo "==> 1/13 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/12 Core 平台中立性"
+echo "==> 2/13 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/12 Core 展示文本本地化棘轮（R-45）"
+echo "==> 3/13 Core 展示文本本地化棘轮（R-45）"
 python3 Scripts/check-core-localization.py
 
-echo "==> 4/12 文档表格与派生计数"
+echo "==> 4/13 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 # 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
 python3 Scripts/check-terminal-palette.py
 
-echo "==> 5/12 需求状态一致性（索引表 ↔ 正文定义行）"
+echo "==> 5/13 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
 
-echo "==> 6/12 设计令牌棘轮"
+echo "==> 6/13 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 7/12 平台等价矩阵"
+echo "==> 7/13 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 8/12 平台中立性棘轮"
+echo "==> 8/13 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 9/12 命令面板接线（FR-EDIT-25）"
+echo "==> 9/13 命令面板接线（FR-EDIT-25）"
 python3 Scripts/check-palette-wiring.py
 
-echo "==> 10/12 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
+echo "==> 10/13 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
 python3 Scripts/check-note-module-isolation.py
 python3 Scripts/check-plugin-assembly.py
 
-echo "==> 11/12 打包 .app（沙箱）"
+echo "==> 11/13 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
-echo "==> 12/12 脚本 shell 多字节安全（bash 3.2 变量名坑）"
+echo "==> 12/13 脚本 shell 多字节安全（bash 3.2 变量名坑）"
 python3 Scripts/check-shell-locale-safety.py
 
-echo "✅ 验证闭环全部通过（十二项）"
+echo "==> 13/13 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号）"
+python3 Scripts/check-script-env-parameterization.py
+
+echo "✅ 验证闭环全部通过（十三项）"

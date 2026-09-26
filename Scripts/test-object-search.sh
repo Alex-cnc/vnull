@@ -9,9 +9,13 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
 ACCOUNT="D264B21B-1880-4E73-A2D0-59A3F8E4D7EC"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-session-test"
-PORT=55433
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_search_check"
 STARTED=0
 
@@ -30,9 +34,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
     STARTED=1
     sleep 2
 fi
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 export PGDATABASE="$DB"
 "$CLI" -c "
 CREATE SCHEMA reporting;
@@ -82,7 +86,7 @@ echo ""
 echo "== 6) 217（18.6）上只读搜索：一次查询在真机可用 =="
 # 切到 217 时**必须同时改 PGDATABASE**：否则还连着本机的临时库名（本轮就踩了这个，
 # 报错是 `database "doyah_search_check" does not exist` —— 脚本自己的疏漏，不是产品问题）。
-export PGHOST=192.168.5.217 PGPORT=5432 PGUSER=zxvmax PGDATABASE=zxvmax PGSSLMODE=disable
+export PGHOST="${DOYAH_TEST_REMOTE_HOST}" PGPORT="${DOYAH_TEST_REMOTE_PORT}" PGUSER="${DOYAH_TEST_REMOTE_USER}" PGDATABASE="${DOYAH_TEST_REMOTE_DATABASE}" PGSSLMODE="${DOYAH_TEST_PGSSLMODE}"
 PGPASSWORD="$("$CLI" secret get --id "$ACCOUNT")"
 export PGPASSWORD
 REMOTE="$("$CLI" search-objects pg_ 2>&1)"
@@ -93,8 +97,8 @@ echo "$REMOTE" | grep -q "在 .* 个对象里搜" && check "217 上单次元数�
 echo ""
 echo "== 7) 清理现场 =="
 unset PGHOST PGPORT PGUSER PGPASSWORD PGSSLMODE
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
 echo "  ✅ 已删除临时库 ${DB}"
 
 echo ""

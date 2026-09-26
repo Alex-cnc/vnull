@@ -10,9 +10,15 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 CLI=".build/debug/DoyahCLI"
 ACCOUNT="D264B21B-1880-4E73-A2D0-59A3F8E4D7EC"
-PGBIN="$HOME/tools/pgserver/pgserver/pginstall/bin"
-DATADIR="$PWD/.build/pgdata-slowquery"
-PORT=55434
+# 本脚本用 slowquery 档集群（端口 / 数据目录与默认档不同，见 test-env.sh 的档位表）
+DOYAH_TEST_LOCAL_PROFILE=slowquery
+# 连接信息（本机过渡集群 / 远程专用库）由共用入口决定 —— 三档端口与目录只写在它里面
+source "$(cd "$(dirname "$0")" && pwd)/lib/test-env.sh"
+doyah_test_env_summary
+
+PGBIN="${DOYAH_TEST_PG_BIN}"
+DATADIR="${DOYAH_TEST_LOCAL_DATADIR}"
+PORT="${DOYAH_TEST_PGPORT}"
 DB="doyah_slow_check"
 STARTED=0
 
@@ -37,9 +43,9 @@ if ! "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1; then
 fi
 "$PGBIN/pg_ctl" -D "$DATADIR" status >/dev/null 2>&1 && echo "  ✅ 实例在跑（端口 ${PORT}，已预加载 pg_stat_statements）" || { echo "  ❌ 实例没起来"; exit 1; }
 
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
-PGDATABASE=postgres "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "CREATE DATABASE ${DB};" >/dev/null 2>&1
 export PGDATABASE="$DB"
 
 echo ""
@@ -110,7 +116,7 @@ print("  ✅ JSON 可解析、字段稳定、按平均耗时降序")
 
 echo ""
 echo "== 3) 217（18.6）上的真实情形（只读；装没装扩展都要给对的东西）=="
-export PGHOST=192.168.5.217 PGPORT=5432 PGUSER=zxvmax PGDATABASE=zxvmax PGSSLMODE=disable
+export PGHOST="${DOYAH_TEST_REMOTE_HOST}" PGPORT="${DOYAH_TEST_REMOTE_PORT}" PGUSER="${DOYAH_TEST_REMOTE_USER}" PGDATABASE="${DOYAH_TEST_REMOTE_DATABASE}" PGSSLMODE="${DOYAH_TEST_PGSSLMODE}"
 PGPASSWORD="$("$CLI" secret get --id "$ACCOUNT")"
 export PGPASSWORD
 REMOTE="$("$CLI" slow-queries --limit 3 2>&1)"
@@ -127,8 +133,8 @@ fi
 echo ""
 echo "== 4) 清理现场 =="
 unset PGHOST PGPORT PGUSER PGDATABASE PGPASSWORD PGSSLMODE
-export PGHOST=127.0.0.1 PGPORT="$PORT" PGUSER=postgres PGPASSWORD=""
-PGDATABASE=postgres "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
+doyah_test_env_export_connection
+PGDATABASE="${DOYAH_TEST_ADMIN_DB}" "$CLI" -c "DROP DATABASE IF EXISTS ${DB};" >/dev/null 2>&1
 echo "  ✅ 已删除临时库 ${DB}"
 
 echo ""
