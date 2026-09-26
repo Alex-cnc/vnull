@@ -102,15 +102,19 @@ enum UISnapshot {
         .frame(width: size.width, height: size.height)
         .environment(\.colorScheme, scheme)
 
-        // 两条渲染路径都试，取能画出内容的那条（见 `renderer` 字段：证据要说明**怎么来的**）。
+        // 三条渲染路径都试，取能画出内容的那条（见 `renderer` 字段：证据要说明**怎么来的**）。
         //
-        // 实测（本机 / Swift 6.4）：`ImageRenderer` 对 **`ScrollView`** 与
-        // **`NSViewRepresentable`** 两种容器画不出内容 —— `ScrollView { Text(…) }`、
-        // 工作区 Home 页、结果表主体（`ResultGrid` 是 AppKit 自绘）都渲染成**整幅背景**或
-        // 干脆是系统的"不可渲染"占位图，结果表只画出 SwiftUI 那半边（工具栏）。
-        // `NSHostingView` + `cacheDisplay` 走的是真实布局 + 逐子视图绘制（打印/导出用的老路），
-        // 两类容器都能画出来 —— 所以**默认先走它**，`ImageRenderer` 只作退路。
+        // 实测（本机 / Swift 6.4）：
+        // · `ImageRenderer` 对 **`ScrollView`** 与 **`NSViewRepresentable`** 两种容器画不出内容 ——
+        //   `ScrollView { Text(…) }`、工作区 Home 页、结果表主体（`ResultGrid` 是 AppKit 自绘）
+        //   都渲染成**整幅背景**或干脆是系统的"不可渲染"占位图，结果表只画出 SwiftUI 那半边（工具栏）。
+        // · 无窗口的 `NSHostingView` + `cacheDisplay` 能画 `ScrollView`，但 **AppKit 自绘的
+        //   `List` / 侧栏**画不出来（第 10 轮实测：连接列表整幅背景）；
+        // · 给它一个**离屏窗口**（路径一）后连 `List` 也能画出来。
+        // 所以顺序是：窗口宿主 → 无窗口宿主 → `ImageRenderer`，**先密后疏**，
+        // 并把 Apple 的占位图在选路阶段就淘汰掉（否则它比真界面还"有内容"，见 `placeholderShare`）。
         let attempts: [(label: String, render: () throws -> CGImage)] = [
+            ("NSWindow+NSHostingView", { try windowHostedImage(view, size: size, scale: scale, scheme: scheme) }),
             ("NSHostingView", { try hostedImage(view, size: size, scale: scale, scheme: scheme) }),
             ("ImageRenderer", { try imageRenderer(view, size: size, scale: scale) }),
         ]
@@ -120,6 +124,12 @@ enum UISnapshot {
         for attempt in attempts {
             do {
                 let image = try attempt.render()
+                // 占位图**先判**：Apple 那条"不可渲染"的路（黄底红圈）在像素上很密，
+                // 非空白占比能到 0.18，光看占比会把一张占位图当成"界面没问题"（第 10 轮实测就是这么被骗的）。
+                if let share = placeholderShare(image) {
+                    attemptsLog.append("\(attempt.label)=不可渲染占位图（黄 \(String(format: "%.2f", share.yellow))/红 \(String(format: "%.2f", share.red))）")
+                    continue
+                }
                 let ratio = contentRatio(of: image)
                 attemptsLog.append("\(attempt.label)=\(String(format: "%.3f", ratio))")
                 if ratio >= minimumContentRatio {
@@ -169,10 +179,43 @@ enum UISnapshot {
         return image
     }
 
-    /// 路径二：`NSHostingView` 真实布局 + `cacheDisplay`（打印/导出同一条路）。
+    /// 路径一：**离屏窗口**里的 `NSHostingView`（本轮新增）。
     ///
-    /// 位图自己按 `scale` 建（`cacheDisplay` 会按 rep 的 `size` 换算），这样离屏也有 2× 图；
-    /// `appearance` 一并给定，免得动态色在深色一遍里被系统真实外观解析掉。
+    /// 为什么需要这一条（第 10 轮实测）：`List` / 侧栏这类 AppKit 自绘容器在**没有窗口**的
+    /// 宿主里画不出内容（`cacheDisplay` 拿到的是整幅背景），于是退到 `ImageRenderer`，
+    /// 而它给出的是 Apple 的"不可渲染"占位图 —— 一张黄底红圈的图。给宿主一个真实的
+    /// `NSWindow`（**不** order、不显示）后 AppKit 才会真正 tile 这些控件。
+    ///
+    /// 窗口刻意不上屏：无人值守的机器上不该"闪一下"。这里只用它的布局与 backing store 通道。
+    @MainActor
+    private static func windowHostedImage<V: View>(
+        _ view: V, size: CGSize, scale: CGFloat, scheme: ColorScheme
+    ) throws -> CGImage {
+        let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        let hosting = NSHostingView(rootView: view)
+        hosting.appearance = appearance
+        hosting.frame = CGRect(origin: .zero, size: size)
+
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = appearance
+        window.isReleasedWhenClosed = false
+        window.contentView = hosting
+        window.layoutIfNeeded()
+        hosting.layoutSubtreeIfNeeded()
+        hosting.displayIfNeeded()
+
+        let rep = try bitmap(size: size, scale: scale)
+        hostDisplay(hosting, into: rep)
+        return try cgImage(from: rep, label: "NSWindow+NSHostingView")
+    }
+
+    /// 路径二：`NSHostingView` 真实布局 + `cacheDisplay`（打印/导出同一条路）。
+    /// 没有窗口的宿主：SwiftUI 那半边能画，AppKit 自绘容器画不出来（所以要配上路径一）。
     @MainActor
     private static func hostedImage<V: View>(_ view: V, size: CGSize, scale: CGFloat, scheme: ColorScheme) throws -> CGImage {
         let hosting = NSHostingView(rootView: view)
@@ -180,6 +223,13 @@ enum UISnapshot {
         hosting.frame = CGRect(origin: .zero, size: size)
         hosting.layoutSubtreeIfNeeded()
 
+        let rep = try bitmap(size: size, scale: scale)
+        hostDisplay(hosting, into: rep)
+        return try cgImage(from: rep, label: "NSHostingView")
+    }
+
+    /// 位图自己按 `scale` 建（`cacheDisplay` 会按 rep 的 `size` 换算），这样离屏也有 2× 图。
+    private static func bitmap(size: CGSize, scale: CGFloat) throws -> NSBitmapImageRep {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int((size.width * scale).rounded()),
@@ -192,11 +242,52 @@ enum UISnapshot {
             bytesPerRow: 0,
             bitsPerPixel: 0
         )
-        guard let rep else { throw SnapshotError.renderFailed("NSHostingView（位图分配失败）") }
+        guard let rep else { throw SnapshotError.renderFailed("位图分配失败") }
         rep.size = size
+        return rep
+    }
+
+    private static func hostDisplay(_ hosting: NSView, into rep: NSBitmapImageRep) {
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
-        guard let image = rep.cgImage else { throw SnapshotError.renderFailed("NSHostingView（取不到位图）") }
+    }
+
+    private static func cgImage(from rep: NSBitmapImageRep, label: String) throws -> CGImage {
+        guard let image = rep.cgImage else { throw SnapshotError.renderFailed("\(label)（取不到位图）") }
         return image
+    }
+
+    /// Apple 那条「这个视图我画不出来」的占位图的配色（实测像素值）。
+    ///
+    /// 为什么必须单独识别它：这张图**相当密**（本机实测：黄 81.4% + 红 18.1%，内容占比 0.185），
+    /// 「非空白」那道断言拦不住 —— 它比绝大多数真界面都"有内容"。第 10 轮实测就踩了这个坑：
+    /// `List` 这类 AppKit 自绘容器在**无窗口**宿主里画不出内容，退到 `ImageRenderer` 后
+    /// 拿回来的正是这张占位图，于是被当成有效证据落进清单。
+    ///
+    /// 判据写成颜色而不是"看起来像"：命中（黄占比 > 0.4 且红占比 > 0.03）就在**选路阶段**
+    /// 淘汰该条路径。容差 8 用来抗色彩空间换算。
+    static func placeholderShare(_ image: CGImage) -> (yellow: Double, red: Double)? {
+        guard let buffer = rgbaBuffer(of: image) else { return nil }
+        let yellow: (Int, Int, Int) = (255, 204, 0)
+        let red: (Int, Int, Int) = (255, 56, 60)
+        var yellowCount = 0
+        var redCount = 0
+        var total = 0
+        for index in stride(from: 0, to: buffer.pixels.count, by: 4) {
+            total += 1
+            let r = Int(buffer.pixels[index])
+            let g = Int(buffer.pixels[index + 1])
+            let b = Int(buffer.pixels[index + 2])
+            if abs(r - yellow.0) <= 8, abs(g - yellow.1) <= 8, abs(b - yellow.2) <= 8 {
+                yellowCount += 1
+            } else if abs(r - red.0) <= 8, abs(g - red.1) <= 8, abs(b - red.2) <= 8 {
+                redCount += 1
+            }
+        }
+        guard total > 0 else { return nil }
+        let yellowShare = Double(yellowCount) / Double(total)
+        let redShare = Double(redCount) / Double(total)
+        guard yellowShare > 0.4, redShare > 0.03 else { return nil }
+        return (yellowShare, redShare)
     }
 
     /// 非背景像素占比：把图重画进 8 位 RGBA 缓冲，逐点与"左上角像素"比较。
@@ -205,9 +296,30 @@ enum UISnapshot {
     /// 都是空白底色（面板内边距），这个前提比"众数是背景"更稳定 —— 结果表这种大面积
     /// 文字+网格的图，众数可能直接落在文字色上。
     private static func contentRatio(of image: CGImage) -> Double {
+        guard let buffer = rgbaBuffer(of: image), buffer.width > 0, buffer.height > 0 else { return 0 }
+        let pixels = buffer.pixels
+
+        let baseline = (pixels[0], pixels[1], pixels[2], pixels[3])
+        var differing = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            // 容差 6：抗锯齿与压缩噪点不该被算成"内容"。
+            // **四个通道都要比**：原先只比 RGB 时，"透明底上的黑色文字"整幅被判成空白
+            // （预乘 alpha 下透明像素与纯黑像素的 RGB 都是 0）—— 这正是本轮踩到的坑。
+            if abs(Int(pixels[index]) - Int(baseline.0)) > 6
+                || abs(Int(pixels[index + 1]) - Int(baseline.1)) > 6
+                || abs(Int(pixels[index + 2]) - Int(baseline.2)) > 6
+                || abs(Int(pixels[index + 3]) - Int(baseline.3)) > 6 {
+                differing += 1
+            }
+        }
+        return Double(differing) / Double(buffer.width * buffer.height)
+    }
+
+    /// 把 `CGImage` 重画进 8 位 RGBA 缓冲，供逐点分析（内容占比 / 占位图识别共用）。
+    private static func rgbaBuffer(of image: CGImage) -> (pixels: [UInt8], width: Int, height: Int)? {
         let width = image.width
         let height = image.height
-        guard width > 0, height > 0 else { return 0 }
+        guard width > 0, height > 0 else { return nil }
         let bytesPerPixel = 4
         let bytesPerRow = width * bytesPerPixel
         var buffer = [UInt8](repeating: 0, count: bytesPerRow * height)
@@ -223,24 +335,26 @@ enum UISnapshot {
                 space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             )
-        }) else { return 0 }
+        }) else { return nil }
 
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return (buffer, width, height)
+    }
 
-        let baseline = (buffer[0], buffer[1], buffer[2], buffer[3])
-        var differing = 0
-        for index in stride(from: 0, to: buffer.count, by: bytesPerPixel) {
-            // 容差 6：抗锯齿与压缩噪点不该被算成"内容"。
-            // **四个通道都要比**：原先只比 RGB 时，"透明底上的黑色文字"整幅被判成空白
-            // （预乘 alpha 下透明像素与纯黑像素的 RGB 都是 0）—— 这正是本轮踩到的坑。
-            if abs(Int(buffer[index]) - Int(baseline.0)) > 6
-                || abs(Int(buffer[index + 1]) - Int(baseline.1)) > 6
-                || abs(Int(buffer[index + 2]) - Int(baseline.2)) > 6
-                || abs(Int(buffer[index + 3]) - Int(baseline.3)) > 6 {
-                differing += 1
+    /// 类级收尾：整组用例跑完再写清单。
+    ///
+    /// 为什么要一个共用入口：清单里的 `records` 是**跨用例、跨测试类**累积的静态数组，
+    /// 而"谁最后跑完"由 XCTest 决定。于是每个测试类都在类级收尾里调这里 ——
+    /// 后跑的那一类写出来的就是**全量**清单（先跑的那一类写的会被后一个覆盖，但内容更全）。
+    static func finishManifestIfEnabled() {
+        guard isEnabled, !records.isEmpty else { return }
+        do {
+            if let url = try writeManifest(extra: ["snapshotCount": String(records.count)]) {
+                print("🧾 清单：\(url.path)（\(records.count) 张）")
             }
+        } catch {
+            print("⚠️ 清单写入失败：\(error)")
         }
-        return Double(differing) / Double(width * height)
     }
 
     /// 把本轮清单写成 `manifest.json`：谁在什么时候渲染了什么、多大、内容占比多少。

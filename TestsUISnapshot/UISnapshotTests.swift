@@ -184,17 +184,7 @@ final class UISnapshotTests: XCTestCase {
     /// **门禁里的 `swift test` 会跳过全部用例**（没设 `DOYAH_UI_SNAPSHOT`），那时 `records` 是空的 ——
     /// 本轮实测它就照着写了一份"0 张"的清单，把上一轮的真清单覆盖掉了。所以未启用时直接返回。
     override class func tearDown() {
-        guard UISnapshot.isEnabled, !UISnapshot.records.isEmpty else {
-            super.tearDown()
-            return
-        }
-        do {
-            if let url = try UISnapshot.writeManifest(extra: ["snapshotCount": String(UISnapshot.records.count)]) {
-                print("🧾 清单：\(url.path)（\(UISnapshot.records.count) 张）")
-            }
-        } catch {
-            print("⚠️ 清单写入失败：\(error)")
-        }
+        UISnapshot.finishManifestIfEnabled()
         super.tearDown()
     }
 }
