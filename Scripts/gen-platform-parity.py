@@ -40,6 +40,7 @@ DOMAIN_LABEL = {
     "FR-BLD": "构建与工具链",
     "FR-CLI": "命令行",
     "FR-AI": "AI 智能体",
+    "FR-PLUG": "插件装配（宿主侧）",
 }
 
 
