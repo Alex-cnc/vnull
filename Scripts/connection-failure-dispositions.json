@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-09-26T22:45:00+08:00",
+  "note": "连接失败文案的**处置台账**（闭环第 14 项 `check-connection-failure-coverage.py` 按它对账）。为什么要台账：驱动是随仓库带走的 Vendor（Vendor/postgres-nio），升一次版就可能多出新的 `PSQLError.Code` —— 那时文案层的 `switch` 有兜底分支，**不会报错、不会崩**，只会把新原因说成最泛的那句（「连接数据库失败」）。L-14 修的就是这一族的真事：解析不了的主机名被驱动压成 `serverClosedConnection`，文案只好说「连接中断」。台账把「每个码怎么处置」变成**声明**，门禁拿它跟驱动源码与映射文件对账。",
+  "driverCodeSource": "Vendor/postgres-nio/Sources/PostgresNIO/New/PSQLError.swift",
+  "mapping": "Core/ConnectionFailure.swift",
+  "kinds": {
+    "翻译": "在 `describe(psqlError:)` 的驱动码分支里点名，给一句人话 + 建议（必须给出 caseRef）",
+    "按码说话": "由 SQLSTATE 分支处理（有码按码说话，无码落兜底），因此不在驱动码分支里点名",
+    "不翻译": "有意留给兜底分支 —— 它**不是**连接失败，或没有可给出的人话（每条都要写明为什么）"
+  },
+  "dispositions": {
+    "sslUnsupported":                       { "kind": "翻译",    "caseRef": ".sslUnsupported",                       "why": "服务端 ssl=off 而连接选了 require 必然走到这里（2026-09-25 实测），要按 SSL 说，不给 SSL 的库连不上是常识之外的信息" },
+    "failedToAddSSLHandler":                { "kind": "翻译",    "caseRef": ".failedToAddSSLHandler",                "why": "TLS 处理器装不上，与协商失败同一族，用户动作都是换 SSL 模式 / 查证书" },
+    "receivedUnencryptedDataAfterSSLRequest": { "kind": "翻译",  "caseRef": ".receivedUnencryptedDataAfterSSLRequest", "why": "要求加密却收到明文（中间件或代理把 SSLRequest 吃掉了），排查方向是链路而不是口令" },
+    "server":                               { "kind": "按码说话", "fallsTo": "SQLSTATE 分支（有码）→ default（无码）", "why": "服务端回了错误：有 SQLSTATE 就按码说话（认证 / 库不存在 / 权限 / 连接数…），没有码时落兜底文案" },
+    "messageDecodingFailure":               { "kind": "不翻译",   "why": "解码失败属协议层，与「连不上」不是一回事；落到兜底文案会说成连接失败 —— 这是既有的债，已登记 SRS R-60" },
+    "unexpectedBackendMessage":             { "kind": "不翻译",   "why": "服务端发来意外消息（协议层），同上，登记在 R-60" },
+    "unsupportedAuthMechanism":             { "kind": "翻译",    "caseRef": ".unsupportedAuthMechanism",             "why": "服务端要的认证方式客户端不支持 —— 用户能做的动作与「口令不对」完全不同" },
+    "authMechanismRequiresPassword":        { "kind": "翻译",    "caseRef": ".authMechanismRequiresPassword",        "why": "服务端要口令而本次没给；这条同时是「无口令认证的库不许被提前拒绝」那个开关的另一半" },
+    "saslError":                            { "kind": "翻译",    "caseRef": ".saslError",                            "why": "SASL / SCRAM 协商失败（口令或机制），要引到「清掉旧口令重新输入」" },
+    "invalidCommandTag":                    { "kind": "不翻译",   "why": "服务端返回的命令标记不合法（协议层），登记在 R-60" },
+    "queryCancelled":                       { "kind": "不翻译",   "why": "**用户自己取消的**——说成「连接失败」是错的（登记 R-60；取消另有 CancellationNoise 那条线）" },
+    "tooManyParameters":                    { "kind": "不翻译",   "why": "参数超上限属 SQL 层（本产品无绑定参数，ADR-29），登记在 R-60" },
+    "clientClosedConnection":               { "kind": "不翻译",   "why": "**我们主动关的**连接（关页签 / 断开），说成「连接失败」同样指错方向（登记 R-60）" },
+    "serverClosedConnection":               { "kind": "翻译",    "caseRef": ".serverClosedConnection",               "why": "服务端把连接关了；underlying 带网络串时按串说话。L-14 修的就是它：驱动会把「主机名解析不了」也压成这个码且不带原因，所以解析改成**建连之前**自己查" },
+    "connectionError":                      { "kind": "翻译",    "caseRef": ".connectionError",                      "why": "建连失败（拒绝 / 超时 / 不可达 / SSL）——有 underlying 就按网络串说话" },
+    "uncleanShutdown":                      { "kind": "翻译",    "caseRef": ".uncleanShutdown",                      "why": "连接非正常结束（服务端崩了 / 被掐断），与空闲断连是同一族建议" },
+    "listenFailed":                         { "kind": "不翻译",   "why": "LISTEN / NOTIFY 通道没建起来，不等于连不上；登记在 R-60" },
+    "unlistenFailed":                       { "kind": "不翻译",   "why": "同上（解除 LISTEN 失败），登记在 R-60" },
+    "poolClosed":                           { "kind": "不翻译",   "why": "连接池已关（本产品不走驱动的连接池，PostgresClient 不在用），登记在 R-60" }
+  },
+  "resolutionPreflight": [
+    {
+      "service": "PostgresService",
+      "file": "Core/PostgresService.swift",
+      "call": "ConnectionFailure.requireResolvableHost",
+      "before": "let newConnection = try await PostgresConnection.connect(",
+      "why": "PG 侧原先没有这道闸（MySQL 侧一直有）；驱动会把解析失败压成 serverClosedConnection 且 underlying 为 nil，只有建连前自己查才拿得到原因"
+    },
+    {
+      "service": "MySQLService",
+      "file": "Core/MySQLService.swift",
+      "call": "SocketAddress.makeAddressResolvingHost",
+      "before": null,
+      "why": "MySQL 侧 2026-09-25 起已有前置检查（走语言表文案 `mysqlHostResolveFailed`）；两条路的措辞不同，属已知差异，不阻塞"
+    }
+  ],
+  "evidenceMarkers": [
+    { "file": "Core/ConnectionFailure.swift", "contains": "throw HostResolutionFailure(", "why": "前置检查必须真的把解析失败变成可读错误类型，而不是原样抛驱动的残缺错误" },
+    { "file": "Scripts/test-connection-errors.sh", "contains": "主机名解析不了", "why": "真库证据脚本要断言这一档（L-14 的现场就是它）" },
+    { "file": "Scripts/test-connection-errors.sh", "contains": "不再说成", "why": "要有**反向**断言：文案不许再出现「连接中断」——只断言正面措辞时，两句并存也能骗过门禁" },
+    { "file": "Tests/HostResolutionTests.swift", "contains": "testDriverDropsTheResolutionCause", "why": "「驱动把原因丢了」这条前提必须有测试守着：驱动哪天补上 underlying，这里会红，提醒可以简化补偿代码" }
+  ]
+}

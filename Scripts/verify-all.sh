@@ -4,7 +4,7 @@ set -euo pipefail
 # 本工程的一条命令验证闭环。
 #
 # 拆开跑过很多次、也就漏跑过很多次（尤其是文档计数与设计令牌这两项），
-# 所以合成一条：**改完代码跑它，十三项全过才算完**。
+# 所以合成一条：**改完代码跑它，十四项全过才算完**。
 #
 #   1. Core 单测（SwiftPM，不需要数据库）+ 平台适配层单测
 #   2. Core 平台中立性（Core 里不得出现平台专属依赖 —— 否则 Linux 编译不过）
@@ -19,6 +19,7 @@ set -euo pipefail
 #  11. 打包 .app（沙箱构建）
 #  12. 脚本 shell 多字节安全（bash 3.2 的变量名坑，见 `check-shell-locale-safety.py`）
 #  13. 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号，见 `check-script-env-parameterization.py`）
+#  14. 连接失败的文案覆盖面（驱动错误码 ↔ 文案台账，见 `check-connection-failure-coverage.py`）
 #
 # 第 8 项是 2026-09-23 补的：那天发现命令面板有 9 条命令「设了标志位但没人读」，
 # 用户点了完全没反应，而当时已有的 7 项门禁**全部看不见**这类缺陷（编译、单测、
@@ -35,52 +36,61 @@ set -euo pipefail
 # 是**不报错的**——脚本照常 exit 0、照常打勾，只是那一行的值空了（与第 10 项那次的假绿同一族）。
 # 修法：变量写成 `${X}`。门禁 `check-shell-locale-safety.py` 把这个坑变成机械检查。
 #
+# 第 14 项 2026-09-26（L-14）补的：驱动是随仓库带走的 Vendor，升版可能多出新的 `PSQLError.Code`，
+# 而文案层的 `switch` 有 `default:` 兜底 —— 新原因**不会报错**，只会被说成最泛的那句
+# （「连接数据库失败」）。L-14 修掉的正是这一族：主机名解析不了被驱动压成 `serverClosedConnection`
+# 且不带原因，用户看到的是「与数据库的连接中断了」。门禁把「每个码怎么处置」变成台账
+# （`Scripts/connection-failure-dispositions.json`）与驱动源码、映射文件、解析前置检查、证据脚本逐条对账。
+#
 # 需要非沙箱构建（例如要跑 dsh-tui 的终端）时单独执行：
 #   DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/13 Core 与平台适配层单测"
+echo "==> 1/14 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/13 Core 平台中立性"
+echo "==> 2/14 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/13 Core 展示文本本地化棘轮（R-45）"
+echo "==> 3/14 Core 展示文本本地化棘轮（R-45）"
 python3 Scripts/check-core-localization.py
 
-echo "==> 4/13 文档表格与派生计数"
+echo "==> 4/14 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 # 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
 python3 Scripts/check-terminal-palette.py
 
-echo "==> 5/13 需求状态一致性（索引表 ↔ 正文定义行）"
+echo "==> 5/14 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
 
-echo "==> 6/13 设计令牌棘轮"
+echo "==> 6/14 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 7/13 平台等价矩阵"
+echo "==> 7/14 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 8/13 平台中立性棘轮"
+echo "==> 8/14 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 9/13 命令面板接线（FR-EDIT-25）"
+echo "==> 9/14 命令面板接线（FR-EDIT-25）"
 python3 Scripts/check-palette-wiring.py
 
-echo "==> 10/13 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
+echo "==> 10/14 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
 python3 Scripts/check-note-module-isolation.py
 python3 Scripts/check-plugin-assembly.py
 
-echo "==> 11/13 打包 .app（沙箱）"
+echo "==> 11/14 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
-echo "==> 12/13 脚本 shell 多字节安全（bash 3.2 变量名坑）"
+echo "==> 12/14 脚本 shell 多字节安全（bash 3.2 变量名坑）"
 python3 Scripts/check-shell-locale-safety.py
 
-echo "==> 13/13 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号）"
+echo "==> 13/14 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号）"
 python3 Scripts/check-script-env-parameterization.py
 
-echo "✅ 验证闭环全部通过（十三项）"
+echo "==> 14/14 连接失败的文案覆盖面（驱动错误码 ↔ 文案台账）"
+python3 Scripts/check-connection-failure-coverage.py
+
+echo "✅ 验证闭环全部通过（十四项）"

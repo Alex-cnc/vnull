@@ -53,15 +53,26 @@ echo ""
 echo "== 2) 主机名解析不了 =="
 OUT2="$(PGHOST=no-such-host.invalid PGPORT=5432 PGUSER=x PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE=x \
     "$CLI" -c "SELECT 1" 2>&1)"
-# 本环境把"主机名解析不了"报成 connect timeout（实测），因此这里断言的是**可读且指向解析**：
-# 文案要点出目标、并提醒先确认主机名 —— 而不是硬套一个"解析失败"的标签（那样在别的环境会假红）。
-if echo "$OUT2" | grep -qE "连接超时|主机名解析不了"; then
-    check "给了人话（超时 / 解析不了）" 0
+# 这一档 2026-09-26 之前报的是「与数据库的连接中断了」：实测（探针在 Tests/HostResolutionTests.swift）
+# 驱动会把解析失败压成 `PSQLError(code: serverClosedConnection)` 且 `underlying == nil` ——
+# 原因在驱动内部就丢了。现在改成**建连之前先解析一次**，因此这里断言的是"说解析、不说中断"。
+code=$?
+check "失败退出码非 0（实际 ${code}）" "$([ "${code}" -ne 0 ] && echo 0 || echo 1)"
+if echo "${OUT2}" | grep -q "主机名解析不了"; then
+    check "给了人话：说得是**解析**" 0
 else
-    echo "$OUT2" | head -12; check "给了人话（超时 / 解析不了）" 1
+    echo "${OUT2}" | head -12; check "给了人话：说得是**解析**" 1
 fi
-echo "$OUT2" | grep -q "主机名" && check "建议里提醒先确认主机名（超时的常见原因是它是打错的）" 0 \
-    || check "建议里提醒先确认主机名（超时的常见原因是它是打错的）" 1
+echo "${OUT2}" | grep -q "连接中断" \
+    && check "不再说成「连接中断」（本轮修掉的那句）" 1 \
+    || check "不再说成「连接中断」（本轮修掉的那句）" 0
+echo "${OUT2}" | grep -q "建议：" && echo "${OUT2}" | grep -q "主机名" \
+    && check "建议里提醒先确认主机名" 0 || check "建议里提醒先确认主机名" 1
+echo "${OUT2}" | grep -q "no-such-host.invalid:5432/x" && check "带上了目标" 0 || check "带上了目标" 1
+echo "${OUT2}" | grep -qE "UnknownHost|nodename nor servname" && check "原始串仍然保留（信息不丢）" 0 \
+    || check "原始串仍然保留（信息不丢）" 1
+echo "${OUT2}" | grep -q "错误码：hostUnresolvable" && check "错误码指明是解析（不是驱动类别）" 0 \
+    || check "错误码指明是解析（不是驱动类别）" 1
 
 echo ""
 echo "== 3) 库不存在（真集群）=="

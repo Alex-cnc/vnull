@@ -37,6 +37,13 @@ public actor PostgresService: DatabaseService {
     }
 
     public func connect() async throws -> ServerInfo {
+        // 主机名**在建连之前先查一次**（2026-09-26 / 队列 L-14）。
+        // 为什么不交给驱动：实测（探针在 `Tests/HostResolutionTests.swift`）把解析不了的名字
+        // 交给驱动，回来的是 `PSQLError(code: serverClosedConnection)` 且 `underlying == nil` ——
+        // 真正的原因在驱动内部就丢了，文案只好说「与数据库的连接中断了」。
+        // MySQL 侧早就有这道前置检查（`MySQLService.connectWithoutTimeout`），PG 侧一直没有。
+        try ConnectionFailure.requireResolvableHost(config.host, port: config.port)
+
         let postgresConfiguration = try makePostgresConfiguration()
         let newConnection = try await PostgresConnection.connect(
             configuration: postgresConfiguration,

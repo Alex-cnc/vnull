@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-09-26T21:40:00+08:00",
-  "note": "本清单是 2026-09-26「L-06 连接信息参数化」**改动之前**实测的现状（改完后逐条对照，证明只改了连接信息的出处、没动任何一条断言）。断言口径见 Scripts/count-evidence-assertions.py。",
+  "note": "本清单是 2026-09-26「L-06 连接信息参数化」**改动之前**实测的现状（改完后逐条对照，证明只改了连接信息的出处、没动任何一条断言）。断言口径见 Scripts/count-evidence-assertions.py。**2026-09-26 第 7 轮（L-14）更新一条**：`connection-errors` 由「红（§2 主机名解析不了的文案，真缺陷）」转**绿**，断言 13 → 20 —— 修法见 `Core/ConnectionFailure.requireResolvableHost`（建连前先解析），改造后实测退出码 0。",
   "counting": "Scripts/count-evidence-assertions.py",
   "entries": [
     { "name": "backup-restore",       "script": "Scripts/test-backup-restore.sh",       "expectExit": 1, "minAssertions": 0,  "profile": "querytest", "knownRed": { "reason": "本机过渡集群之前要先连 217（业务账号）建源库 —— 217 的 pg_hba 未放行本机", "logMustContain": "建库失败" } },
-    { "name": "connection-errors",    "script": "Scripts/test-connection-errors.sh",    "expectExit": 1, "minAssertions": 13, "profile": "session",   "knownRed": { "reason": "§2「主机名解析不了」的文案断言（真缺陷，已单开队列条目 L-14）", "logMustContain": "给了人话（超时 / 解析不了）" } },
+    { "name": "connection-errors",    "script": "Scripts/test-connection-errors.sh",    "expectExit": 0, "minAssertions": 20, "profile": "session" },
     { "name": "copy-import",          "script": "Scripts/test-copy-import.sh",         "expectExit": 0, "minAssertions": 10, "profile": "session" },
     { "name": "csv-encoding",         "script": "Scripts/test-csv-encoding.sh",        "expectExit": 0, "minAssertions": 19, "profile": "session" },
     { "name": "data-import",          "script": "Scripts/test-data-import.sh",         "expectExit": 0, "minAssertions": 24, "profile": "session" },

@@ -70,6 +70,11 @@ public enum ConnectionFailure {
 
     /// 从任意错误提炼可读说明；**不是连接类失败时返回 `nil`**。
     public static func describe(_ error: any Error, target: Target? = nil) -> Description? {
+        // 主机名解析失败：**建连之前**就被我们抓到了（见 `HostResolutionFailure`），
+        // 因此原因确定 —— 直接说解析，不必再从驱动给的残缺信息里猜。
+        if let resolution = error as? HostResolutionFailure {
+            return describe(resolutionFailure: resolution, target: target)
+        }
         if let psql = error as? PSQLError {
             return describe(psqlError: psql, target: target)
         }
@@ -77,6 +82,58 @@ public enum ConnectionFailure {
         let message = "\(error) \(error.localizedDescription)"
         if let network = describeNetworkMessage(message, target: target) { return network }
         return nil
+    }
+
+    // MARK: - 主机名解析（建连之前的**前置检查**；2026-09-26 / 队列 L-14）
+
+    /// 主机名**解析不了**（用户要查的其实是这个名字，不是"连接"）。
+    ///
+    /// **为什么必须有它**（2026-09-26 实测，不是推测）：
+    /// 把一个解析不了的名字交给驱动，回来的是 `PSQLError(code: serverClosedConnection)`
+    /// 且 `underlying == nil`（探针打在 `Tests/HostResolutionTests.swift` 里）—— 真正的
+    /// 「名字解析不了」在驱动内部就被丢掉了。文案于是只能说「与数据库的连接中断了」，
+    /// 而用户该做的是核对主机名拼写 / DNS；说"连接中断"会把排查带进岔路。
+    /// 唯一能拿到确切原因的时机是**建连之前自己查一次**，所以有 `requireResolvableHost`。
+    public struct HostResolutionFailure: Error, Equatable, Sendable {
+        public let host: String
+        public let port: Int
+        /// 解析器的原始报错串（NIO 的 `SocketAddressError.UnknownHost: …`）—— 保留给调试详情。
+        public let detail: String
+
+        public init(host: String, port: Int, detail: String) {
+            self.host = host
+            self.port = port
+            self.detail = detail
+        }
+
+        /// 兜底文案与台面文案**同一句**（不另写一份，见 `resolutionDescription`）。
+        public var errorDescription: String? {
+            ConnectionFailure.describe(resolutionFailure: self).summary
+        }
+    }
+
+    /// 建连**之前**先查一次主机名能不能解析；解析不了就抛 `HostResolutionFailure`。
+    ///
+    /// 走 NIO 的解析入口（而不是 `getaddrinfo`）是为了 **Core 保持平台中立** ——
+    /// 可移植性门禁不允许 Core 里出现平台专属 API（见 §0.8 / `check-core-portability.py`）。
+    public static func requireResolvableHost(_ host: String, port: Int) throws {
+        do {
+            _ = try SocketAddress.makeAddressResolvingHost(host, port: port)
+        } catch {
+            throw HostResolutionFailure(host: host, port: port, detail: String(reflecting: error))
+        }
+    }
+
+    /// 解析失败 → 「人话 + 建议 + 错误码」。`code` 用 `hostUnresolvable`（没有 SQLSTATE 可言）。
+    static func describe(resolutionFailure failure: HostResolutionFailure, target: Target? = nil) -> Description {
+        let address = target ?? Target(host: failure.host, port: failure.port)
+        let described = resolutionDescription(target: address)
+        return Description(
+            summary: described.summary,
+            suggestion: described.suggestion,
+            code: "hostUnresolvable",
+            technicalDetail: failure.detail
+        )
     }
 
     static func describe(psqlError: PSQLError, target: Target?) -> Description {
@@ -231,10 +288,7 @@ public enum ConnectionFailure {
             )
         }
         if has(["nodename nor servname", "name or service not known", "host not found", "getaddrinfo"]) {
-            return Description(
-                summary: "主机名解析不了\(where_)",
-                suggestion: "检查主机名拼写与 DNS；内网机器请确认 VPN / hosts"
-            )
+            return resolutionDescription(target: target)
         }
         if has(["timed out", "timeout", "etimedout"]) {
             return Description(
@@ -264,6 +318,16 @@ public enum ConnectionFailure {
             )
         }
         return nil
+    }
+
+    /// 「主机名解析不了」**只写一份**：网络层文案分支与建连前的解析检查共用它 ——
+    /// 同一条事实在两个入口各写一套说法，是这类文案最容易长歪的地方。
+    static func resolutionDescription(target: Target?) -> Description {
+        let where_ = target.map { "（\($0.displayName)）" } ?? ""
+        return Description(
+            summary: "主机名解析不了\(where_)",
+            suggestion: "检查主机名拼写与 DNS；内网机器请确认 VPN / hosts"
+        )
     }
 
 
