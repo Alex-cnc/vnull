@@ -530,6 +530,30 @@ public enum LKey: String, CaseIterable, Sendable {
     case connectionFormConnecting
     case connectionFormConnected
     case connectionFormFailed
+
+    // 驱动报错但**不是连接类**（R-60）：中性归因。每个码只说这一族自己的方向 ——
+    // 不许出现「连接失败 / 确认主机、端口、库名、用户名」（那正是 R-60 的缺陷：
+    // 用户被指去查网络与口令，而真实原因与它们无关）。
+    case nonConnectionCancelled
+    case nonConnectionCancelledAdvice
+    case nonConnectionClosedBySession
+    case nonConnectionClosedBySessionAdvice
+    case nonConnectionPoolClosed
+    case nonConnectionTooManyParameters
+    case nonConnectionInternalAdvice
+    case nonConnectionDecodeFailure
+    case nonConnectionDecodeAdvice
+    case nonConnectionProtocolMismatch
+    case nonConnectionProtocolMismatchAdvice
+    case nonConnectionCommandTag
+    case nonConnectionListenChannel
+    case nonConnectionListenChannelRelease
+    case nonConnectionListenAdvice
+    case nonConnectionCodeSuffix
+    case nonConnectionServerCancelled
+    case nonConnectionServerCancelledAdvice
+    case nonConnectionUnclassified
+    case nonConnectionUnclassifiedAdvice
     case connectionFormCopyFullError
     case connectionFormErrorTruncated
 
@@ -2214,6 +2238,29 @@ public enum LocalizedStrings {
         .connectionFormConnecting: [.simplifiedChinese: "正在连接 %@ ...", .english: "Connecting to %@ ..."],
         .connectionFormConnected: [.simplifiedChinese: "连接成功：%@ · %@ · %@", .english: "Connected: %@ · %@ · %@"],
         .connectionFormFailed: [.simplifiedChinese: "连接失败：%@", .english: "Connection failed: %@"],
+        .nonConnectionCancelled: [.simplifiedChinese: "这次操作被取消了", .english: "This run was cancelled"],
+        .nonConnectionCancelledAdvice: [.simplifiedChinese: "取消不是故障：可能是你按了停止，或窗口 / 任务被切走 —— 不必按「连不上」去查网络或口令", .english: "A cancel is not a fault: you stopped it, or the window or task was taken away — there is nothing to chase in the network or the credentials"],
+        .nonConnectionClosedBySession: [.simplifiedChinese: "连接已由本次会话主动关闭", .english: "The connection was closed by this session itself"],
+        .nonConnectionClosedBySessionAdvice: [.simplifiedChinese: "关页签 / 主动断开后仍在跑的操作会走到这里 —— 不是网络或口令问题", .english: "Work still running when you closed the tab or disconnected lands here — not a network or credential problem"],
+        .nonConnectionPoolClosed: [.simplifiedChinese: "驱动的连接池已经关闭", .english: "The driver's connection pool is closed"],
+        .nonConnectionTooManyParameters: [.simplifiedChinese: "这次查询的参数个数超出了协议上限", .english: "This query passed more parameters than the protocol allows"],
+        .nonConnectionInternalAdvice: [.simplifiedChinese: "本产品不走驱动的连接池、也不使用绑定参数（ADR-29）—— 走到这里说明内部装配出了问题，请把完整详情一并反馈", .english: "This product uses neither the driver's pool nor bound parameters (ADR-29), so reaching here means an internal assembly problem — please report the full detail"],
+        .nonConnectionDecodeFailure: [.simplifiedChinese: "服务端发来的报文解不开", .english: "A message from the server could not be decoded"],
+        .nonConnectionDecodeAdvice: [.simplifiedChinese: "协议层异常，与网络 / 口令无关；服务端版本或链路上的中间件都可能引起 —— 请把完整详情一并反馈", .english: "A protocol-layer anomaly unrelated to the network or credentials — the server version or a middlebox on the path can cause it. Please report the full detail"],
+        .nonConnectionProtocolMismatch: [.simplifiedChinese: "服务端发来的报文不符合协议（预期外的消息）", .english: "The server's message does not follow the protocol (unexpected message)"],
+        .nonConnectionProtocolMismatchAdvice: [.simplifiedChinese: "先确认这个端口上跑的确实是 PostgreSQL：对端不是 PostgreSQL（端口被别的服务或代理占用、SSL 协商被中间件改写）就会走到这里 —— 与用户名 / 口令无关", .english: "First confirm the port really runs PostgreSQL: a non-PostgreSQL peer (another service or a proxy on that port, an SSL handshake rewritten in the middle) lands here — credentials are not the problem"],
+        .nonConnectionCommandTag: [.simplifiedChinese: "服务端返回的命令标记不合法", .english: "The server returned an invalid command tag"],
+        .nonConnectionListenChannel: [.simplifiedChinese: "LISTEN / NOTIFY 通道没建起来", .english: "The LISTEN / NOTIFY channel could not be established"],
+        .nonConnectionListenChannelRelease: [.simplifiedChinese: "解除 LISTEN / NOTIFY 失败", .english: "Releasing LISTEN / NOTIFY failed"],
+        .nonConnectionListenAdvice: [.simplifiedChinese: "通道建立失败不等于连不上库 —— 连接本身可能已经正常；确认服务端允许 LISTEN", .english: "A failed channel does not mean the connection is down — it may be perfectly fine. Check that the server allows LISTEN"],
+        .nonConnectionCodeSuffix: [.simplifiedChinese: "（驱动码 %@）", .english: " (driver code %@)"],
+        // 注意：中文槽位**必须有汉字**（`LocalizationTests.testChineseTextIsLocalizedNotLeftInEnglish`
+        // 会逐条检查）—— 「（SQLSTATE %@）」这种全技术词的中文槽位会被判成「把英文抄进了中文槽位」。
+        // 所以这一档不拼后缀，直接一句中文主语 + 括号里的技术码。
+        .nonConnectionServerCancelled: [.simplifiedChinese: "服务端把这次查询取消了（SQLSTATE %@）", .english: "The server cancelled this query (SQLSTATE %@)"],
+        .nonConnectionServerCancelledAdvice: [.simplifiedChinese: "取消不是连接问题，不必查网络与口令。可能是有人按了停止、服务端的 statement_timeout 到点，或管理员执行了 pg_cancel_backend —— 想区分的话看服务端日志", .english: "A cancel is not a connection problem, so there is nothing to chase in the network or the credentials. It may be a stop request, the server's statement_timeout firing, or an administrator running pg_cancel_backend — the server log tells them apart"],
+        .nonConnectionUnclassified: [.simplifiedChinese: "数据库驱动报错（错误码 %@）—— 尚未归类", .english: "The database driver reported an error (code %@) — not classified yet"],
+        .nonConnectionUnclassifiedAdvice: [.simplifiedChinese: "现有文案只对已确认的原因给结论，未知码不给方向判断（把它说成「连接失败」会把你引去查网络与口令）。完整详情见调试详情，请一并反馈以便登记它的处置", .english: "The wording only draws conclusions for confirmed causes, so an unknown code gets no direction verdict (calling it a connection failure would send you after the network and credentials). The full detail is below — please report it so this code can be classified"],
         .connectionFormCopyFullError: [.simplifiedChinese: "复制完整错误", .english: "Copy the full error"],
         .connectionFormErrorTruncated: [.simplifiedChinese: "对话框里只显示了前一段，复制得到的是全文。", .english: "Only the first part is shown here; copying gives you the full text."],
 

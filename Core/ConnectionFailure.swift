@@ -12,6 +12,10 @@ import PostgresNIO
 ///    排查时"到底是哪个码"往往才是关键，把它换掉等于帮倒忙；
 /// 2. **不抢别的错误**：只有识别得出是连接类失败时才给结论，其余返回 `nil` 让调用方走原路
 ///    （否则会把 SQL 语法错误也"翻译"成连接问题）。
+/// 3. **不猜**：认不出是什么原因时**不给方向结论**。以前认不出会回一句「连接数据库失败／确认
+///    主机、端口、库名、用户名」—— 那是把猜测当结论；驱动码里有一族（用户取消 / 主动断开 /
+///    协议层 / 参数层 / LISTEN 通道，见 `describeNonConnection`）本就不是连接问题，
+///    用户按这句话去查网络与口令，方向从头就是错的（R-60）。
 public enum ConnectionFailure {
 
     /// 连接目标（只用于组织文案，不参与判断）。
@@ -124,6 +128,99 @@ public enum ConnectionFailure {
         }
     }
 
+    // MARK: - 驱动报错但**不是连接类**（R-60）：中性归因
+    //
+    // 这一族与「连不上」无关（用户取消 / 我们主动断开 / 协议层 / 参数层 / LISTEN 通道），
+    // 以前它们一律落进 `default:` 分支，被说成「连接数据库失败／确认主机、端口、库名、用户名」
+    // —— 用户按这句话去查网络和口令，而真实原因在别处（取消就是取消）。
+    //
+    // 两条口径：
+    //   ① **知道是什么，就给一句自己的实话**（下面的表逐码给，不说「连接」那套方向）；
+    //   ② **不知道是什么，就不给方向结论**（`default:` 分支返回 `nil`，由
+    //      `describeNonConnection` 说「尚未归类」并把原始串留给调用方）。
+    //      —— 这一条同时是给**将来**的：驱动升版多出一个码时，它也不会被冒充成连接失败。
+
+    /// 驱动码名 → （一句「这是怎么回事」, 一句「要不要排查、查哪儿」）。
+    ///
+    /// **为什么单列一张表**：这些码不该给连接结论，但也不能一声不吭 —— 用户至少要知道那是什么事。
+    /// 表就是**声明**：处置台账 `Scripts/connection-failure-dispositions.json` 里
+    /// `kind = 中性归因` 的码必须在这里有一条，门禁逐条对账（闭环第 14 项）。
+    ///
+    /// 键是**驱动的码名**（`PSQLError.Code.description`）而不是我们另起的名字 —— 这样驱动升版
+    /// 换码 / 改名时，门禁一眼就能看出对不上。
+    static let nonConnectionKeys: [String: (summary: LKey, advice: LKey)] = [
+        "queryCancelled": (.nonConnectionCancelled, .nonConnectionCancelledAdvice),
+        "clientClosedConnection": (.nonConnectionClosedBySession, .nonConnectionClosedBySessionAdvice),
+        "poolClosed": (.nonConnectionPoolClosed, .nonConnectionInternalAdvice),
+        "tooManyParameters": (.nonConnectionTooManyParameters, .nonConnectionInternalAdvice),
+        "messageDecodingFailure": (.nonConnectionDecodeFailure, .nonConnectionDecodeAdvice),
+        "unexpectedBackendMessage": (.nonConnectionProtocolMismatch, .nonConnectionProtocolMismatchAdvice),
+        "invalidCommandTag": (.nonConnectionCommandTag, .nonConnectionDecodeAdvice),
+        "listenFailed": (.nonConnectionListenChannel, .nonConnectionListenAdvice),
+        "unlistenFailed": (.nonConnectionListenChannelRelease, .nonConnectionListenAdvice),
+    ]
+
+    /// 表里的码（**升序**，供单测逐条过一遍；门禁拿它与台账双向对账）。
+    public static var nonConnectionDriverCodes: [String] { nonConnectionKeys.keys.sorted() }
+
+    /// 已知**与连接无关**的 SQLSTATE（目前只有一个：`57014` query_canceled）。
+    ///
+    /// **2026-09-26 实测的形状**（本机 55433 上跑 `SELECT pg_cancel_backend(pg_backend_pid())`）：
+    /// `PSQLError(code: server, serverInfo: [sqlState: 57014, message: "canceling statement due to
+    /// user request", …])` —— 它既不是「连不上」，也不是 SQL 写错，以前同样被说成「连接失败」。
+    /// 别的 SQLSTATE 一律**不接**（带 SQLSTATE 的错误归调用方自己的路，42P01 那条纪律）。
+    public static let nonConnectionSQLStates: [String] = ["57014"]
+
+    /// 驱动报错但**不属于连接类** → 中性归因；不是驱动错误时返回 `nil`（走调用方自己的路）。
+    ///
+    /// 与 `describe` 的分工：`describe` 只认**连接类**失败；认不出的由这里接手。
+    /// 调用方的写法是 `describe(...) ?? describeNonConnection(...)`（顺序不能反 ——
+    /// 连接类先说话，中性归因只补空）。
+    public static func describeNonConnection(_ error: any Error, language: AppLanguage = .simplifiedChinese) -> Description? {
+        guard let psql = error as? PSQLError else { return nil }
+        // 带 SQLSTATE ⇒ 默认归调用方自己的路（例如 42P01 表不存在：那是查询类错误，**不抢**）。
+        // 唯一的例外是**已知与连接无关**的那一个（57014）：它在界面上会以「服务端把这次查询
+        // 取消了」出现（`CancellationNoise` 只拦「用户自己取消」那一档）。
+        if let sqlState = psql.serverInfo?[.sqlState] {
+            return describeNonConnection(sqlState: sqlState, language: language)
+        }
+        return describeNonConnection(code: psql.code.description, language: language)
+    }
+
+    /// 纯函数：SQLSTATE → 中性归因；不在 `nonConnectionSQLStates` 名单里返回 `nil`。
+    ///
+    /// 只认 `57014`：这一档的实话是「**服务端把这次查询取消了**（SQLSTATE 57014）」+ 取消的几种来源，
+    /// 而**不是**「连不上」—— 用户按连接去查会白跑一趟。
+    public static func describeNonConnection(sqlState rawState: String, language: AppLanguage = .simplifiedChinese) -> Description? {
+        let state = rawState.uppercased()
+        guard nonConnectionSQLStates.contains(state) else { return nil }
+        return Description(
+            summary: LocalizedStrings.format(.nonConnectionServerCancelled, language: language, state),
+            suggestion: LocalizedStrings.text(.nonConnectionServerCancelledAdvice, language: language),
+            code: state
+        )
+    }
+
+    /// 纯函数：驱动码名 → 中性归因（单测入口；不需要真库现场，也不需要驱动类型）。
+    ///
+    /// 表里有这个码 → 「一句实话 + 要不要排查」；表里没有 → 「尚未归类」，
+    /// **并且明说不给方向判断**（免得调用方以为这句话是结论）。
+    public static func describeNonConnection(code: String, language: AppLanguage = .simplifiedChinese) -> Description {
+        if let keys = nonConnectionKeys[code] {
+            return Description(
+                summary: LocalizedStrings.text(keys.summary, language: language)
+                    + LocalizedStrings.format(.nonConnectionCodeSuffix, language: language, code),
+                suggestion: LocalizedStrings.text(keys.advice, language: language),
+                code: code
+            )
+        }
+        return Description(
+            summary: LocalizedStrings.format(.nonConnectionUnclassified, language: language, code),
+            suggestion: LocalizedStrings.text(.nonConnectionUnclassifiedAdvice, language: language),
+            code: code
+        )
+    }
+
     /// 解析失败 → 「人话 + 建议 + 错误码」。`code` 用 `hostUnresolvable`（没有 SQLSTATE 可言）。
     static func describe(resolutionFailure failure: HostResolutionFailure, target: Target? = nil) -> Description {
         let address = target ?? Target(host: failure.host, port: failure.port)
@@ -136,7 +233,8 @@ public enum ConnectionFailure {
         )
     }
 
-    static func describe(psqlError: PSQLError, target: Target?) -> Description {
+    /// 驱动错误 → 可读说明。**不是连接类时返回 `nil`**（`default:` 分支也是 —— 认不出就不猜）。
+    static func describe(psqlError: PSQLError, target: Target?) -> Description? {
         let sqlState = psqlError.serverInfo?[.sqlState]
         let serverMessage = psqlError.serverInfo?[.message]
         let detail = serverMessage.map {
@@ -154,6 +252,13 @@ public enum ConnectionFailure {
         }
 
         // 没有 SQLSTATE：按驱动错误类别说。
+        //
+        // **先让路**：这一族的码（用户取消 / 我们主动断开 / 协议层 / 参数层 / LISTEN 通道）
+        // 与「连不上」无关，落到下面的 `default:` 会被说成「连接数据库失败／确认主机、端口、
+        // 库名、用户名」—— 用户被指去查网络与口令（R-60）。它们由 `describeNonConnection`
+        // 逐码给一句自己的实话，这里**点名让路**（名单就是那张表，不靠默认分支兜）。
+        if nonConnectionKeys[psqlError.code.description] != nil { return nil }
+
         switch psqlError.code {
         case .sslUnsupported, .failedToAddSSLHandler, .receivedUnencryptedDataAfterSSLRequest:
             return Description(
@@ -190,12 +295,14 @@ public enum ConnectionFailure {
                 technicalDetail: detail
             )
         default:
-            return Description(
-                summary: "连接数据库失败",
-                suggestion: "确认主机 / 端口 / 库名 / 用户名，以及服务端是否在运行",
-                code: psqlError.code.description,
-                technicalDetail: detail
-            )
+            // 没被点名的码（含 `server` 但没有 SQLSTATE 这种罕见情况）：**不给方向结论**。
+            //
+            // 以前这里回「连接数据库失败／确认主机、端口、库名、用户名」—— 那是一个**猜测被
+            // 当成结论**：既不知道它是不是连接问题，也没读它的原文。现在返回 `nil`，
+            // 由 `describeNonConnection` 说「尚未归类 + 请把完整详情一并反馈」，
+            // 原始串仍在调用方手里（CLI 的调试详情 / 界面的技术细节）。
+            // 驱动升版多出一个码时，走的也是这条 —— 不会有人把它冒充成连接失败。
+            return nil
         }
     }
 

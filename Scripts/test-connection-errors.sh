@@ -123,6 +123,54 @@ echo "$OUT6" | grep -q "连接成功" && check "无口令也能连上 trust 库�
 echo "$OUT6" | grep -q "缺少口令" && check "没有误报「缺少口令」" 1 || check "没有误报「缺少口令」" 0
 
 echo ""
+echo "== 7) 驱动报错但**不是连接类**：真实现场（R-60 中性归因）=="
+# 现场怎么造的：起一个**不是 PostgreSQL 的对端**（见 Scripts/lib/fake-nonpostgres-server.py），
+# 驱动于是报 `PSQLError(code: unexpectedBackendMessage)` —— 属于台账「中性归因」那一族。
+# 这一族以前一律落进兜底分支，被说成「连接数据库失败／确认主机、端口、库名、用户名」：
+# 用户按这句话去查库名与口令，而真实原因是「对端不是 PostgreSQL」或 SSL 协商被改写。
+FAKE_PORT=59997
+python3 Scripts/lib/fake-nonpostgres-server.py "${FAKE_PORT}" > /tmp/doyah-conn-errors-fake.log 2>&1 &
+FAKE_PID=$!
+sleep 1
+OUT7="$(PGHOST=127.0.0.1 PGPORT="${FAKE_PORT}" PGUSER=x PGDATABASE=x PGSSLMODE=disable \
+    "$CLI" -c "SELECT 1" 2>&1)"
+wait "${FAKE_PID}" 2>/dev/null
+echo "$OUT7" | grep -q "unexpectedBackendMessage" \
+    && check "现场确实是这一族的码（unexpectedBackendMessage）" 0 \
+    || { echo "$OUT7" | head -12; check "现场确实是这一族的码（unexpectedBackendMessage）" 1; }
+echo "$OUT7" | grep -q "端口上跑的确实是 PostgreSQL" \
+    && check "给了这一族自己的方向（不是「连接失败」那套）" 0 \
+    || { echo "$OUT7" | head -12; check "给了这一族自己的方向（不是「连接失败」那套）" 1; }
+echo "$OUT7" | grep -q "驱动码 unexpectedBackendMessage" \
+    && check "带上了驱动码（可搜、可上报）" 0 || check "带上了驱动码（可搜、可上报）" 1
+echo "$OUT7" | grep -qE "连接数据库失败|确认主机 / 端口 / 库名 / 用户名" \
+    && check "不再说成「连接数据库失败／确认主机、端口、库名、用户名」" 1 \
+    || check "不再说成「连接数据库失败／确认主机、端口、库名、用户名」" 0
+echo "$OUT7" | grep -q "调试详情" && echo "$OUT7" | grep -q "PSQLError" \
+    && check "原始串仍然保留（信息不丢）" 0 || check "原始串仍然保留（信息不丢）" 1
+
+echo ""
+echo "== 8) 服务端把查询取消了（57014）：也不许说成连接问题，更不能只剩英文串 =="
+# 真实现场（本机集群）：`pg_cancel_backend(pg_backend_pid())` 会让服务端取消当前语句，
+# 回来的是 `PSQLError(code: server, serverInfo: [sqlState: 57014, message: "canceling statement
+# due to user request", …])`。这一档以前在 CLI 上打的是英文调试串
+# （`简要信息：The operation couldn't be completed. (PostgresNIO.PSQLError error 1.)`）。
+OUT8="$(PGHOST="${DOYAH_TEST_PGHOST}" PGPORT="${DOYAH_TEST_PGPORT}" PGUSER="${DOYAH_TEST_PGUSER}" PGPASSWORD="${DOYAH_TEST_PGPASSWORD}" PGDATABASE="${DOYAH_TEST_ADMIN_DB}" \
+    "$CLI" -c "SELECT pg_cancel_backend(pg_backend_pid())" 2>&1)"
+echo "$OUT8" | grep -q "服务端把这次查询取消了" && check "说得是**取消**（而且是服务端取消这一档）" 0 \
+    || { echo "$OUT8" | head -12; check "说得是**取消**" 1; }
+echo "$OUT8" | grep -q "SQLSTATE 57014" && check "把 57014 带出来（可搜、可查文档）" 0 \
+    || check "把 57014 带出来（可搜、可查文档）" 1
+echo "$OUT8" | grep -q "statement_timeout" && check "建议里点名服务端取消的几种来源" 0 \
+    || check "建议里点名服务端取消的几种来源" 1
+echo "$OUT8" | grep -qE "连接数据库失败|确认主机 / 端口 / 库名 / 用户名" \
+    && check "不再说成「连接数据库失败」" 1 || check "不再说成「连接数据库失败」" 0
+echo "$OUT8" | grep -q "简要信息：The operation" \
+    && check "不再只剩一句英文调试串" 1 || check "不再只剩一句英文调试串" 0
+echo "$OUT8" | grep -q "调试详情" && check "原始串仍然保留（信息不丢）" 0 \
+    || check "原始串仍然保留（信息不丢）" 1
+
+echo ""
 if [ "$fail" -eq 0 ]; then
     echo "全部通过：连接失败给的是人话 + 建议 + 错误码，且原始串仍在调试详情里。"
 else

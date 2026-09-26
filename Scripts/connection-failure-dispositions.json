@@ -1,33 +1,42 @@
 {
-  "generatedAt": "2026-09-26T22:45:00+08:00",
-  "note": "连接失败文案的**处置台账**（闭环第 14 项 `check-connection-failure-coverage.py` 按它对账）。为什么要台账：驱动是随仓库带走的 Vendor（Vendor/postgres-nio），升一次版就可能多出新的 `PSQLError.Code` —— 那时文案层的 `switch` 有兜底分支，**不会报错、不会崩**，只会把新原因说成最泛的那句（「连接数据库失败」）。L-14 修的就是这一族的真事：解析不了的主机名被驱动压成 `serverClosedConnection`，文案只好说「连接中断」。台账把「每个码怎么处置」变成**声明**，门禁拿它跟驱动源码与映射文件对账。",
+  "generatedAt": "2026-09-26T23:55:00+08:00",
+  "note": "连接失败文案的**处置台账**（闭环第 14 项 `check-connection-failure-coverage.py` 按它对账）。为什么要台账：驱动是随仓库带走的 Vendor（Vendor/postgres-nio），升一次版就可能多出新的 `PSQLError.Code` —— 那时文案层的 `switch` 有兜底分支，**不会报错、不会崩**，只会把新原因说成最泛的那句。L-14 修的就是这一族的真事：解析不了的主机名被驱动压成 `serverClosedConnection`，文案只好说「连接中断」。台账把「每个码怎么处置」变成**声明**，门禁拿它跟驱动源码与映射文件对账。**第 8 轮（R-60）改了两处口径**：① 兜底分支不再给结论（`default:` 返回 `nil`）—— 认不出是连接问题就不说成连接问题；② 「不是连接类」的那 9 个码从「不翻译」改判为**中性归因**：每个码由 `describeNonConnection` 说一句自己的实话，且必须在映射文件的 `nonConnectionKeys` 里逐条点名（不靠兜底）。",
   "driverCodeSource": "Vendor/postgres-nio/Sources/PostgresNIO/New/PSQLError.swift",
   "mapping": "Core/ConnectionFailure.swift",
+  "languageTable": "Core/Localization.swift",
+  "neutralPath": "Core/ConnectionFailure.swift 的 `describeNonConnection(_:language:)`（调用方按 `describe(...) ?? describeNonConnection(...)` 取文案）",
+  "neutralSQLStates": [
+    {
+      "sqlState": "57014",
+      "key": "nonConnectionServerCancelled",
+      "why": "**查询被取消**（2026-09-26 实测形状：`SELECT pg_cancel_backend(pg_backend_pid())` 回来的是 `PSQLError(code: server, serverInfo: [sqlState: 57014, message: \"canceling statement due to user request\", …])`）。它既不是「连不上」也不是 SQL 写错，以前同样被说成「连接失败」。界面上「用户自己取消」那一档由 `CancellationNoise` 先拦下，这一句留给**服务端取消**（`statement_timeout` / 管理员 `pg_cancel_backend`）—— 那时 `taskIsCancelled` 为 false，正是会弹给用户的那一档。**只接这一个 SQLSTATE**：别的（42P01 查询类 / 08006 连接类 / 28P01 认证类）一律归调用方自己的路，不抢"
+    }
+  ],
   "kinds": {
-    "翻译": "在 `describe(psqlError:)` 的驱动码分支里点名，给一句人话 + 建议（必须给出 caseRef）",
-    "按码说话": "由 SQLSTATE 分支处理（有码按码说话，无码落兜底），因此不在驱动码分支里点名",
-    "不翻译": "有意留给兜底分支 —— 它**不是**连接失败，或没有可给出的人话（每条都要写明为什么）"
+    "翻译": "在 `describe(psqlError:)` 的驱动码分支里点名，给一句人话 + 建议（必须给出 caseRef，且那个 case 要在那段 switch 里）",
+    "按码说话": "由 SQLSTATE 分支处理（有码按码说话，无码落到中性归因的「尚未归类」），因此不在驱动码分支里点名",
+    "中性归因": "**不是连接问题**（或尚未归类）：由 `describeNonConnection` 给一句自己的实话 + 一句「要不要排查、查哪儿」，**不做「连接失败」那套方向结论**。必须在映射文件的 `nonConnectionKeys` 表里点名，并给出 `neutralKey`（该码那句实话在语言表里的键）"
   },
   "dispositions": {
     "sslUnsupported":                       { "kind": "翻译",    "caseRef": ".sslUnsupported",                       "why": "服务端 ssl=off 而连接选了 require 必然走到这里（2026-09-25 实测），要按 SSL 说，不给 SSL 的库连不上是常识之外的信息" },
     "failedToAddSSLHandler":                { "kind": "翻译",    "caseRef": ".failedToAddSSLHandler",                "why": "TLS 处理器装不上，与协商失败同一族，用户动作都是换 SSL 模式 / 查证书" },
     "receivedUnencryptedDataAfterSSLRequest": { "kind": "翻译",  "caseRef": ".receivedUnencryptedDataAfterSSLRequest", "why": "要求加密却收到明文（中间件或代理把 SSLRequest 吃掉了），排查方向是链路而不是口令" },
-    "server":                               { "kind": "按码说话", "fallsTo": "SQLSTATE 分支（有码）→ default（无码）", "why": "服务端回了错误：有 SQLSTATE 就按码说话（认证 / 库不存在 / 权限 / 连接数…），没有码时落兜底文案" },
-    "messageDecodingFailure":               { "kind": "不翻译",   "why": "解码失败属协议层，与「连不上」不是一回事；落到兜底文案会说成连接失败 —— 这是既有的债，已登记 SRS R-60" },
-    "unexpectedBackendMessage":             { "kind": "不翻译",   "why": "服务端发来意外消息（协议层），同上，登记在 R-60" },
+    "server":                               { "kind": "按码说话", "fallsTo": "SQLSTATE 分支（有码）→ 中性归因的「尚未归类」（无码）", "why": "服务端回了错误：有 SQLSTATE 就按码说话（认证 / 库不存在 / 权限 / 连接数…）；没有码时**不再猜**，由中性归因说「尚未归类 + 请把完整详情反馈」" },
+    "messageDecodingFailure":               { "kind": "中性归因", "neutralKey": "nonConnectionDecodeFailure",          "why": "解码失败属协议层，与「连不上」不是一回事。第 8 轮起不落兜底：给一句实话（报文解不开）+ 说明协议层异常与网络 / 口令无关" },
+    "unexpectedBackendMessage":             { "kind": "中性归因", "neutralKey": "nonConnectionProtocolMismatch",        "why": "服务端发来预期外的消息。第 8 轮**实测到现场**（见 evidenceMarkers 的 test-connection-errors §7：对端不是 PostgreSQL 时驱动报的正是这个码）—— 旧文案却让人去查库名与用户名，方向是错的" },
     "unsupportedAuthMechanism":             { "kind": "翻译",    "caseRef": ".unsupportedAuthMechanism",             "why": "服务端要的认证方式客户端不支持 —— 用户能做的动作与「口令不对」完全不同" },
     "authMechanismRequiresPassword":        { "kind": "翻译",    "caseRef": ".authMechanismRequiresPassword",        "why": "服务端要口令而本次没给；这条同时是「无口令认证的库不许被提前拒绝」那个开关的另一半" },
     "saslError":                            { "kind": "翻译",    "caseRef": ".saslError",                            "why": "SASL / SCRAM 协商失败（口令或机制），要引到「清掉旧口令重新输入」" },
-    "invalidCommandTag":                    { "kind": "不翻译",   "why": "服务端返回的命令标记不合法（协议层），登记在 R-60" },
-    "queryCancelled":                       { "kind": "不翻译",   "why": "**用户自己取消的**——说成「连接失败」是错的（登记 R-60；取消另有 CancellationNoise 那条线）" },
-    "tooManyParameters":                    { "kind": "不翻译",   "why": "参数超上限属 SQL 层（本产品无绑定参数，ADR-29），登记在 R-60" },
-    "clientClosedConnection":               { "kind": "不翻译",   "why": "**我们主动关的**连接（关页签 / 断开），说成「连接失败」同样指错方向（登记 R-60）" },
+    "invalidCommandTag":                    { "kind": "中性归因", "neutralKey": "nonConnectionCommandTag",             "why": "服务端返回的命令标记不合法（协议层）。第 8 轮起给一句自己的实话，不再说成连接失败" },
+    "queryCancelled":                       { "kind": "中性归因", "neutralKey": "nonConnectionCancelled",              "why": "**用户自己取消的** —— 说成「连接失败」是错的，用户会去查一个根本不存在的网络问题（取消另有 CancellationNoise 那条线，那条决定「要不要弹」；这条决定「弹出来时怎么说」）" },
+    "tooManyParameters":                    { "kind": "中性归因", "neutralKey": "nonConnectionTooManyParameters",      "why": "参数超上限属协议 / 参数层。本产品不使用绑定参数（ADR-29），走到这里说明内部装配出了问题 —— 这句实话比「连接失败」有用得多" },
+    "clientClosedConnection":               { "kind": "中性归因", "neutralKey": "nonConnectionClosedBySession",        "why": "**我们主动关的**连接（关页签 / 断开）—— 说成「连接失败」同样指错方向；这条正是界面上最容易看到的那一档" },
     "serverClosedConnection":               { "kind": "翻译",    "caseRef": ".serverClosedConnection",               "why": "服务端把连接关了；underlying 带网络串时按串说话。L-14 修的就是它：驱动会把「主机名解析不了」也压成这个码且不带原因，所以解析改成**建连之前**自己查" },
     "connectionError":                      { "kind": "翻译",    "caseRef": ".connectionError",                      "why": "建连失败（拒绝 / 超时 / 不可达 / SSL）——有 underlying 就按网络串说话" },
     "uncleanShutdown":                      { "kind": "翻译",    "caseRef": ".uncleanShutdown",                      "why": "连接非正常结束（服务端崩了 / 被掐断），与空闲断连是同一族建议" },
-    "listenFailed":                         { "kind": "不翻译",   "why": "LISTEN / NOTIFY 通道没建起来，不等于连不上；登记在 R-60" },
-    "unlistenFailed":                       { "kind": "不翻译",   "why": "同上（解除 LISTEN 失败），登记在 R-60" },
-    "poolClosed":                           { "kind": "不翻译",   "why": "连接池已关（本产品不走驱动的连接池，PostgresClient 不在用），登记在 R-60" }
+    "listenFailed":                         { "kind": "中性归因", "neutralKey": "nonConnectionListenChannel",          "why": "LISTEN / NOTIFY 通道没建起来，**不等于连不上库**（连接本身可能已经正常）；按「连接失败」说会让人白白排查网络" },
+    "unlistenFailed":                       { "kind": "中性归因", "neutralKey": "nonConnectionListenChannelRelease",   "why": "同上（解除 LISTEN 失败）—— 同样不等于连不上库" },
+    "poolClosed":                           { "kind": "中性归因", "neutralKey": "nonConnectionPoolClosed",             "why": "连接池已关（本产品不走驱动的连接池，PostgresClient 不在用）—— 走到这里说明内部装配出了问题，要的是「把详情反馈」而不是查网络" }
   },
   "resolutionPreflight": [
     {
@@ -45,10 +54,33 @@
       "why": "MySQL 侧 2026-09-25 起已有前置检查（走语言表文案 `mysqlHostResolveFailed`）；两条路的措辞不同，属已知差异，不阻塞"
     }
   ],
+  "neutralFallback": [
+    {
+      "file": "CLI/main.swift",
+      "call": "ConnectionFailure.describeNonConnection",
+      "minCallSites": 2,
+      "why": "命令行在 `describe` 说不清时以前只打 `简要信息：<error.localizedDescription>`——那是一句英文调试串（`The operation couldn't be completed…`），等于没说。现在这一档给中性归因（码 + 一句实话 + 建议），原始串仍在「调试详情」里",
+      "minCallSitesWhy": "**两处**：连接失败那条路（`catch` 里 `describe` 之后）与查询失败那条路（实测 `SELECT pg_cancel_backend(pg_backend_pid())` 走的就是它）。只查「出现过这个调用」时，删掉一处剩下的仍能顶数 —— 负例 K 就是这么把门禁骗绿的，所以处数要写进台账"
+    },
+    {
+      "file": "App/Utilities/ErrorPresenter.swift",
+      "call": "ConnectionFailure.describeNonConnection",
+      "minCallSites": 1,
+      "why": "界面以前落到底部的 `String(reflecting:)`（英文类型转储）。现在给中性归因，并**保留原始串**（技术细节那一行）—— 否则 App 在「未知码」这条路上会比改动前少给信息"
+    },
+    {
+      "file": "App/Views/ConnectionFormView.swift",
+      "call": "ConnectionFailure.describeNonConnection",
+      "minCallSites": 1,
+      "why": "「测试连接」那条路（R-56 修过一次）同样要有这一档：这一族多半就是在这条路上被用户看到的"
+    }
+  ],
   "evidenceMarkers": [
     { "file": "Core/ConnectionFailure.swift", "contains": "throw HostResolutionFailure(", "why": "前置检查必须真的把解析失败变成可读错误类型，而不是原样抛驱动的残缺错误" },
     { "file": "Scripts/test-connection-errors.sh", "contains": "主机名解析不了", "why": "真库证据脚本要断言这一档（L-14 的现场就是它）" },
     { "file": "Scripts/test-connection-errors.sh", "contains": "不再说成", "why": "要有**反向**断言：文案不许再出现「连接中断」——只断言正面措辞时，两句并存也能骗过门禁" },
+    { "file": "Scripts/test-connection-errors.sh", "contains": "端口上跑的确实是 PostgreSQL", "why": "第 8 轮新增的**真实现场**：对端不是 PostgreSQL 时驱动报 `unexpectedBackendMessage`，脚本用假服务端把它造出来，并断言文案里出现这一族自己的方向" },
+    { "file": "Tests/ConnectionFailureNonConnectionTests.swift", "contains": "连接数据库失败", "why": "「不许再出现那套指错方向的措辞」必须有测试钉住 —— 门禁管覆盖面对账，措辞本身靠它" },
     { "file": "Tests/HostResolutionTests.swift", "contains": "testDriverDropsTheResolutionCause", "why": "「驱动把原因丢了」这条前提必须有测试守着：驱动哪天补上 underlying，这里会红，提醒可以简化补偿代码" }
   ]
 }

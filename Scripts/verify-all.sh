@@ -37,10 +37,14 @@ set -euo pipefail
 # 修法：变量写成 `${X}`。门禁 `check-shell-locale-safety.py` 把这个坑变成机械检查。
 #
 # 第 14 项 2026-09-26（L-14）补的：驱动是随仓库带走的 Vendor，升版可能多出新的 `PSQLError.Code`，
-# 而文案层的 `switch` 有 `default:` 兜底 —— 新原因**不会报错**，只会被说成最泛的那句
-# （「连接数据库失败」）。L-14 修掉的正是这一族：主机名解析不了被驱动压成 `serverClosedConnection`
+# 而文案层的 `switch` 有 `default:` 兜底 —— 新原因**不会报错**，只会被说成一句与它无关的话。
+# L-14 修掉的正是这一族：主机名解析不了被驱动压成 `serverClosedConnection`
 # 且不带原因，用户看到的是「与数据库的连接中断了」。门禁把「每个码怎么处置」变成台账
 # （`Scripts/connection-failure-dispositions.json`）与驱动源码、映射文件、解析前置检查、证据脚本逐条对账。
+# 第 8 轮（R-60）又加了两条：**兜底不许给方向结论**（`default:` 必须 `return nil`），
+# 以及台账标「中性归因」的那 9 个码（用户取消 / 主动断开 / 协议层 / LISTEN 通道…）
+# 必须在 `nonConnectionKeys` 里逐条点名 + 给出语言表键，且**调用方真的接上了这一档**
+# （CLI / ErrorPresenter / 连接表单）—— 否则 `describe` 返回 nil 时用户只剩一句英文调试串。
 #
 # 需要非沙箱构建（例如要跑 dsh-tui 的终端）时单独执行：
 #   DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh

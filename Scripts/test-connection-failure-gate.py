@@ -27,10 +27,15 @@ LEDGER_REL = "Scripts/connection-failure-dispositions.json"
 FILES = [
     "Vendor/postgres-nio/Sources/PostgresNIO/New/PSQLError.swift",
     "Core/ConnectionFailure.swift",
+    "Core/Localization.swift",
     "Core/PostgresService.swift",
     "Core/MySQLService.swift",
     "Scripts/test-connection-errors.sh",
     "Tests/HostResolutionTests.swift",
+    "Tests/ConnectionFailureNonConnectionTests.swift",
+    "App/Utilities/ErrorPresenter.swift",
+    "App/Views/ConnectionFormView.swift",
+    "CLI/main.swift",
 ]
 
 passed: list[str] = []
@@ -140,10 +145,26 @@ def main() -> int:
 
     def drop_default(tree: Path) -> None:
         edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
-            "        default:\n            return Description(",
-            "        case .nothingMatchesThis:\n            return Description(", 1))
+            "        default:\n",
+            "        case .nothingMatchesThis:\n", 1))
 
     expect("没有 default → 报红", drop_default, "兜底")
+
+    print("\n== E'') 兜底又开始给方向结论（R-60 的老毛病）")
+
+    def default_claims_connection(tree: Path) -> None:
+        edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
+            "        default:\n", "        default:\n            return ConnectionFailure.Description(summary: \"连接数据库失败\")\n", 1))
+
+    expect("兜底不是 return nil → 报红并点名 R-60", default_claims_connection, "把猜测当结论")
+
+    print("\n== E''') 那一族不再让路（表在，但没接上）")
+
+    def no_bypass(tree: Path) -> None:
+        edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
+            "if nonConnectionKeys[psqlError.code.description] != nil { return nil }", "", 1))
+
+    expect("describe 里不再按表让路 → 报红", no_bypass, "让路")
 
     print("\n== E') 整个 switch 被拆掉（对账对象消失）")
 
@@ -183,6 +204,83 @@ def main() -> int:
         edit(tree, FILES[0], lambda text: text.replace("enum Base", "enum RenamedBase", 1))
 
     expect("读不到枚举 → 报红（提醒门禁该更新）", obscure_driver, "读不到")
+
+    print("\n== I) 中性归因：登记了却不写话（表里没这个码）")
+
+    def drop_neutral_note(tree: Path) -> None:
+        edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
+            '        "queryCancelled": (.nonConnectionCancelled, .nonConnectionCancelledAdvice),\n', "", 1))
+
+    expect("中性归因的码不在 nonConnectionKeys 里 → 报红", drop_neutral_note, "却不写话")
+
+    print("\n== J) 中性归因：台账指的那句话在语言表里不存在（键名写错 / 被删）")
+
+    def drop_neutral_key(tree: Path) -> None:
+        # 把语言表里的那一行改名（不是删枚举 case —— 那是编译错误，不是这道门禁该管的事）
+        edit(tree, "Core/Localization.swift", lambda text: text.replace(
+            "        .nonConnectionCancelled: [", "        .nonConnectionCancelledRenamed: [", 1))
+
+    expect("neutralKey 在语言表里找不到 → 报红", drop_neutral_key, "台账在撒谎")
+
+    print("\n== K) 中性归因的出口断了（CLI 里不再接这一档）")
+
+    def drop_cli_exit(tree: Path) -> None:
+        edit(tree, "CLI/main.swift", lambda text: text.replace(
+            "ConnectionFailure.describeNonConnection(error)", "", 1))
+
+    expect("CLI 不接中性归因 → 报红（用户只剩英文调试串）", drop_cli_exit, "中性归因出口")
+
+    print("\n== M) 中性归因出口被全部删掉（两条路都不接了）")
+
+    def drop_all_cli_exits(tree: Path) -> None:
+        edit(tree, "CLI/main.swift", lambda text: text.replace(
+            "ConnectionFailure.describeNonConnection(error)", ""))
+
+    expect("CLI 两处出口都不在 → 报红", drop_all_cli_exits, "中性归因出口")
+
+    print("\n== N) 台账没写「至少几处」（只登记「有这个调用」）")
+
+    def ledger_drops_min_sites(tree: Path) -> None:
+        data = ledger_of(tree)
+        for entry in data["neutralFallback"]:
+            entry.pop("minCallSites", None)
+        write_ledger(tree, data)
+
+    expect("台账没写 minCallSites → 报红（不许只登记「有这个调用」）", ledger_drops_min_sites, "中性归因出口")
+
+    print("\n== O) 台账把处数写大了（数字好看，代码里没有）")
+
+    def ledger_overstates_sites(tree: Path) -> None:
+        data = ledger_of(tree)
+        for entry in data["neutralFallback"]:
+            if entry["file"] == "CLI/main.swift":
+                entry["minCallSites"] = 3
+        write_ledger(tree, data)
+
+    expect("台账写 3 处而代码只有 2 处 → 报红", ledger_overstates_sites, "中性归因出口")
+
+    print("\n== K'') 语言表整个读不到（那句话没地方放）")
+
+    def drop_language_table(tree: Path) -> None:
+        (tree / "Core/Localization.swift").unlink()
+
+    expect("语言表不存在 → 报红", drop_language_table, "语言表读不到")
+
+    print("\n== L) 查询被取消那一档（57014）不再被接住 / 名单没人读")
+
+    def drop_sqlstate(tree: Path) -> None:
+        edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
+            'public static let nonConnectionSQLStates: [String] = ["57014"]',
+            'public static let nonConnectionSQLStates: [String] = []', 1))
+
+    expect("57014 不在名单里 → 报红（这一档会退回英文调试串）", drop_sqlstate, "名单里没有它")
+
+    def unread_sqlstate_list(tree: Path) -> None:
+        edit(tree, "Core/ConnectionFailure.swift", lambda text: text.replace(
+            "guard nonConnectionSQLStates.contains(state) else { return nil }",
+            "guard state == \"57014\" else { return nil }", 1))
+
+    expect("名单在但没人读 → 报红（登记等于没生效）", unread_sqlstate_list, "没读它")
 
     print()
     print(f"结果：{len(passed)} 项达到预期，{len(failed)} 项不符")

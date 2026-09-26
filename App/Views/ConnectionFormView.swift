@@ -713,6 +713,8 @@ struct ConnectionFormView: View {
                 // 类型转储里，还带着一串 GBK 乱码。现在：**先走连接失败的可读化**（人话 + 建议），
                 // 再接技术细节；「复制完整错误」照旧拿全文，排障时不丢信息。
                 let technical = String(reflecting: error)
+                // 先按连接类说；认不出时给中性归因（R-60：驱动报的错但不是连接类 ——
+                // 用户取消 / 主动断开 / 协议层…），两档都拿不到才退回 `localizedDescription`。
                 let failure = ConnectionFailure.describe(
                     error,
                     target: ConnectionFailure.Target(
@@ -721,7 +723,7 @@ struct ConnectionFormView: View {
                         database: database.trimmingCharacters(in: .whitespacesAndNewlines),
                         username: username.trimmingCharacters(in: .whitespacesAndNewlines)
                     )
-                )
+                ) ?? ConnectionFailure.describeNonConnection(error, language: LocalizationManager.shared.language)
                 var head: [String] = []
                 if let failure {
                     head.append(failure.summary)
