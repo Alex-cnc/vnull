@@ -108,43 +108,119 @@ public struct NoteDraft: Sendable {
 
 /// 本地笔记库（DOYAH-01 / 07：本地优先，离线照常写）。
 ///
+/// **数据家与工程分开**（FR-PLUG-04）：笔记落在 `<Application Support>/DoyahNotes/notes.json`，
+/// **不在** `<Application Support>/DoyahStudio/` 之下 —— 插件的数据不跟宿主的连接凭据 / 查询历史 /
+/// 审计日志混放，备份与清理策略各自独立。整改前的位置由 `legacyFileURL()` 给出，
+/// 一次性迁移见 `NoteStoreMigration`（原子写 + 坏文件回退报告）。
+///
 /// 与工程里其它存储同一条纪律：**原子写 + 坏文件回退并报告**（不静默丢整库）。
+/// 报告走 `loadOutcome()`：`load()` 保持「读不出来就当空库」的既有行为（调用方不必改），
+/// 想区分「还没有这份文件」与「文件坏了」的调用方读 `loadOutcome()`。
 public actor NoteStore {
+
+    /// 文件名（数据家换了，文件名不变 —— 迁移因此是一次**字节搬运**，可以逐字节核对）。
+    public static let fileName = "notes.json"
+
     private let fileURL: URL
 
     public init(fileURL: URL) {
         self.fileURL = fileURL
     }
 
-    public static func defaultStore() -> NoteStore {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    // MARK: - 位置
+
+    /// Application Support 根；取不到就退回临时目录（与工程其它存储同一兜底）。
+    static func applicationSupportBase() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return NoteStore(
-            fileURL: base
-                .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
-                .appendingPathComponent("notes.json", isDirectory: false)
-        )
+    }
+
+    /// **笔记的数据家**（FR-PLUG-04）：与工程数据家**平级的独立目录**。
+    ///
+    /// 环境变量 `DOYAH_NOTES_DIR` 可整体改掉它（与 `MCPApprovalStore.defaultStore(environment:)`
+    /// 同一路数）：探针与脚本用它把笔记库挪到临时目录，免得在真实数据目录里留下测试痕迹。
+    public static func defaultDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        if let override = environment["DOYAH_NOTES_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return applicationSupportBase()
+            .appendingPathComponent(DoyahIdentity.notesDataDirectoryName, isDirectory: true)
+    }
+
+    public static func defaultFileURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        defaultDirectory(environment: environment)
+            .appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    public static func defaultStore(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> NoteStore {
+        NoteStore(fileURL: defaultFileURL(environment: environment))
+    }
+
+    /// **整改前的位置**（FR-PLUG-04 之前）：与工程数据家同目录。
+    /// 只有一次性迁移会读它 —— 留着是为了「老用户的笔记还搬得动」。
+    public static func legacyFileURL() -> URL {
+        applicationSupportBase()
+            .appendingPathComponent(DoyahIdentity.applicationSupportDirectoryName, isDirectory: true)
+            .appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    // MARK: - 读
+
+    /// 读盘结果 —— 把「还没有这份文件」与「文件读不出来」分开（前者不是错误，后者要如实报）。
+    public enum LoadOutcome: Equatable, Sendable {
+        /// 还没有这份文件（第一次用）。
+        case absent
+        case loaded([Note])
+        /// 文件在、但读不出来（坏 JSON / 编码不对 / 没权限）：**回退空列表并如实报告，不删原文件**。
+        case unreadable(failure: String)
+    }
+
+    public func loadOutcome() -> LoadOutcome {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return .absent }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return .unreadable(failure: "the notes file exists but cannot be read")
+        }
+        // **编解码的日期策略必须成对**：`save` 用 `.iso8601`，这里若用默认策略就解不回来 ——
+        // 症状是「刚存进去的笔记读出来是空的」（而且不报错，直接回退成空数组）。
+        // 本轮实测踩到：更新路径因此走了新建分支、`createdAt` 被改写。
+        // 所以解码失败**如实报出来**，不再静默回退。
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        do {
+            return .loaded(try decoder.decode([Note].self, from: data))
+        } catch {
+            return .unreadable(failure: String(describing: error))
+        }
     }
 
     public func load() throws -> [Note] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
-        // **编解码的日期策略必须成对**：`save` 用 `.iso8601`，这里若用默认策略就解不回来 ——
-        // 症状是"刚存进去的笔记读出来是空的"（而且不报错，直接回退成空数组）。
-        // 本轮实测踩到：更新路径因此走了新建分支、`createdAt` 被改写。
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([Note].self, from: data)) ?? []
+        switch loadOutcome() {
+        case .loaded(let notes): return notes
+        case .absent, .unreadable: return []
+        }
     }
 
     public func save(_ notes: [Note]) throws {
-        try FileManager.default.createDirectory(
-            at: fileURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        try encoder.encode(notes).write(to: fileURL, options: .atomic)
+        try Self.write(try encoder.encode(notes), to: fileURL)
+    }
+
+    /// 原子写（临时文件 + rename，由 `Data.write(options: .atomic)` 保证）：写到一半崩了不会留下
+    /// 半截文件 —— 那正是「整库消失」的经典成因。迁移也走这一条，于是「写入」只有一份实现。
+    static func write(_ data: Data, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
     }
 
     /// 保存草稿（新建或按 id 覆盖），返回落库后的笔记。
@@ -169,6 +245,150 @@ public actor NoteStore {
         var notes = try load()
         notes.removeAll { $0.id == id }
         try save(notes)
+    }
+}
+
+/// `FR-PLUG-04` 的**一次性数据边界迁移**：把笔记库从**工程数据家**搬进**笔记自己的数据家**。
+///
+/// 口径（与工程里其它迁移一致，都是「不猜、不留事故」）：
+/// 1. **只搬一次、幂等**：目标已有文件时**一个字节都不动**（那是更新的那一份），如实报 `skippedTargetExists`；
+/// 2. **原子写 + 读回核对**：先原子写完目标、再读回来逐字段核对，核对过了才动旧文件；
+/// 3. **坏文件回退并报告**：旧文件读不出来时**原地保留**、目标不建、如实报 `legacyUnreadable`
+///    —— 读不懂就别搬，绝不能把用户唯一的笔记库覆盖掉；
+/// 4. **旧文件不删**：搬完把它移到新数据家里改名为 `notes.json.migrated`（留一份可回溯的备份）；
+///    搬不动也只如实报告 —— 目标已经写好了，数据不丢；
+/// 5. **有 `DOYAH_NOTES_DIR` 覆盖时不迁**：那是脚本把数据挪到临时目录用的，而「旧位置」仍是真实用户目录，
+///    照迁就会把真实笔记搬进临时目录 —— 宁可不动。
+public enum NoteStoreMigration {
+
+    public enum Outcome: String, Equatable, Sendable {
+        /// 旧文件不存在（或两边指到同一个文件）：没有要搬的东西。
+        case nothingToMigrate
+        /// 目标已有文件 —— 不动任何一个字节。
+        case skippedTargetExists
+        /// 生效的 `DOYAH_NOTES_DIR` 覆盖把数据指到了别处，迁移主动让路。
+        case skippedOverridden
+        case migrated
+        /// 旧文件读不出来：原地保留、目标不建。
+        case legacyUnreadable
+        /// 写目标失败（或写后核对不一致）：旧文件仍在原处。
+        case writeFailed
+    }
+
+    public struct Report: Equatable, Sendable {
+        public var outcome: Outcome
+        public var legacyURL: URL
+        public var targetURL: URL
+        /// 搬过去的条数（只有 `migrated` 非零）。
+        public var noteCount: Int
+        /// 旧文件搬完后的落点（没能搬走时为 nil）。
+        public var backupURL: URL?
+        /// 未能迁移的原因（机器可读的原文，**不翻译** —— 界面文案由调用方按 `outcome` 组织）。
+        public var failure: String?
+
+        public var didMigrate: Bool { outcome == .migrated }
+
+        /// 需要如实告诉用户：旧文件读不出来 / 写不进去。
+        public var needsAttention: Bool {
+            outcome == .legacyUnreadable || outcome == .writeFailed
+        }
+    }
+
+    /// 搬完后的旧文件在新数据家里的名字。
+    public static let backupFileName = NoteStore.fileName + ".migrated"
+
+    /// 按**默认位置**迁移（界面打开笔记时调一次）。
+    ///
+    /// 生效的 `DOYAH_NOTES_DIR` 覆盖会让本方法**主动让路**（见类型注释第 5 条）。
+    public static func migrateIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Report {
+        let targetURL = NoteStore.defaultFileURL(environment: environment)
+        if let override = environment["DOYAH_NOTES_DIR"], !override.isEmpty {
+            return Report(
+                outcome: .skippedOverridden,
+                legacyURL: NoteStore.legacyFileURL(),
+                targetURL: targetURL,
+                noteCount: 0
+            )
+        }
+        return migrateIfNeeded(legacyURL: NoteStore.legacyFileURL(), targetURL: targetURL)
+    }
+
+    public static func migrateIfNeeded(
+        legacyURL: URL,
+        targetURL: URL,
+        fileManager: FileManager = .default
+    ) -> Report {
+        var report = Report(
+            outcome: .nothingToMigrate,
+            legacyURL: legacyURL,
+            targetURL: targetURL,
+            noteCount: 0
+        )
+
+        // 两边指到同一个文件（环境变量拼出来的情形）：没有「搬」这回事。
+        guard legacyURL.standardizedFileURL != targetURL.standardizedFileURL else { return report }
+        guard fileManager.fileExists(atPath: legacyURL.path) else { return report }
+        // 目标已有文件：那是更新的那一份，**一个字节都不动**（幂等的落点）。
+        guard !fileManager.fileExists(atPath: targetURL.path) else {
+            report.outcome = .skippedTargetExists
+            return report
+        }
+
+        // 读旧文件：**直接搬字节**，不重新编码 —— 搬完能逐字节比对，也不会因为编码策略变化而改内容。
+        guard let data = try? Data(contentsOf: legacyURL) else {
+            report.outcome = .legacyUnreadable
+            report.failure = "the legacy notes file exists but cannot be read"
+            return report
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let expected: [Note]
+        do {
+            expected = try decoder.decode([Note].self, from: data)
+        } catch {
+            report.outcome = .legacyUnreadable
+            report.failure = String(describing: error)
+            return report
+        }
+
+        // 原子写 + 读回来核对：核对不过就当没搬（旧文件仍在原处，数据不丢）。
+        do {
+            try NoteStore.write(data, to: targetURL)
+            let written = try decoder.decode([Note].self, from: Data(contentsOf: targetURL))
+            guard written == expected else {
+                report.outcome = .writeFailed
+                report.failure = "the file written to the new location did not read back the same"
+                return report
+            }
+        } catch {
+            report.outcome = .writeFailed
+            report.failure = String(describing: error)
+            return report
+        }
+
+        report.outcome = .migrated
+        report.noteCount = expected.count
+        // 旧文件移到新数据家留一份备份（**不删**）：搬不动就如实说，目标已经好了，数据不丢。
+        report.backupURL = try? moveAside(legacyURL, into: targetURL.deletingLastPathComponent(), fileManager: fileManager)
+        return report
+    }
+
+    /// 把旧文件移进新数据家；同名时顺延 `notes.json.migrated-2` …（**绝不覆盖已有备份**）。
+    static func moveAside(
+        _ source: URL,
+        into directory: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        var candidate = directory.appendingPathComponent(backupFileName, isDirectory: false)
+        var suffix = 2
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(backupFileName)-\(suffix)", isDirectory: false)
+            suffix += 1
+        }
+        try fileManager.moveItem(at: source, to: candidate)
+        return candidate
     }
 }
 

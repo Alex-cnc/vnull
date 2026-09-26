@@ -25,6 +25,15 @@ public enum DoyahIdentity {
     /// Application Support 下的数据目录名。
     public static let applicationSupportDirectoryName = "DoyahStudio"
 
+    /// **笔记（插件）自己的数据家目录名** —— 与 `applicationSupportDirectoryName` **平级，刻意不嵌套在其下**。
+    ///
+    /// 为什么单独一层（FR-PLUG-04）：笔记是**另一个产品**（Doyah Notes）的数据，它不该跟宿主的
+    /// 连接凭据 / 查询历史 / 审计日志混放在同一个目录里 —— 备份体积、清理策略、迁移节奏都各自独立，
+    /// 宿主的清理不该顺手删掉用户的笔记，笔记的迁移也不该动宿主的数据家。
+    ///
+    /// 唯一读它的地方是 `NoteStore`（旧位置的一次性迁移见 `NoteStoreMigration`）。
+    public static let notesDataDirectoryName = "DoyahNotes"
+
     /// 钥匙串 service 名的默认值：优先取运行时的真实包标识，取不到才退回常量
     /// （例如 CLI 这类没有 bundle 的可执行文件）。
     public static var keychainServiceName: String {

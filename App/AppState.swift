@@ -5918,10 +5918,25 @@ final class AppState: ObservableObject {
             notes = []
             return
         }
-        do {
-            notes = try await NoteStore.defaultStore().load()
-        } catch {
-            errorMessage = ErrorPresenter.message(for: error)
+        // 一次性数据边界迁移（FR-PLUG-04）：老版本的笔记库在工程数据家里，搬进笔记自己的数据家。
+        // 放在「打开笔记」这条路上做（而不是启动时）：只有真要看笔记的人才付这份代价，
+        // 而且迁移本身是幂等的 —— 搬过一次之后这里只是两次 fileExists 的开销。
+        let migration = NoteStoreMigration.migrateIfNeeded()
+        if migration.needsAttention {
+            errorMessage = L(.notesMigrationNeedsAttention, migration.failure ?? "")
+        } else if migration.didMigrate {
+            statusMessage = L(.notesDataMigrated, migration.noteCount)
+        }
+        let outcome = await NoteStore.defaultStore().loadOutcome()
+        switch outcome {
+        case .loaded(let loaded):
+            notes = loaded
+        case .absent:
+            notes = []
+        case .unreadable(let failure):
+            // 坏文件**如实说**：以前这里会静默回退成空列表，看着就像"笔记全没了"。
+            notes = []
+            errorMessage = L(.notesFileUnreadable, failure)
         }
     }
 

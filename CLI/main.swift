@@ -94,6 +94,13 @@ struct DoyahCLI {
             exit(code)
         }
 
+        // notes：笔记数据边界（FR-PLUG-04）的可脚本化出口。
+        // 「我的笔记文件到底在哪」与「一次性迁移有没有搬成功」必须是能脚本核对的事 ——
+        // 界面里看不见路径，而迁移是那种**做错了会丢数据**的操作。
+        if arguments.first == "notes" {
+            exit(runNotesCommand(arguments: Array(arguments.dropFirst())))
+        }
+
         // agent-sql：无界面地跑一遍「自然语言 → SQL」通道（NFR-AI-06 的本地端点验证入口）。
         // 为什么 CLI 要有它：**"指向本地端点即零外发"这件事必须能被脚本验证** ——
         // 图形界面里点一下不算证据，能跑脚本、能核对统一外发日志才算。
@@ -1468,6 +1475,66 @@ struct DoyahCLI {
             }
         }
         return 0
+    }
+
+    /// 笔记数据边界（FR-PLUG-04）的可脚本化出口。
+    ///
+    /// 为什么要有它：界面里看不见文件路径，而「一次性迁移」正是那种**做错了会丢数据**的操作 ——
+    /// 所以要有一条能对着临时目录反复跑、能把结果打成 JSON 去断言的路。
+    ///
+    /// 用法：
+    ///   DoyahCLI notes path                                        # 笔记库位置（笔记自己的数据家）
+    ///   DoyahCLI notes legacy-path                                 # 整改前的位置（工程数据家里那个）
+    ///   DoyahCLI notes migrate [--legacy <文件>] [--target <目录>] [--json]
+    ///
+    /// 退出码：`0` = 没出岔子（含"不用搬""已有目标"），`1` = 需要人看一眼（旧文件读不出来 / 写不进去）。
+    static func runNotesCommand(arguments: [String]) -> Int32 {
+        func value(of flag: String) -> String? {
+            guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+            return arguments[index + 1]
+        }
+        let environment = ProcessInfo.processInfo.environment
+
+        switch arguments.first {
+        case "path":
+            print(NoteStore.defaultFileURL(environment: environment).path)
+            return 0
+        case "legacy-path":
+            print(NoteStore.legacyFileURL().path)
+            return 0
+        case "migrate":
+            // `--legacy` / `--target` 是给脚本用的：把两边都指到临时目录，于是迁移能在沙盒里反复验，
+            // 而**默认**路径就是产品真正会用的那两个（脚本另外断言它们）。
+            let legacy = value(of: "--legacy").map { URL(fileURLWithPath: $0) } ?? NoteStore.legacyFileURL()
+            let target = value(of: "--target")
+                .map { URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent(NoteStore.fileName, isDirectory: false) }
+                ?? NoteStore.defaultFileURL(environment: environment)
+            let report = NoteStoreMigration.migrateIfNeeded(legacyURL: legacy, targetURL: target)
+
+            if arguments.contains("--json") {
+                var fields = [
+                    "\"outcome\":\(jsonQuoted(report.outcome.rawValue))",
+                    "\"noteCount\":\(report.noteCount)",
+                    "\"legacy\":\(jsonQuoted(report.legacyURL.path))",
+                    "\"target\":\(jsonQuoted(report.targetURL.path))",
+                    "\"backup\":\(report.backupURL.map { jsonQuoted($0.path) } ?? "null")"
+                ]
+                fields.append("\"failure\":\(report.failure.map(jsonQuoted) ?? "null")")
+                print("{" + fields.joined(separator: ",") + "}")
+            } else {
+                print("迁移结果：\(report.outcome.rawValue)，条数：\(report.noteCount)")
+                print("  旧位置：\(report.legacyURL.path)")
+                print("  新位置：\(report.targetURL.path)")
+                if let backup = report.backupURL { print("  旧文件备份：\(backup.path)") }
+                if let failure = report.failure { print("  原因：\(failure)") }
+            }
+            return report.needsAttention ? 1 : 0
+        default:
+            FileHandle.standardError.write(Data(
+                "用法：notes <path|legacy-path|migrate> [--legacy <文件>] [--target <目录>] [--json]\n".utf8
+            ))
+            return 2
+        }
     }
 
     /// 笔记库位置：`DOYAH_NOTE_STORE` 可整体指到别处（脚本用临时文件，不碰真实数据目录）。

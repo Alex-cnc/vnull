@@ -243,6 +243,12 @@ public enum LKey: String, CaseIterable, Sendable {
     case notesUntitled
     case notesContainsRowData
     case notesSourcePrefix
+    /// 笔记数据已从工程数据家迁到自己的数据家（FR-PLUG-04 的一次性迁移完成）。带条数参数。
+    case notesDataMigrated
+    /// 迁移没做成（旧文件读不出来 / 写不进去）：原文件原地保留，带原因参数。
+    case notesMigrationNeedsAttention
+    /// 笔记文件读不出来（回退空列表、原文件未动），带原因参数。
+    case notesFileUnreadable
     case menuMaintenanceTasks
     case maintenancePlanLabel
     case maintenancePlanHint
@@ -1930,6 +1936,9 @@ public enum LocalizedStrings {
         .notesUntitled: [.simplifiedChinese: "无标题", .english: "Untitled"],
         .notesContainsRowData: [.simplifiedChinese: "含数据", .english: "contains data"],
         .notesSourcePrefix: [.simplifiedChinese: "来源：", .english: "Source: "],
+        .notesDataMigrated: [.simplifiedChinese: "笔记数据已迁到独立目录（%d 条），旧文件也留了一份备份", .english: "Notes data moved to its own folder (%d items); the old file is kept as a backup"],
+        .notesMigrationNeedsAttention: [.simplifiedChinese: "笔记数据迁移没做完：%@（原文件仍在原处，没有丢）", .english: "Notes data migration did not finish: %@ (the original file is still in place, nothing was lost)"],
+        .notesFileUnreadable: [.simplifiedChinese: "笔记文件读不出来：%@（已按空列表显示，原文件未改动）", .english: "The notes file could not be read: %@ (showing an empty list; the file itself is untouched)"],
         .menuMaintenanceTasks: [.simplifiedChinese: "维护任务…", .english: "Maintenance tasks…"],
         .maintenancePlanLabel: [.simplifiedChinese: "计划（每行一条：task: 类别 ｜ 人话描述 ｜ sql: 语句）", .english: "Plan (one per line: task: kind | description | sql: statement)"],
         .maintenancePlanHint: [.simplifiedChinese: "写操作与 DDL 一律要逐条批准；高开销（REINDEX / 备份 / 恢复）默认一次只放一条。", .english: "Writes and DDL always need step-by-step approval; high-cost ones (REINDEX / backup / restore) are limited to one per run by default."],
