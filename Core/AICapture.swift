@@ -48,13 +48,6 @@ public enum AICapture {
         return host.isEmpty ? nil : host
     }
 
-    static func fingerprint(of context: DiagnosisContext, report: DiagnosisAdviceReport) -> String {
-        // 稳定指纹：证据 SQL 集合 + 采纳的结论。不掺时间，于是"同一场景再存一次"能被识别。
-        let evidencePart = context.evidence.map(\.sql).joined(separator: "|")
-        let advicePart = report.items.map { $0.conclusion + $0.citations.joined() }.joined(separator: "|")
-        return stableHash(evidencePart + "#" + advicePart)
-    }
-
     static func stableHash(_ text: String) -> String {
         // FNV-1a：小、确定、跨平台（不引哈希库，也不用 `Hasher` —— 后者每次进程启动都不一样）。
         var hash: UInt64 = 0xcbf29ce484222325
@@ -68,17 +61,6 @@ public enum AICapture {
     private static func firstLine(of sql: String) -> String {
         let line = sql.split(separator: "\n").first.map(String.init) ?? "SQL"
         return line.count > 60 ? String(line.prefix(60)) + "…" : line
-    }
-
-    /// 维护任务状态的人话（Ultra 侧的适配器在另一个文件里用 → 不能 private）。
-    static func stateText(_ state: MaintenanceTask.State) -> String {
-        switch state {
-        case .pending: return t(.aiNoteStatePending)
-        case .approved: return t(.aiNoteStateApproved)
-        case .rejected: return t(.aiNoteStateRejected)
-        case .executed: return t(.aiNoteStateExecuted)
-        case .failed(let reason): return t(.aiNoteStateFailed, reason)
-        }
     }
 }
 

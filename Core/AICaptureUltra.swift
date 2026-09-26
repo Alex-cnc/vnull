@@ -8,6 +8,11 @@ import Foundation
 /// 整个笔记模块就没法在"只有笔记"的构建里独立存在。
 /// 拆法：**笔记侧只收标题 / 正文 / 来源**（`AICapture.skillNote` / `sqlNote`，无 Ultra 依赖），
 /// Ultra 侧（本文件）再放"诊断 / 维护 → 草稿"的适配器。调用点形状不变（同一个 `AICapture` 类型）。
+///
+/// **2026-09-26（L-04 插件链回归复核）**：上一轮拆分只搬了三个 `public` 映射函数，
+/// 把两个 helper（`fingerprint(of:report:)` / `stateText(_:)`）留在了 `AICapture.swift` ——
+/// 它们的**参数就是 Ultra 侧类型**，于是"笔记侧文件可独立构建"这句话当时并不成立。
+/// 两个 helper 现在都在本文件；门禁把 Ultra 侧类型名列为禁用，搬回去会红。
 extension AICapture {
 
     /// 诊断结果 → 一条笔记（**只收采纳的条目**；被拒绝的结论不进笔记，它们是过程不是结论）。
@@ -83,6 +88,30 @@ extension AICapture {
             tags: [t(.aiNoteTagMaintenance)],
             source: NoteSource(kind: .maintenance, connectionName: connectionName(from: target))
         )
+    }
+
+    // MARK: - Ultra 侧的辅助（**刻意留在这个文件**，别挪回 `AICapture.swift`）
+
+    /// 稳定指纹：证据 SQL 集合 + 采纳的结论。不掺时间，于是"同一场景再存一次"能被识别。
+    ///
+    /// 为什么在本文件：参数是 `DiagnosisContext` / `DiagnosisAdviceReport` —— Ultra 才有的类型。
+    /// 放在笔记侧的文件里，那个文件就没法在"只有笔记"的构建里独立存在
+    /// （`Scripts/check-note-module-isolation.py` 现在把 Ultra 侧类型名也列为禁用，挪回去会红）。
+    static func fingerprint(of context: DiagnosisContext, report: DiagnosisAdviceReport) -> String {
+        let evidencePart = context.evidence.map(\.sql).joined(separator: "|")
+        let advicePart = report.items.map { $0.conclusion + $0.citations.joined() }.joined(separator: "|")
+        return stableHash(evidencePart + "#" + advicePart)
+    }
+
+    /// 维护任务状态的人话（`MaintenanceTask.State` 同样是 Ultra 侧类型）。
+    static func stateText(_ state: MaintenanceTask.State) -> String {
+        switch state {
+        case .pending: return t(.aiNoteStatePending)
+        case .approved: return t(.aiNoteStateApproved)
+        case .rejected: return t(.aiNoteStateRejected)
+        case .executed: return t(.aiNoteStateExecuted)
+        case .failed(let reason): return t(.aiNoteStateFailed, reason)
+        }
     }
 }
 
