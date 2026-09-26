@@ -1,6 +1,34 @@
 import SwiftUI
 import DoyahCore
 
+/// 结果表的**初始视图状态**（`ResultTableView(initialState:)` 的参数，队列 L-12 的口子）。
+///
+/// 为什么三块一起给、不给三个散参数：它们**互相耦合** —— 选中的行是「分页内索引」，
+/// 一旦页号 / 筛选 / 排序变了，同一个索引就指向另一行；行详情侧栏讲的那一行也取自同一份
+/// `page.rows`。分开给，调用方能拼出「筛掉一半行却停在第 7 页、选着第 9 行」这种自相矛盾的初值，
+/// 而它画出来的东西**看起来完全正常**（正是本仓最防的欺骗性显示）。
+///
+/// 它只是**初值**：面板照旧把状态收在 `@State` 里、由用户动作驱动，只是把「从哪开始」从写死
+/// 改成可给。生产路径（`QueryWorkspaceView`）不传，行为与以前逐字一致。
+struct ResultViewState {
+    /// 客户端视图：排序（FR-RES-08）/ 筛选（FR-RES-09）/ 分页（FR-RES-10）。
+    var grid: ResultGridState
+    /// 选中的行（**分页内索引**，与 `page.rows` 同一套下标）。
+    var selectedRows: Set<Int>
+    /// 行详情侧栏（FR-DATA-05）是否打开。
+    var isRowDetailPresented: Bool
+
+    init(
+        grid: ResultGridState = ResultGridState(),
+        selectedRows: Set<Int> = [],
+        isRowDetailPresented: Bool = false
+    ) {
+        self.grid = grid
+        self.selectedRows = selectedRows
+        self.isRowDetailPresented = isRowDetailPresented
+    }
+}
+
 /// 结果区：结果表的**外壳**（标题、结果集选择器、导出、客户端排序 / 筛选 / 分页、无结果集状态）。
 ///
 /// 与 `ResultGrid`（表格本体）是一整块，所以外观必须同一套令牌：
@@ -28,6 +56,43 @@ struct ResultTableView: View {
     /// 结果的来源表（FR-DATA-04）：**只有 `QueryTab.sourceTable` 能给出这个事实**。
     /// 手写 SQL 的结果没有它 —— 那时内联编辑直说"不知道是哪张表"，不猜表名。
     var sourceTable: DatabaseObjectRef?
+
+    /// 表格本体的**初值**选中集（只在建视图时用一次，见 `ResultGrid.initialSelection`）。
+    /// 单独留一份而不是直接读 `selectedRows`：选中集之后会随用户动作变，而初值只能给一次。
+    private let initialSelection: Set<Int>
+
+    /// 显式构造：只为把三块视图状态的**初值**接进来（见 `ResultViewState`）。
+    ///
+    /// 参数顺序与含义跟原来的逐字一致（合成构造器没了，所以照抄一遍），
+    /// `initialState` 不给时就是原先的默认值 —— 生产路径的行为没有任何变化。
+    init(
+        result: QueryResult?,
+        resultCount: Int = 0,
+        selectedIndex: Int = 0,
+        onSelectResult: ((Int) -> Void)? = nil,
+        isExecuting: Bool = false,
+        onExport: ((ResultExportFormat, ResultExportEncoding) -> Void)? = nil,
+        onGenerateWhere: ((String) -> Void)? = nil,
+        onJumpToReferencedRow: ((String, String?) -> Void)? = nil,
+        tabID: UUID? = nil,
+        sourceTable: DatabaseObjectRef? = nil,
+        initialState: ResultViewState = ResultViewState()
+    ) {
+        self.result = result
+        self.resultCount = resultCount
+        self.selectedIndex = selectedIndex
+        self.onSelectResult = onSelectResult
+        self.isExecuting = isExecuting
+        self.onExport = onExport
+        self.onGenerateWhere = onGenerateWhere
+        self.onJumpToReferencedRow = onJumpToReferencedRow
+        self.tabID = tabID
+        self.sourceTable = sourceTable
+        self.initialSelection = initialState.selectedRows
+        _gridState = State(initialValue: initialState.grid)
+        _selectedRows = State(initialValue: initialState.selectedRows)
+        _isRowDetailPresented = State(initialValue: initialState.isRowDetailPresented)
+    }
 
     /// 内联编辑的提交要经 `AppState`（取列元信息 / 走既有执行路径），与导出、跳转同一分工。
     @EnvironmentObject private var appState: AppState
@@ -459,6 +524,7 @@ struct ResultTableView: View {
                 },
                 onJumpToReferencedRow: onJumpToReferencedRow,
                 editing: gridEditing(for: result),
+                initialSelection: initialSelection,
                 onCommitCellEdit: { row, columnIndex, text in
                     guard rows.indices.contains(row),
                           result.columns.indices.contains(columnIndex) else { return }

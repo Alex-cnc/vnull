@@ -63,6 +63,13 @@ struct ResultGrid: NSViewRepresentable {
     var onJumpToReferencedRow: ((String, String?) -> Void)?
     /// 内联编辑（FR-DATA-04）的**渲染信息**：只影响这一层怎么画，不改 `rows` 本身。
     var editing: ResultGridEditing = ResultGridEditing()
+    /// **首次挂载**时要把哪些行选上（分页内索引，队列 L-12 的口子）。
+    ///
+    /// 为什么只在建视图时用一次、不在 `updateNSView` 里重放：显示的行一换，同一个行号就指向
+    /// 另一行 —— 重放等于把旧行号重新点亮（那种"亮着的不是我选的那行"正是本文件反复防的
+    /// 欺骗性显示）。所以它只是一份**初值**：生产路径不传（默认空集），表格的选中态照旧
+    /// 完全由用户动作驱动。
+    var initialSelection: Set<Int> = []
     /// 某一格编辑结束：`(显示行号, 列号, 新文本)`。是否采纳由上层决定（这里是"另一个按钮"）。
     var onCommitCellEdit: ((Int, Int, String) -> Void)?
     /// 右键「标记删除此行 / 取消删除标记」：`(显示行号, 该行当前是否已标记删除)`。
@@ -163,6 +170,14 @@ struct ResultGrid: NSViewRepresentable {
             onToggleRowDeletion: onToggleRowDeletion,
             tableView: tableView
         )
+
+        // 初值选中态**放在 update 之后**：`update` 在首次建视图时必然会走
+        // 「显示内容变了 → 作废选中态」那一支（上一次的显示签名是空的），先选也会被它清掉。
+        // 越界的行号直接丢掉：宁可不亮，也不亮错行。
+        let selectable = initialSelection.filter { $0 >= 0 && $0 < tableView.numberOfRows }
+        if !selectable.isEmpty {
+            tableView.selectRowIndexes(IndexSet(selectable), byExtendingSelection: false)
+        }
         return scrollView
     }
 

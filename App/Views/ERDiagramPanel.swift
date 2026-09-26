@@ -29,6 +29,23 @@ struct ERDiagramPanel: View {
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
 
+    /// 面板的**初始值**（队列 L-12 的「可注入口子」）。
+    ///
+    /// 为什么需要它：这一版面板只会**自己去取** ER 图 —— 于是「已经拿到图之后长什么样」
+    /// 这件事没有任何离线途径能看到。界面快照在离屏宿主里跑 `.task` / `onAppear` 时
+    /// （第 11 轮实测：离屏宿主里它们**真的会跑**）没有连接可选，只能拍到加载态或错误态。
+    ///
+    /// 口径三条：
+    ///   ① 它只**给初值**，不改任何行为分支 —— 生产路径（`MainWindow`）不传，行为与以前逐字一致；
+    ///   ② 它不是测试后门：没有任何"测试才走"的分支，也不放行被禁的动作 ——
+    ///      面板照旧不写库、不执行语句、只读元数据，只是**不再去取**那一次；
+    ///   ③ 与 `load()` 的先后关系由 `.onAppear` 的 `if diagram == nil` 保证：
+    ///      给了初值就不取，没给就照旧取（那一条判断是这里能生效的唯一原因，别删）。
+    init(schema: String = "public", initialDiagram: ERDiagram? = nil) {
+        _schema = State(initialValue: schema)
+        _diagram = State(initialValue: initialDiagram)
+    }
+
     private var layout: ERDiagram.Layout? { diagram?.layout() }
 
     var body: some View {
@@ -42,6 +59,8 @@ struct ERDiagramPanel: View {
             footer
         }
         .frame(width: 900, height: 720)
+        // `diagram == nil` 是「给了初值就不去取」的**唯一**保证（见 `init(schema:initialDiagram:)`）：
+        // 去掉它，注入进来的图会被紧随其后的加载覆盖掉（离屏宿主里这次加载真的会跑）。
         .onAppear { if diagram == nil { Task { await load() } } }
     }
 
