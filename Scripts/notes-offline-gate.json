@@ -1,0 +1,232 @@
+{
+  "_说明": "`Scripts/check-notes-offline.py`（零网络出口门禁，闭环第 10 项）的台账。判据与台账分家会让『改台账就能过』变成一条暗道，所以这里写的是**声明**，门禁拿它跟事实对账。",
+  "scope": [
+    {
+      "path": "Core/Note.swift",
+      "layer": "core",
+      "role": "笔记模型 + 存储入口（`NoteStore`）—— 笔记数据只落本机数据家"
+    },
+    {
+      "path": "Core/NoteBody.swift",
+      "layer": "core",
+      "role": "笔记正文块模型（纯值类型，无 IO）"
+    },
+    {
+      "path": "Core/License.swift",
+      "layer": "core",
+      "role": "许可与装配判据（笔记模块随包的条件判定）"
+    },
+    {
+      "path": "Core/LicenseLoader.swift",
+      "layer": "core",
+      "role": "从**本机文件**装载许可证（读不到就如实说明）—— 许可链是最容易溜进「联网激活」的地方，所以它也在范围内"
+    },
+    {
+      "path": "Core/LicensePresentation.swift",
+      "layer": "core",
+      "role": "许可 → 界面呈现哪些块（笔记项可见性的唯一判据）"
+    },
+    {
+      "path": "Core/LicensePublicKey.swift",
+      "layer": "core",
+      "role": "内置公钥（签名校验用；私钥在发行方手里）"
+    },
+    {
+      "path": "Core/LicenseSignature.swift",
+      "layer": "core",
+      "role": "Ed25519 签名校验（ADR-34：**只做离线校验，不联网激活**）—— 这条口径现在由本门禁机械守着"
+    },
+    {
+      "path": "Core/AICapture.swift",
+      "layer": "core",
+      "role": "笔记侧的 AI 采集映射（按设计只做映射，不发出请求）"
+    },
+    {
+      "path": "Core/AICaptureUltra.swift",
+      "layer": "core",
+      "role": "宿主侧适配（按设计引用 Ultra 类型，非笔记侧可独立构建的那一份）"
+    },
+    {
+      "path": "App/Views/NotesPanel.swift",
+      "layer": "app",
+      "role": "笔记面板（活动栏入口）"
+    }
+  ],
+  "scopeBeyondIsolation": [
+    {
+      "path": "Core/LicenseLoader.swift",
+      "reason": "许可链不在解耦门禁的笔记清单里（那份清单管的是「笔记侧能不能独立构建」），但它按设计要给 Windows / Linux 版复用（`LicenseSignature` 的注释就是这么写的：用 swift-crypto 而不是 CryptoKit，为的是跨平台），所以**笔记模块的零网络出口必须覆盖它** —— 许可校验是「溜进联网激活」最经典的位置，`LicenseSignature` 现在写着「不联网激活」，本门禁把这句话变成判据。"
+    },
+    {
+      "path": "Core/LicensePresentation.swift",
+      "reason": "同上：它决定笔记项在活动栏可见不可见（`check-plugin-assembly.py` 也在盯这一处），属笔记模块的许可半边。"
+    },
+    {
+      "path": "Core/LicensePublicKey.swift",
+      "reason": "同上：签名校验用的内置公钥，随笔记模块一起跨平台。"
+    },
+    {
+      "path": "Core/LicenseSignature.swift",
+      "reason": "同上：ADR-34 的「只做离线签名校验」这条口径由本门禁守着。"
+    }
+  ],
+  "outOfScope": [
+    {
+      "path": "Tests/NoteTests.swift",
+      "reason": "测试不是随包代码（Linux 产物里没有它）"
+    },
+    {
+      "path": "Tests/NoteBodyTests.swift",
+      "reason": "测试不是随包代码"
+    },
+    {
+      "path": "Tests/NoteDataBoundaryTests.swift",
+      "reason": "测试不是随包代码"
+    },
+    {
+      "path": "Tests/AICaptureTests.swift",
+      "reason": "测试不是随包代码"
+    }
+  ],
+  "bannedTokens": [
+    {
+      "token": "URLSession",
+      "reason": "系统自带的出网 API；出现在笔记模块里就说明这条链路能发数据出去"
+    },
+    {
+      "token": "import Network",
+      "reason": "Network.framework 的入口（NWConnection / NWListener 都要先 import 它）"
+    },
+    {
+      "token": "NWConnection",
+      "reason": "Network.framework 的连接对象"
+    },
+    {
+      "token": "NWListener",
+      "reason": "Network.framework 的监听对象（笔记不需要收进来的连接）"
+    },
+    {
+      "token": "NWPathMonitor",
+      "reason": "连通性探测：按『离线且零出网』的口径，笔记连探测都不需要"
+    },
+    {
+      "token": "URLRequest",
+      "reason": "请求对象；只可能是要发出去的东西"
+    },
+    {
+      "token": "dataTask",
+      "reason": "URLSession 的发送动作"
+    },
+    {
+      "token": "CFNetwork",
+      "reason": "更底层的出网入口（跳过 URLSession 的那条路）"
+    },
+    {
+      "token": "getaddrinfo",
+      "reason": "DNS 解析（C 层，绕开所有 Swift 封装）"
+    },
+    {
+      "token": "URL(string:",
+      "reason": "从字符串拼地址：网络地址只可能这么来；本地文件一律走 `URL(fileURLWithPath:)`（本模块已有用法）"
+    },
+    {
+      "token": "http://",
+      "reason": "明文网络地址字面量（含 `→ 注释里留调试地址` 也一并拦下：出网地址不该出现在笔记模块）"
+    },
+    {
+      "token": "https://",
+      "reason": "网络地址字面量（同上）"
+    },
+    {
+      "token": "ws://",
+      "reason": "WebSocket 地址字面量（同上）"
+    },
+    {
+      "token": "import PostgresNIO",
+      "reason": "数据库驱动（笔记模块不能背数据库代码 —— 与解耦门禁同一条纪律）"
+    },
+    {
+      "token": "import MySQLNIO",
+      "reason": "数据库驱动（同上）"
+    },
+    {
+      "token": "import NIOCore",
+      "reason": "NIO 是网络栈；笔记模块引它就等于把出网能力带进产物"
+    },
+    {
+      "token": "import NIOPosix",
+      "reason": "NIO 是网络栈（同上）"
+    },
+    {
+      "token": "import AsyncHTTPClient",
+      "reason": "HTTP 客户端库（同上）"
+    }
+  ],
+  "requiredTokens": [
+    "URLSession",
+    "import Network",
+    "NWConnection",
+    "URLRequest",
+    "dataTask",
+    "URL(string:",
+    "http://",
+    "https://"
+  ],
+  "exceptions": [],
+  "scopeFloors": {
+    "minFiles": 4,
+    "requiredLayers": [
+      "core",
+      "app"
+    ],
+    "requiredMarkers": [
+      {
+        "file": "Core/Note.swift",
+        "marker": "static func defaultStore",
+        "why": "笔记的存储入口必须在范围内：否则把范围缩成几个纯值类型文件，本门禁就变成一句空话（『零网络出口』首先得有那个能写盘/能出网的东西）"
+      },
+      {
+        "file": "App/Views/NotesPanel.swift",
+        "marker": "struct NotesListView",
+        "why": "笔记面板必须在范围内（活动栏入口，Linux 侧也要有它的入口）"
+      }
+    ]
+  },
+  "wiring": {
+    "verifyAll": "Scripts/verify-all.sh",
+    "gateCall": "check-notes-offline.py",
+    "negativeTest": "Scripts/test-notes-offline-gate.py",
+    "isolationGate": "Scripts/check-note-module-isolation.py",
+    "reconcileWithIsolationLists": [
+      "NOTE_SOURCES",
+      "ULTRA_SIDE_SOURCES"
+    ]
+  },
+  "evidence": [
+    {
+      "file": "Scripts/test-notes-offline-gate.py",
+      "contains": "URLSession.shared",
+      "why": "负例必须真的注入一次出网调用（正例在真仓库里一条都扫不出来，所以『门禁看得见违规』只能靠负例证明）"
+    },
+    {
+      "file": "Scripts/test-notes-offline-gate.py",
+      "contains": "import Network",
+      "why": "第二条注入通道：import 层面（不是调用层面）"
+    },
+    {
+      "file": "Scripts/test-notes-offline-gate.py",
+      "contains": "https://",
+      "why": "第三条注入通道：地址字面量"
+    },
+    {
+      "file": "Scripts/check-note-module-isolation.py",
+      "contains": "NOTE_SOURCES",
+      "why": "与解耦门禁对账的锚点（两份清单不许各说各话）"
+    }
+  ],
+  "knownGaps": [
+    "① 只判『源码里不出现网络 API』，判不了『运行时真的没有出网』（要真的证明得靠 L-23 ③ 的断网用例：断网跑增/改/查/删/检索/迁移全绿）",
+    "② 本门禁只看**笔记模块这几个文件**；宿主侧（AppState / 浏览器 / 智能体）按设计有出网能力，不在本条范围内 —— 那是 NFR-SEC-05 / NFR-SEC-08 的地盘",
+    "③ macOS / Windows 侧的存储引擎是否也换成本地 SQLite 取决于 Q23（需求提出者拍板）；本条只保证『笔记模块自己不带出网能力』，与换不换引擎无关"
+  ]
+}

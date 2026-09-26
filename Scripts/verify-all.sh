@@ -17,6 +17,7 @@ set -euo pipefail
 #   8. 平台中立性棘轮（需求规范书里的平台专属词汇不得比基线更差）
 #   9. 命令面板接线（清单 ↔ 分派器 ↔ 视图绑定；见脚本注释里的真实缺陷）
 #  10. 插件装配链（笔记模块解耦 FR-PLUG-07 + 装配与许可 FR-PLUG-01/02/03/06 + ADR-35）
+#      + 笔记模块的**零网络出口**（FR-PLUG-05 ②：数据不外发，见 `check-notes-offline.py`）
 #  11. 打包 .app（沙箱构建）
 #  12. 脚本 shell 多字节安全（bash 3.2 的变量名坑，见 `check-shell-locale-safety.py`）
 #  13. 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号，见 `check-script-env-parameterization.py`）
@@ -92,6 +93,12 @@ python3 Scripts/check-palette-wiring.py
 echo "==> 10/15 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
 python3 Scripts/check-note-module-isolation.py
 python3 Scripts/check-plugin-assembly.py
+# L-22：FR-PLUG-05 的「Linux 笔记＝本地离线、数据不外发（公司合规）」不能只是一句话 ——
+# 笔记模块范围内**逐行扫网络 API 令牌表**（URLSession / import Network / NWConnection /
+# http(s) 字面量 / URL(string: …），命中即红并点名文件与行号；范围声明与磁盘事实、
+# 与上面那份解耦清单**两边对账**（漏登一个源文件也是红）。判据与台账见
+# `Scripts/notes-offline-gate.json`（关键令牌不许被拿掉、例外要写明理由且锚点陈旧报红）。
+python3 Scripts/check-notes-offline.py
 
 echo "==> 11/15 打包 .app（沙箱）"
 ./Scripts/build-app.sh
