@@ -68,6 +68,17 @@ let package = Package(
             dependencies: ["DoyahCore"],
             path: "Tests"
         ),
+        // 界面快照（队列 L-01）：用 `ImageRenderer` **离屏渲染真视图树**成 PNG。
+        //
+        // 为什么单列一个 test target 并依赖 `DoyahStudioApp`：要取证的是**真界面**，
+        // 而不是 `Scripts/design-mock.swift` 那种照着重画的样张；SwiftPM 允许测试目标依赖可执行目标，
+        // 于是不用把 App 拆成库、也不用给生产代码开后门。
+        // 用例**默认跳过**（`DOYAH_UI_SNAPSHOT=1` 才跑）—— 快照是取证工具，不是回归门禁。
+        .testTarget(
+            name: "DoyahUISnapshotTests",
+            dependencies: ["DoyahStudioApp", "DoyahCore", "DoyahPlatform"],
+            path: "TestsUISnapshot"
+        ),
         // 平台适配层的测试单独一个 target：真实书签这类用例必须跑在**真实实现**上，
         // 放在 Core 测试里就只能测假实现，等于把最有价值的一条覆盖丢掉。
         .testTarget(
