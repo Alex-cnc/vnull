@@ -4,7 +4,7 @@ set -euo pipefail
 # 本工程的一条命令验证闭环。
 #
 # 拆开跑过很多次、也就漏跑过很多次（尤其是文档计数与设计令牌这两项），
-# 所以合成一条：**改完代码跑它，十四项全过才算完**。
+# 所以合成一条：**改完代码跑它，十五项全过才算完**。
 #
 #   1. Core 单测（SwiftPM，不需要数据库）+ 平台适配层单测
 #   2. Core 平台中立性（Core 里不得出现平台专属依赖 —— 否则 Linux 编译不过）
@@ -21,6 +21,8 @@ set -euo pipefail
 #  12. 脚本 shell 多字节安全（bash 3.2 的变量名坑，见 `check-shell-locale-safety.py`）
 #  13. 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号，见 `check-script-env-parameterization.py`）
 #  14. 连接失败的文案覆盖面（驱动错误码 ↔ 文案台账，见 `check-connection-failure-coverage.py`）
+#  15. 命令行失败输出的可读化覆盖面（L-15：不许出现「有话说却直接打英文串」的 print，
+#      见 `check-cli-failure-readability.py`）
 #
 # 第 8 项是 2026-09-23 补的：那天发现命令面板有 9 条命令「设了标志位但没人读」，
 # 用户点了完全没反应，而当时已有的 7 项门禁**全部看不见**这类缺陷（编译、单测、
@@ -53,13 +55,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/14 Core 与平台适配层单测"
+echo "==> 1/15 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/14 Core 平台中立性"
+echo "==> 2/15 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/14 本地化：Core 展示文本棘轮（R-45）+「当前语言只有一个来源」（L-13）"
+echo "==> 3/15 本地化：Core 展示文本棘轮（R-45）+「当前语言只有一个来源」（L-13）"
 python3 Scripts/check-core-localization.py
 # L-13：界面语言有两条路 —— `L(...)` 与**显式传语言下去**（`summary(language:)` 之类）。
 # 后者原先取的是**用户选择**（`LocalizationManager.shared.language`），绕过了渲染语境：
@@ -67,40 +69,48 @@ python3 Scripts/check-core-localization.py
 # 收成一个口子 `effectiveLanguage`（宿主语境优先），并把这个口径变成机械判据。
 python3 Scripts/check-effective-language.py
 
-echo "==> 4/14 文档表格与派生计数"
+echo "==> 4/15 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 # 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
 python3 Scripts/check-terminal-palette.py
 
-echo "==> 5/14 需求状态一致性（索引表 ↔ 正文定义行）"
+echo "==> 5/15 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
 
-echo "==> 6/14 设计令牌棘轮"
+echo "==> 6/15 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 7/14 平台等价矩阵"
+echo "==> 7/15 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 8/14 平台中立性棘轮"
+echo "==> 8/15 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 9/14 命令面板接线（FR-EDIT-25）"
+echo "==> 9/15 命令面板接线（FR-EDIT-25）"
 python3 Scripts/check-palette-wiring.py
 
-echo "==> 10/14 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
+echo "==> 10/15 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
 python3 Scripts/check-note-module-isolation.py
 python3 Scripts/check-plugin-assembly.py
 
-echo "==> 11/14 打包 .app（沙箱）"
+echo "==> 11/15 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
-echo "==> 12/14 脚本 shell 多字节安全（bash 3.2 变量名坑）"
+echo "==> 12/15 脚本 shell 多字节安全（bash 3.2 变量名坑）"
 python3 Scripts/check-shell-locale-safety.py
 
-echo "==> 13/14 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号）"
+echo "==> 13/15 脚本连接信息参数化（连真库的脚本不许写死端口 / 地址 / 账号）"
 python3 Scripts/check-script-env-parameterization.py
 
-echo "==> 14/14 连接失败的文案覆盖面（驱动错误码 ↔ 文案台账）"
+echo "==> 14/15 连接失败的文案覆盖面（驱动错误码 ↔ 文案台账）"
 python3 Scripts/check-connection-failure-coverage.py
 
-echo "✅ 验证闭环全部通过（十四项）"
+echo "==> 15/15 命令行失败输出的可读化覆盖面（L-15）"
+# L-15：CLI 有 57 处「把失败说给用户看」的输出原先各写各的（`print("…：\(error.localizedDescription)")`），
+# 打出来是 `The operation couldn't be completed. (PostgresNIO.PSQLError error 1.)` —— 既不是人话、
+# 也没给方向，而驱动其实说过原因（SQLSTATE / 驱动码），只是没人接。这一项把「每一处用户可见的
+# 失败输出都必须经同一个入口」变成**结构**判据（新增一处裸英文输出当场报红并指名行号），
+# 并把入口自己的三条口径（认得出给方向 / 中性归因 / 认不出原样）与调用处数棘轮一起钉住。
+python3 Scripts/check-cli-failure-readability.py
+
+echo "✅ 验证闭环全部通过（十五项）"

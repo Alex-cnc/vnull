@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-09-27T06:20:00+08:00",
+  "note": "命令行失败输出的**口径台账**（闭环第 15 项 `check-cli-failure-readability.py` 按它跟 CLI 源码对账）。**为什么要台账**：CLI 里把失败说给用户看的地方有几十处，原先各写各的（`print(\"列出表失败：\\(error.localizedDescription)\")`）—— 打出来是 `The operation couldn't be completed. (PostgresNIO.PSQLError error 1.)`，既不是人话也没给方向，而驱动其实说过原因（SQLSTATE / 驱动码）。第 7~8 轮只接上了**连接失败**与**查询失败**两条主路，剩下 57 处仍是英文调试串（L-15：同一条口径散在几十个 catch 里，改一处漏一处）。台账把「哪些输出必须走同一个入口」「哪些是口径里的例外」「哪些是还差一点的渠道字段」变成**声明**，门禁逐条与源码对账 —— 新增一处裸英文失败输出会当场报红。",
+  "entryPoint": {
+    "file": "CLI/CLIFailureText.swift",
+    "call": "CLIFailureText.oneLine(",
+    "minCallSites": 57,
+    "minCallSitesWhy": "**57 处**（L-15 一轮改造的处数：print / stderr 的所有用户可见失败行）。只查「这个入口存在」是不够的 —— 把调用删回去、或只写个不接线的 helper，门禁都得报红。处数写小了是台账撒谎（少掉的路径又退回英文调试串），写大了当场报红。",
+    "contract": [
+      { "step": "ConnectionFailure.describe(", "why": "连接类先说话（人话 + 建议 + 错误码）" },
+      { "step": "ConnectionFailure.describeNonConnection(", "why": "驱动报的、但不是连接类（取消 / 主动断开 / 协议层 / 未归类）走中性归因" },
+      { "step": "return raw", "why": "认不出就**原样**返回：不套方向结论（口径第 2 条），于是「本地错误」（文件 / 编解码 / 钥匙串）的输出与改动前**逐字一致**" },
+      { "step": "（原始信息：", "why": "认得出来时原始串也保留（口径第 3 条）—— 排查时「到底是哪个码 / 哪句话」才是关键" }
+    ]
+  },
+  "outputScan": {
+    "files": ["CLI/main.swift"],
+    "printMarkers": ["print(", "FileHandle.standardError.write("],
+    "rawMarker": "error.localizedDescription",
+    "jsonExemptMarkers": ["{\"ok\":false", "jsonQuoted("],
+    "why": "判据是**结构**判据（不是人名清单）：哪一行出现「打给用户看的输出 + 原始串」就要求同一行经由入口；机器可读出口按结构放行（`--json` 的 error 字段 / `jsonQuoted(...)`），因为那是**脚本要消费**的原串。"
+  },
+  "exemptions": [
+    {
+      "anchor": "print(\"{\\\"ok\\\":false,\\\"error\\\":\\(jsonQuoted(error.localizedDescription))}\")",
+      "count": 4,
+      "kind": "机器可读出口",
+      "why": "`--json` 的失败出口（诊断 / 维护 / MySQL-GBase 执行路径）：原串放 `error` 字段里给脚本消费，套人话反而会破坏机器可读性 —— 口径里的显式例外之一。"
+    }
+  ],
+  "plumbing": [
+    {
+      "anchor": "return (error.localizedDescription, true)",
+      "count": 2,
+      "reachesUser": false,
+      "why": "MCP 工具结果（`runMCPInvocation` 的 listObjects / `runMCPQuery`）：返回给 **MCP 客户端**（机器消费者）的载荷，不是本机命令行打的字。"
+    },
+    {
+      "anchor": "return (\"写文件失败：\\(error.localizedDescription)\", true)",
+      "count": 1,
+      "reachesUser": false,
+      "why": "同上（MCP 工具结果里的本地写文件失败）。"
+    },
+    {
+      "anchor": "review = MaintenancePlanner.record(review, taskID: task.id, failureReason: error.localizedDescription)",
+      "count": 1,
+      "reachesUser": true,
+      "why": "**登记为已知缺口**：这条 reason 既进 JSON 也进 `失败（reason）` 状态行（会打到用户眼前），但它是**渠道字段**（一次写入、两处消费），所以本轮只登记、不在渠道里塞人话（改了会让 JSON 也变中文）。归 **L-20**。"
+    },
+    {
+      "anchor": "executed.append((task.id, false, error.localizedDescription))",
+      "count": 1,
+      "reachesUser": true,
+      "why": "**登记为已知缺口**：同上（`❌ <id> 失败：<detail>` 会打到用户眼前，且 detail 同时进 JSON）。归 **L-20**。"
+    },
+    {
+      "anchor": "rows: nil,\n                            failureReason: error.localizedDescription",
+      "count": 1,
+      "reachesUser": false,
+      "why": "诊断取证里的字段：进**提示词上下文**与 JSON，给模型与脚本看。"
+    },
+    {
+      "anchor": "record.record(success: false, at: Date(), failure: error.localizedDescription)",
+      "count": 1,
+      "reachesUser": false,
+      "why": "保活心跳记录（`KeepAliveRecord`）：汇总行只报次数与健康度，失败原因留给记录本身。"
+    }
+  ],
+  "debugDumps": {
+    "marker": "String(reflecting: error)",
+    "minCount": 3,
+    "why": "调试转储（`调试详情：` 那一行）是「原始串不丢」的另一半，**保留**：连接失败 / 查询失败 / 对象树三条主路上都在。它是转储、不是给用户的结论 —— 所以不进「必须走入口」的判据，但**不许被删掉**（删了就只剩人话、排查时拿不到原始报文）。"
+  },
+  "knownGaps": [
+    "渠道字段里的两处（维护任务的 `failureReason` / `executed.detail`）会以裸串打到用户眼前 —— 归 L-20（要先定「JSON 里放人话还是放原串」）",
+    "对象树外层那条 `对象树加载失败` 与 `建库权限探测失败` 两条路径**没有稳定的现场触发方式**（探测查询本身是单条 syscache 快查询；锁基础目录会先让**建连**失败）→ 由本门禁的机械对账覆盖，实证靠同形状的两条真现场（诊断路径的连接类 + `row` 路径的 57014）",
+    "带 SQLSTATE 的**查询类**错误（42P01 等）在 CLI 仍只说「原始信息：The operation couldn't be completed…」，而服务端其实说了 `relation … does not exist`（`ConnectionFailure.readableServerText` 已经有这份能力、CLI 这一侧没接）→ 归 L-20"
+  ],
+  "evidence": [
+    { "file": "Scripts/test-cli-failure-readability.sh", "contains": "服务端把这次查询取消了", "why": "要有**真 57014 现场**（用户表持锁 + 库级 1ms statement_timeout）：中性归因真的打到了命令行上" },
+    { "file": "Scripts/test-cli-failure-readability.sh", "contains": "不再只剩一句英文调试串", "why": "要有**反向**断言：只断言正面措辞时，「人话 + 裸串并存」也能骗过门禁" },
+    { "file": "Scripts/test-cli-failure-readability.sh", "contains": "（原始信息：", "why": "口径第 3 条（认得出来时原始串也保留）要有现场断言" },
+    { "file": "Scripts/test-cli-failure-readability.sh", "contains": "读取文件失败：The file", "why": "口径第 2 条（认不出就原样、不套方向结论）要有现场断言 —— 本地错误必须**逐字不变**" }
+  ]
+}

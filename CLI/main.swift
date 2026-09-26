@@ -80,7 +80,7 @@ struct DoyahCLI {
                 return 2
             }
         } catch {
-            FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("\(CLIFailureText.oneLine(error))\n".utf8))
             return 1
         }
     }
@@ -258,7 +258,7 @@ struct DoyahCLI {
                 // 主动断开 / 协议层…），**不给「连接失败」那套方向**。原始串照旧在下面的调试详情里。
                 print(neutral.fullText)
             } else {
-                print("简要信息：\(error.localizedDescription)")
+                print("简要信息：\(CLIFailureText.oneLine(error))")
             }
             print("")
             print("调试详情：")
@@ -327,7 +327,7 @@ struct DoyahCLI {
                             print("\(indent)  … 还有 \(children.count - 50) 个对象")
                         }
                     } catch {
-                        print("\(indent)  ⚠️ \(error.localizedDescription)")
+                        print("\(indent)  ⚠️ \(CLIFailureText.oneLine(error))")
                     }
                 }
 
@@ -346,7 +346,7 @@ struct DoyahCLI {
                 return
             } catch {
                 print("对象树加载失败")
-                print("简要信息：\(error.localizedDescription)")
+                print("简要信息：\(CLIFailureText.oneLine(error))")
                 print("调试详情：")
                 print(String(reflecting: error))
                 await service.disconnect()
@@ -378,7 +378,7 @@ struct DoyahCLI {
                 return
             } catch {
                 print("建库权限探测失败")
-                print("简要信息：\(error.localizedDescription)")
+                print("简要信息：\(CLIFailureText.oneLine(error))")
                 await service.disconnect()
                 exit(4)
             }
@@ -538,7 +538,7 @@ struct DoyahCLI {
                     print("提示：这些参数没有在 SQL 里用到 —— \(bound.unusedNames.joined(separator: "、"))")
                 }
             case .failure(let error):
-                print("参数绑定失败：\(error.localizedDescription)")
+                print("参数绑定失败：\(CLIFailureText.oneLine(error))")
                 exit(70)
             }
         } else if SQLParameters.hasParameters(sql) {
@@ -614,7 +614,7 @@ struct DoyahCLI {
             } else if let neutral = ConnectionFailure.describeNonConnection(error) {
                 print(neutral.fullText)
             } else {
-                print("简要信息：\(error.localizedDescription)")
+                print("简要信息：\(CLIFailureText.oneLine(error))")
             }
             print("")
             print("调试详情：")
@@ -659,7 +659,7 @@ struct DoyahCLI {
                 }
             }
         } catch {
-            print("列出表失败：\(error.localizedDescription)")
+            print("列出表失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
         guard !tables.isEmpty else {
@@ -671,7 +671,7 @@ struct DoyahCLI {
         do {
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         } catch {
-            print("创建目录失败：\(error.localizedDescription)")
+            print("创建目录失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
 
@@ -778,7 +778,7 @@ struct DoyahCLI {
             }
             return entries.isEmpty ? 1 : 0
         } catch {
-            print("读取慢查询失败：\(error.localizedDescription)")
+            print("读取慢查询失败：\(CLIFailureText.oneLine(error))")
             return 67
         }
     }
@@ -854,7 +854,7 @@ struct DoyahCLI {
             }
             return 0
         } catch {
-            print("读取行失败：\(error.localizedDescription)")
+            print("读取行失败：\(CLIFailureText.oneLine(error))")
             return 67
         }
     }
@@ -893,7 +893,7 @@ struct DoyahCLI {
             print("已追加归档记录（当天累计 \(total) 条）")
             return 0
         } catch {
-            print("写入归档失败：\(error.localizedDescription)")
+            print("写入归档失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
     }
@@ -982,7 +982,7 @@ struct DoyahCLI {
             }
             return 0
         } catch {
-            FileHandle.standardError.write(Data("读审批队列失败：\(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("读审批队列失败：\(CLIFailureText.oneLine(error))\n".utf8))
             return 1
         }
     }
@@ -1013,7 +1013,7 @@ struct DoyahCLI {
             print(approved ? "已允许 \(requestID)" : "已拒绝 \(requestID)")
             return 0
         } catch {
-            FileHandle.standardError.write(Data("写决定失败：\(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("写决定失败：\(CLIFailureText.oneLine(error))\n".utf8))
             return 1
         }
     }
@@ -1079,7 +1079,7 @@ struct DoyahCLI {
                     approvedCalls: approvedCalls
                 )
             } catch {
-                FileHandle.standardError.write(Data("（连接失败，能力降级为仅元数据）：\(error.localizedDescription)\n".utf8))
+                FileHandle.standardError.write(Data("（连接失败，能力降级为仅元数据）：\(CLIFailureText.oneLine(error))\n".utf8))
             }
         }
 
@@ -1213,7 +1213,7 @@ struct DoyahCLI {
             audit(MCPAuditEntry(client: client, tool: invocation.tool, argumentsSummary: "timeout", outcome: "approval-timeout"))
             return false
         } catch {
-            FileHandle.standardError.write(Data("审批队列不可用：\(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("审批队列不可用：\(CLIFailureText.oneLine(error))\n".utf8))
             return false
         }
     }
@@ -1338,7 +1338,7 @@ struct DoyahCLI {
         do {
             try process.run()
         } catch {
-            FileHandle.standardError.write(Data("起不来外部服务器：\(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("起不来外部服务器：\(CLIFailureText.oneLine(error))\n".utf8))
             return 1
         }
         stdinPipe.fileHandleForWriting.write(Data((outbound.joined(separator: "\n") + "\n").utf8))
@@ -1414,7 +1414,7 @@ struct DoyahCLI {
                 if isJSON {
                     print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
                 } else {
-                    print("连接失败：\(error.localizedDescription)")
+                    print("连接失败：\(CLIFailureText.oneLine(error))")
                 }
                 return 1
             }
@@ -1721,7 +1721,7 @@ struct DoyahCLI {
                     await service.disconnect()
                     return 0
                 } catch {
-                    FileHandle.standardError.write(Data(("存笔记失败：" + error.localizedDescription + "\n").utf8))
+                    FileHandle.standardError.write(Data(("存笔记失败：" + CLIFailureText.oneLine(error) + "\n").utf8))
                     return 1
                 }
             }
@@ -1792,7 +1792,7 @@ struct DoyahCLI {
             if isJSON {
                 print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
             } else {
-                print("取证失败：\(error.localizedDescription)")
+                print("取证失败：\(CLIFailureText.oneLine(error))")
             }
             return 1
         }
@@ -1905,7 +1905,7 @@ struct DoyahCLI {
             if isJSON {
                 print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
             } else {
-                print("连接失败：\(error.localizedDescription)")
+                print("连接失败：\(CLIFailureText.oneLine(error))")
             }
             return 1
         }
@@ -1942,7 +1942,7 @@ struct DoyahCLI {
                 if isJSON {
                     print("{\"ok\":false,\"error\":\(jsonQuoted(error.localizedDescription))}")
                 } else {
-                    print("执行失败：\(error.localizedDescription)")
+                    print("执行失败：\(CLIFailureText.oneLine(error))")
                 }
                 await service.disconnect()
                 return 1
@@ -2087,7 +2087,7 @@ struct DoyahCLI {
                 tunnel.stop()
                 semaphore.signal()
             } catch {
-                FileHandle.standardError.write(Data("隧道起不来：\(error.localizedDescription)\n".utf8))
+                FileHandle.standardError.write(Data("隧道起不来：\(CLIFailureText.oneLine(error))\n".utf8))
                 let diagnostics = tunnel.diagnosticText
                 if !diagnostics.isEmpty {
                     FileHandle.standardError.write(Data("ssh 输出：\n\(diagnostics)\n".utf8))
@@ -2489,7 +2489,7 @@ struct DoyahCLI {
                           + (all.last.map { "（最新 v\($0.number)）" } ?? ""))
                     code = 0
                 } catch {
-                    print("保存失败：\(error.localizedDescription)")
+                    print("保存失败：\(CLIFailureText.oneLine(error))")
                     code = 1
                 }
                 semaphore.signal()
@@ -2566,7 +2566,7 @@ struct DoyahCLI {
                     print("已回滚到 v\(number)（内容以**新版本**记入历史，旧版本仍可查）")
                     code = 0
                 } catch {
-                    print("回滚失败：\(error.localizedDescription)")
+                    print("回滚失败：\(CLIFailureText.oneLine(error))")
                     code = 1
                 }
                 semaphore.signal()
@@ -2665,7 +2665,7 @@ struct DoyahCLI {
                 print("重建索引后该记忆不会再出现（\u{7eaf}\u{6d3e}\u{751f}\u{7f13}\u{5b58}）")
                 return report.didChangeAnything ? 0 : 1
             } catch {
-                print("删除失败：\(error.localizedDescription)")
+                print("删除失败：\(CLIFailureText.oneLine(error))")
                 return 1
             }
         }
@@ -2681,7 +2681,7 @@ struct DoyahCLI {
                 print("已清空归档：删除 \(report.removedEntryCount) 条记录 / \(report.changedFiles.count) 个文件")
                 return 0
             } catch {
-                print("清空失败：\(error.localizedDescription)")
+                print("清空失败：\(CLIFailureText.oneLine(error))")
                 return 1
             }
         }
@@ -2723,7 +2723,7 @@ struct DoyahCLI {
             do {
                 try GeneralMemoryStore.save(layer, to: decisionsDirectory)
             } catch {
-                print("通用层写入失败：\(error.localizedDescription)")
+                print("通用层写入失败：\(CLIFailureText.oneLine(error))")
                 return 1
             }
             print("已落盘：\(GeneralMemoryLayer.fileName)（第 \(promoted.useCount) 次提升同一条写法，共 \(layer.memories.count) 条通用经验）")
@@ -2775,7 +2775,7 @@ struct DoyahCLI {
             do {
                 try GeneralMemoryStore.save(layer, to: decisionsDirectory)
             } catch {
-                print("通用层写入失败：\(error.localizedDescription)")
+                print("通用层写入失败：\(CLIFailureText.oneLine(error))")
                 return 1
             }
             print("已从通用层删除：\(id)（剩余 \(layer.memories.count) 条；归档与记忆层未受影响）")
@@ -2838,7 +2838,7 @@ struct DoyahCLI {
                     removed += report.removedEntryCount
                     changed.append(contentsOf: report.changedFiles)
                 } catch {
-                    print("删除失败（\(item.fingerprint)）：\(error.localizedDescription)")
+                    print("删除失败（\(item.fingerprint)）：\(CLIFailureText.oneLine(error))")
                     return 1
                 }
             }
@@ -3080,7 +3080,7 @@ struct DoyahCLI {
             if let raw = value(for: "--import-url") {
                 switch ConnectionURL.parse(raw, name: value(for: "--name")) {
                 case .failure(let error):
-                    print("URL 解析失败：\(error.localizedDescription)")
+                    print("URL 解析失败：\(CLIFailureText.oneLine(error))")
                     return 64
                 case .success(let imported):
                     var lines: [String] = []
@@ -3104,7 +3104,7 @@ struct DoyahCLI {
                             try await store.save(all)
                             lines.append("  已保存（不含密码）")
                         } catch {
-                            print("保存失败：\(error.localizedDescription)")
+                            print("保存失败：\(CLIFailureText.oneLine(error))")
                             return 66
                         }
                     } else {
@@ -3133,7 +3133,7 @@ struct DoyahCLI {
                     print("已导出 \(configurations.count) 条连接配置 → \(path)（不含密码）")
                     return 0
                 } catch {
-                    print("导出失败：\(error.localizedDescription)")
+                    print("导出失败：\(CLIFailureText.oneLine(error))")
                     return 66
                 }
             }
@@ -3152,7 +3152,7 @@ struct DoyahCLI {
             }
             return 0
         } catch {
-            print("读取连接配置失败：\(error.localizedDescription)")
+            print("读取连接配置失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
     }
@@ -3205,7 +3205,7 @@ struct DoyahCLI {
                 print("第 \(index) 次：\(statement) 成功")
             } catch {
                 record.record(success: false, at: Date(), failure: error.localizedDescription)
-                print("第 \(index) 次：失败（\(error.localizedDescription)）")
+                print("第 \(index) 次：失败（\(CLIFailureText.oneLine(error))）")
             }
             if index < pings {
                 try? await Task.sleep(nanoseconds: UInt64(policy.intervalSeconds) * 1_000_000_000)
@@ -3363,7 +3363,7 @@ struct DoyahCLI {
                     if case .resultSet(let value) = event { result = value }
                 }
             } catch {
-                print("（\(metric.displayName) 取不到：\(error.localizedDescription)）")
+                print("（\(metric.displayName) 取不到：\(CLIFailureText.oneLine(error))）")
                 return nil
             }
             return result
@@ -3492,7 +3492,7 @@ struct DoyahCLI {
                         if case .resultSet(let value) = event { result = value }
                     }
                 } catch {
-                    print("（\(kind.displayName) 读取失败：\(error.localizedDescription)）")
+                    print("（\(kind.displayName) 读取失败：\(CLIFailureText.oneLine(error))）")
                     sections.append((kind, [], nil, plan.note))
                     continue
                 }
@@ -3610,7 +3610,7 @@ struct DoyahCLI {
             do {
                 for try await _ in service.execute(command.statement, options: .default) {}
             } catch {
-                print("执行失败：\(error.localizedDescription)")
+                print("执行失败：\(CLIFailureText.oneLine(error))")
                 return 2
             }
             print("已执行：\(command.statement)")
@@ -3668,7 +3668,7 @@ struct DoyahCLI {
             print(String(data: data, encoding: .utf8) ?? "")
             return 0
         } catch {
-            print("导出结构失败：\(error.localizedDescription)")
+            print("导出结构失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
     }
@@ -3769,7 +3769,7 @@ struct DoyahCLI {
             }
             return 0
         } catch {
-            print("生成 ER 图失败：\(error.localizedDescription)")
+            print("生成 ER 图失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
     }
@@ -4053,7 +4053,7 @@ struct DoyahCLI {
                 }
             }
         } catch {
-            print("搜索失败：\(error.localizedDescription)")
+            print("搜索失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
 
@@ -4119,7 +4119,7 @@ struct DoyahCLI {
                     for warning in sheet.warnings.prefix(5) { print("  · \(warning)") }
                 }
             } catch {
-                print("读取 Excel 失败：\(error.localizedDescription)")
+                print("读取 Excel 失败：\(CLIFailureText.oneLine(error))")
                 return 65
             }
         } else {
@@ -4133,7 +4133,7 @@ struct DoyahCLI {
                     print("文本编码：\(decoded.encoding.displayName)（未检测到 UTF-8 BOM，按中文 Windows 代码页读取）")
                 }
             } catch {
-                print("读取文件失败：\(error.localizedDescription)")
+                print("读取文件失败：\(CLIFailureText.oneLine(error))")
                 return 65
             }
             do {
@@ -4146,7 +4146,7 @@ struct DoyahCLI {
                     )
                 }
             } catch {
-                print("解析失败：\(error.localizedDescription)")
+                print("解析失败：\(CLIFailureText.oneLine(error))")
                 return 65
             }
         }
@@ -4171,7 +4171,7 @@ struct DoyahCLI {
                 }
             }
         } catch {
-            print("读表结构失败：\(error.localizedDescription)")
+            print("读表结构失败：\(CLIFailureText.oneLine(error))")
             return 66
         }
         guard !targetColumns.isEmpty else {
@@ -4236,7 +4236,7 @@ struct DoyahCLI {
                         options: .default
                     ) {}
                 } catch {
-                    print("设置 search_path 失败：\(error.localizedDescription)")
+                    print("设置 search_path 失败：\(CLIFailureText.oneLine(error))")
                     return 68
                 }
             }
@@ -4255,7 +4255,7 @@ struct DoyahCLI {
                     text: payload
                 )
             } catch {
-                print("COPY 导入失败：\(error.localizedDescription)")
+                print("COPY 导入失败：\(CLIFailureText.oneLine(error))")
                 print("（COPY 在单个 COPY 语句内是原子的：失败即整批未写入，不会留下半截）")
                 return 68
             }
@@ -4284,7 +4284,7 @@ struct DoyahCLI {
                     if case .resultSet(let result) = event { written += result.affectedRows ?? 0 }
                 }
             } catch {
-                print("第 \(index + 1) 批写入失败：\(error.localizedDescription)")
+                print("第 \(index + 1) 批写入失败：\(CLIFailureText.oneLine(error))")
                 print("已写入 \(written) 行（**前面的批次已生效**，请按需清理）")
                 return 68
             }
@@ -4324,7 +4324,7 @@ struct DoyahCLI {
                 let data = try Data(contentsOf: URL(fileURLWithPath: specPath))
                 spec = try JSONDecoder().decode(SyntheticTableSpec.self, from: data)
             } catch {
-                print("读取规格失败：\(error.localizedDescription)")
+                print("读取规格失败：\(CLIFailureText.oneLine(error))")
                 return 65
             }
         } else {
@@ -4349,7 +4349,7 @@ struct DoyahCLI {
                 }
             }
             } catch {
-                print("读表结构失败：\(error.localizedDescription)")
+                print("读表结构失败：\(CLIFailureText.oneLine(error))")
                 return 66
             }
             guard !columns.isEmpty else {
@@ -4406,7 +4406,7 @@ struct DoyahCLI {
             print("写入完成：影响 \(affected) 行")
             return 0
         } catch {
-            print("生成 / 写入失败：\(error.localizedDescription)")
+            print("生成 / 写入失败：\(CLIFailureText.oneLine(error))")
             return 68
         }
     }
@@ -4508,7 +4508,7 @@ struct DoyahCLI {
                         return 1
                     }
                 } catch {
-                    print("无法执行：\(error.localizedDescription)")
+                    print("无法执行：\(CLIFailureText.oneLine(error))")
                     return 68
                 }
             }
@@ -4549,7 +4549,7 @@ struct DoyahCLI {
             print("完成：\(result.outputLineCount) 行输出。")
             return 0
         } catch {
-            print("无法执行：\(error.localizedDescription)")
+            print("无法执行：\(CLIFailureText.oneLine(error))")
             return 68
         }
     }
@@ -4701,7 +4701,7 @@ struct DoyahCLI {
             }
             return 0
         } catch {
-            print("生成失败：\(error.localizedDescription)")
+            print("生成失败：\(CLIFailureText.oneLine(error))")
             return 67
         }
     }
@@ -4838,7 +4838,7 @@ struct DoyahCLI {
         switch CursorPaging.plan(query: query, pageSize: fetchSize) {
         case .success(let value): plan = value
         case .failure(let error):
-            print("无法导出：\(error.localizedDescription)")
+            print("无法导出：\(CLIFailureText.oneLine(error))")
             return 65
         }
 
@@ -4886,7 +4886,7 @@ struct DoyahCLI {
                 return 0
             } catch {
                 await fetcher.close()
-                print("导出失败（\(url.lastPathComponent)）：\(error.localizedDescription)")
+                print("导出失败（\(url.lastPathComponent)）：\(CLIFailureText.oneLine(error))")
                 return 67
             }
         }
@@ -4929,7 +4929,7 @@ struct DoyahCLI {
         } catch {
             writer?.abort()
             await fetcher.close()
-            print("导出失败（\(url.lastPathComponent)）：\(error.localizedDescription)")
+            print("导出失败（\(url.lastPathComponent)）：\(CLIFailureText.oneLine(error))")
             return 67
         }
     }

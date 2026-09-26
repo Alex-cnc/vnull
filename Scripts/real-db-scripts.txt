@@ -22,6 +22,7 @@
 
 # [local-cluster]
 test-backup-restore
+test-cli-failure-readability
 test-connection-errors
 test-copy-import
 test-csv-encoding
