@@ -4,7 +4,7 @@ set -euo pipefail
 # 本工程的一条命令验证闭环。
 #
 # 拆开跑过很多次、也就漏跑过很多次（尤其是文档计数与设计令牌这两项），
-# 所以合成一条：**改完代码跑它，十一项全过才算完**。
+# 所以合成一条：**改完代码跑它，十二项全过才算完**。
 #
 #   1. Core 单测（SwiftPM，不需要数据库）+ 平台适配层单测
 #   2. Core 平台中立性（Core 里不得出现平台专属依赖 —— 否则 Linux 编译不过）
@@ -17,6 +17,7 @@ set -euo pipefail
 #   9. 命令面板接线（清单 ↔ 分派器 ↔ 视图绑定；见脚本注释里的真实缺陷）
 #  10. 插件装配链（笔记模块解耦 FR-PLUG-07 + 装配与许可 FR-PLUG-01/02/03/06 + ADR-35）
 #  11. 打包 .app（沙箱构建）
+#  12. 脚本 shell 多字节安全（bash 3.2 的变量名坑，见 `check-shell-locale-safety.py`）
 #
 # 第 8 项是 2026-09-23 补的：那天发现命令面板有 9 条命令「设了标志位但没人读」，
 # 用户点了完全没反应，而当时已有的 7 项门禁**全部看不见**这类缺陷（编译、单测、
@@ -27,46 +28,55 @@ set -euo pipefail
 # 却没人读，结尾照样打印"全部通过"并以 0 退出（门禁红着、闭环绿着的假绿）。
 # 现在两条都直接跑：`set -e` 会让失败当场中止并给出非零退出码。
 #
+# 第 12 项 2026-09-26（L-05）补的：macOS 自带 `/bin/bash` 是 **3.2.57**，而本工程脚本的 Shebang
+# 全是 `#!/bin/bash`。实测：`echo "中文：$X）"` 在 bash 3.2 下会把 `$X` **静默展开成空**（后一个
+# 字符也被切坏）；加了 `set -u` 则直接 `X?: unbound variable` 中止脚本。而这类写法在证据脚本里
+# 是**不报错的**——脚本照常 exit 0、照常打勾，只是那一行的值空了（与第 10 项那次的假绿同一族）。
+# 修法：变量写成 `${X}`。门禁 `check-shell-locale-safety.py` 把这个坑变成机械检查。
+#
 # 需要非沙箱构建（例如要跑 dsh-tui 的终端）时单独执行：
 #   DOYAH_NO_SANDBOX=1 ./Scripts/build-app.sh
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${ROOT}"
 
-echo "==> 1/11 Core 与平台适配层单测"
+echo "==> 1/12 Core 与平台适配层单测"
 ./Scripts/verify-core.sh
 
-echo "==> 2/11 Core 平台中立性"
+echo "==> 2/12 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/11 Core 展示文本本地化棘轮（R-45）"
+echo "==> 3/12 Core 展示文本本地化棘轮（R-45）"
 python3 Scripts/check-core-localization.py
 
-echo "==> 4/11 文档表格与派生计数"
+echo "==> 4/12 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py
 # 派生文件不得漂移：终端配色 JSON ↔ Core ↔ 人读文档三方一致（FR-EDIT-29 的跨平台交接物）
 python3 Scripts/check-terminal-palette.py
 
-echo "==> 5/11 需求状态一致性（索引表 ↔ 正文定义行）"
+echo "==> 5/12 需求状态一致性（索引表 ↔ 正文定义行）"
 python3 Scripts/check-status-consistency.py
 
-echo "==> 6/11 设计令牌棘轮"
+echo "==> 6/12 设计令牌棘轮"
 python3 Scripts/check-design-tokens.py
 
-echo "==> 7/11 平台等价矩阵"
+echo "==> 7/12 平台等价矩阵"
 python3 Scripts/gen-platform-parity.py --check
 
-echo "==> 8/11 平台中立性棘轮"
+echo "==> 8/12 平台中立性棘轮"
 python3 Scripts/check-platform-neutrality.py
 
-echo "==> 9/11 命令面板接线（FR-EDIT-25）"
+echo "==> 9/12 命令面板接线（FR-EDIT-25）"
 python3 Scripts/check-palette-wiring.py
 
-echo "==> 10/11 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
+echo "==> 10/12 插件装配链（FR-PLUG-01~03 / 06 / 07 + ADR-35）"
 python3 Scripts/check-note-module-isolation.py
 python3 Scripts/check-plugin-assembly.py
 
-echo "==> 11/11 打包 .app（沙箱）"
+echo "==> 11/12 打包 .app（沙箱）"
 ./Scripts/build-app.sh
 
-echo "✅ 验证闭环全部通过（十一项）"
+echo "==> 12/12 脚本 shell 多字节安全（bash 3.2 变量名坑）"
+python3 Scripts/check-shell-locale-safety.py
+
+echo "✅ 验证闭环全部通过（十二项）"

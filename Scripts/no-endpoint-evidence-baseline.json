@@ -1,0 +1,36 @@
+{
+  "_说明": "「无端点 / 无实例在途项」证据集的断言下限（棘轮）。数字来自各脚本实跑计数，口径见 Scripts/count-evidence-assertions.py 的 docstring（✅ 行 −（详见上）汇总行 − 第 0 节前置检查）。断言数只许涨：脚本里删掉断言、或整条断言失效（比如判据写错恒真）时，复跑器会红。",
+  "_复跑命令": "./Scripts/run-no-endpoint-evidence.sh",
+  "_维护": "改动下面任一脚本的断言数后，先跑复跑器看实测值，再更新本文件与 Docs/design/待人工验收清单.md 对应小节、Docs/需求规范书.md 对应行 —— 三处数字必须一致。",
+  "generatedAt": "2026-09-26",
+  "entries": [
+    {
+      "name": "diagnosis",
+      "script": "Scripts/test-diagnosis.sh",
+      "minAssertions": 13,
+      "covers": ["FR-AI-03"],
+      "documentedIn": "Docs/design/待人工验收清单.md §10.8"
+    },
+    {
+      "name": "maintenance",
+      "script": "Scripts/test-maintenance.sh",
+      "minAssertions": 15,
+      "covers": ["FR-AI-04"],
+      "documentedIn": "Docs/design/待人工验收清单.md §10.9"
+    },
+    {
+      "name": "mcp",
+      "script": "Scripts/test-mcp.sh",
+      "minAssertions": 19,
+      "covers": ["FR-AI-10"],
+      "documentedIn": "Docs/design/待人工验收清单.md §10.10"
+    },
+    {
+      "name": "mysql-driver",
+      "script": "Scripts/test-mysql-driver.sh",
+      "minAssertions": 26,
+      "covers": ["FR-DRV-09", "FR-DRV-08"],
+      "documentedIn": "Docs/design/待人工验收清单.md §10.7（第 1~8 节；其中第 8 节 5 项属 FR-DRV-08）"
+    }
+  ]
+}

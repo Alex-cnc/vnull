@@ -89,7 +89,7 @@ echo "$JSON" | grep -q '"version":"' && check "读到了服务端版本" 0 || ch
 SERVER_DB="$(printf '%s' "$JSON" | sed -n 's/.*"database":"\([^"]*\)".*/\1/p')"
 if [ -n "$SERVER_DB" ]; then
     DATABASE="$SERVER_DB"
-    check "拿到了当前库名（$DATABASE）" 0
+    check "拿到了当前库名（${DATABASE}）" 0
 else
     check "拿到了当前库名（--database 为空时服务端可能回报空串）" 1
 fi
