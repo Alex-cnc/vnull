@@ -54,6 +54,15 @@ enum UISnapshot {
         var contentRatio: Double
         /// 实际画出内容的那条渲染路径（含两条路径各自的占比，便于排障）。
         var renderer: String
+        /// 这一遍用的是哪种语言（队列 L-13）。生产界面由用户选择决定，快照由**宿主语境**决定。
+        var language: String
+        /// 这一遍 `L(...)` 实际取到的**文案**（去重并排序）。
+        ///
+        /// 为什么要落进清单：语言快照光有「两张图不一样」说明不了差在哪，也不足以判「语言有没有
+        /// 到像素上」。把它记下来之后，判据可以做成**两侧对照**（见
+        /// `Scripts/check-ui-snapshot-languages.py`）：文案不同 ⇒ 像素必须不同；注册为语言无关的
+        /// 那几张（文案只走到 `.help` / 无障碍标签）像素必须**相同** —— 两个方向都能机械查。
+        var localizedStrings: [String]
     }
 
     private(set) static var records: [Record] = []
@@ -76,6 +85,10 @@ enum UISnapshot {
     }
 
     /// 渲染一张快照并落盘。`content` 拿到的视图**不要**自己设 frame —— 尺寸由这里统一给。
+    ///
+    /// `language` 非空时进入**宿主语境**（`LocalizationManager.beginHostLanguage`）：
+    /// 这一遍 `L(...)` 全部按它出文案，并把文案记进记录（不写用户偏好、不动用户选择）。
+    /// 常规调用请用 `writeBothLanguages` —— 单语言的 `write` 留给"确实只拍一面"的场合。
     @MainActor
     @discardableResult
     static func write<V: View>(
@@ -84,8 +97,13 @@ enum UISnapshot {
         scheme: ColorScheme = .light,
         scale: CGFloat = 2,
         minimumContentRatio: Double = 0.002,
+        language: AppLanguage? = nil,
         @ViewBuilder content: () -> V
     ) throws -> Record {
+        // 一开一关必须成对：渲染中途抛错也不能把语境留在栈上（否则后面每一张都会串语言）。
+        let scope = language.map { LocalizationManager.beginHostLanguage($0) }
+        defer { if scope != nil { LocalizationManager.endHostLanguage() } }
+
         let directory = outputDirectory
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -163,11 +181,84 @@ enum UISnapshot {
             scheme: scheme == .dark ? "dark" : "light",
             bytes: data.count,
             contentRatio: ratio,
-            renderer: "\(picked.label)（尝试 \(attemptsLog.joined(separator: "、"))）"
+            renderer: "\(picked.label)（尝试 \(attemptsLog.joined(separator: "、"))）",
+            language: (language ?? LocalizationManager.shared.language).rawValue,
+            localizedStrings: (scope?.observed ?? []).sorted()
         )
         records.append(record)
-        print("📷 \(name)  \(cgImage.width)×\(cgImage.height)px  \(data.count) B  内容占比 \(String(format: "%.3f", ratio))  [\(picked.label)]  → \(url.path)")
+        print("📷 \(name)  \(cgImage.width)×\(cgImage.height)px  \(data.count) B  内容占比 \(String(format: "%.3f", ratio))  [\(picked.label)]  \(record.language)  文案 \(record.localizedStrings.count) 条  → \(url.path)")
         return record
+    }
+
+    // MARK: - 两种语言各一遍（队列 L-13）
+
+    /// 一组「同一张图 · 两种语言」的产物。
+    struct LanguagePair {
+        /// 不带语言后缀的原名称（语言后缀由 `writeBothLanguages` 加）。
+        var base: String
+        /// 顺序固定：`coverageLanguages` 的顺序（中文在前、英文在后）。
+        var records: [Record]
+        /// 两遍各自观测到的文案是否不同 —— 判据的另一半，见 `Scripts/check-ui-snapshot-languages.py`。
+        var textsDiffer: Bool
+    }
+
+    /// 快照要覆盖的语言（顺序即产物与记录的顺序）。
+    static let coverageLanguages: [AppLanguage] = [.simplifiedChinese, .english]
+
+    static func languageSuffix(_ language: AppLanguage) -> String {
+        switch language {
+        case .simplifiedChinese: return "-zh"
+        case .english: return "-en"
+        }
+    }
+
+    /// 一张图在**两种语言**各拍一遍（队列 L-13）。产物名 = 原名称 + `-zh` / `-en`
+    /// （原有的 `-dark` 之类留在原名里，于是深色那组就是 `xxx-dark-zh` / `-en`）。
+    ///
+    /// 为什么把两遍**绑在一次调用**里，而不是让每个用例各写两处：漏拍一边、或者两边名字不成对，
+    /// 都**不会报错** —— 只会让"语言覆盖"悄悄缺一半，而图看起来照样正常（第 10/11 轮那两次
+    /// 「判据太松」就是同一族）。绑在一起之后，配对是**构造出来的**，不靠自觉维护。
+    ///
+    /// 每遍都**重新构造**视图树（`@ViewBuilder` 闭包可重复调用）：两遍互不共享状态，
+    /// 也不会把上一遍的排版带进下一遍。
+    @MainActor
+    @discardableResult
+    static func writeBothLanguages<V: View>(
+        _ name: String,
+        size: CGSize,
+        scheme: ColorScheme = .light,
+        scale: CGFloat = 2,
+        minimumContentRatio: Double = 0.002,
+        @ViewBuilder content: () -> V
+    ) throws -> LanguagePair {
+        XCTAssertFalse(
+            name.hasSuffix("-zh") || name.hasSuffix("-en"),
+            "快照名不要自己带语言后缀（由 writeBothLanguages 统一加）：\(name)"
+        )
+
+        var records: [Record] = []
+        for language in coverageLanguages {
+            records.append(
+                try write(
+                    "\(name)\(languageSuffix(language))",
+                    size: size,
+                    scheme: scheme,
+                    scale: scale,
+                    minimumContentRatio: minimumContentRatio,
+                    language: language
+                ) {
+                    content()
+                }
+            )
+        }
+
+        let textsDiffer = Set(records[0].localizedStrings) != Set(records[1].localizedStrings)
+        print(
+            "🔤 \(name)  两遍文案 \(textsDiffer ? "不同" : "相同")"
+                + "（zh \(records[0].localizedStrings.count) 条 / en \(records[1].localizedStrings.count) 条）"
+                + "  —— 文案不同就必须换来不同的像素，判定在 Scripts/check-ui-snapshot-languages.py"
+        )
+        return LanguagePair(base: name, records: records, textsDiffer: textsDiffer)
     }
 
     /// 路径一：`SwiftUI.ImageRenderer`（不需要 AppKit 宿主，但对滚动容器与 AppKit 子视图画不出内容）。
@@ -377,7 +468,9 @@ enum UISnapshot {
                     "scheme": record.scheme,
                     "bytes": record.bytes,
                     "contentRatio": record.contentRatio,
-                    "renderer": record.renderer
+                    "renderer": record.renderer,
+                    "language": record.language,
+                    "localizedStrings": record.localizedStrings
                 ]
             }
         ]

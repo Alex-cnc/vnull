@@ -8,7 +8,8 @@ set -euo pipefail
 #
 #   1. Core 单测（SwiftPM，不需要数据库）+ 平台适配层单测
 #   2. Core 平台中立性（Core 里不得出现平台专属依赖 —— 否则 Linux 编译不过）
-#   3. Core 展示文本本地化棘轮（R-45：用户可见文案不得硬编码中文，只能比基线更少）
+#   3. 本地化：Core 展示文本棘轮（R-45：用户可见文案不得硬编码中文，只能比基线更少）
+#      + 「当前语言只有一个来源」（L-13：显式传语言必须走 `effectiveLanguage`）
 #   4. 文档表格列数与派生计数一致
 #   5. 需求状态一致性（§10.1 索引表 ↔ 正文定义行）
 #   6. 设计令牌棘轮（App/ 里的裸颜色 / 裸字号 / 裸间距不得比基线更差）
@@ -58,8 +59,13 @@ echo "==> 1/14 Core 与平台适配层单测"
 echo "==> 2/14 Core 平台中立性"
 python3 Scripts/check-core-portability.py
 
-echo "==> 3/14 Core 展示文本本地化棘轮（R-45）"
+echo "==> 3/14 本地化：Core 展示文本棘轮（R-45）+「当前语言只有一个来源」（L-13）"
 python3 Scripts/check-core-localization.py
+# L-13：界面语言有两条路 —— `L(...)` 与**显式传语言下去**（`summary(language:)` 之类）。
+# 后者原先取的是**用户选择**（`LocalizationManager.shared.language`），绕过了渲染语境：
+# 第 13 轮读图抓到的真缺陷就是它 —— 中文界面的行详情侧栏写着 `Text · 12 characters`。
+# 收成一个口子 `effectiveLanguage`（宿主语境优先），并把这个口径变成机械判据。
+python3 Scripts/check-effective-language.py
 
 echo "==> 4/14 文档表格与派生计数"
 python3 Scripts/check-doc-tables.py

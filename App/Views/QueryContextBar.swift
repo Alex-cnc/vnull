@@ -102,7 +102,7 @@ struct QueryContextBar: View {
             database: info?.database,
             username: info?.user,
             endpoint: configuration.endpointDescription,
-            language: LocalizationManager.shared.language
+            language: LocalizationManager.shared.effectiveLanguage
         )
     }
 

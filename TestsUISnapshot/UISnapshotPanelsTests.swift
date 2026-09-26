@@ -124,7 +124,7 @@ final class UISnapshotPanelsTests: XCTestCase {
         @ViewBuilder content: () -> V
     ) throws {
         for scheme in [ColorScheme.light, .dark] {
-            try UISnapshot.write(
+            try UISnapshot.writeBothLanguages(
                 "\(name)\(scheme == .dark ? "-dark" : "")",
                 size: size,
                 scheme: scheme

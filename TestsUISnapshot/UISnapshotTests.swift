@@ -60,7 +60,7 @@ final class UISnapshotTests: XCTestCase {
             let expected = LicensePresentation.activityItems(for: edition.capabilities)
             XCTAssertEqual(host.state.visibleActivityItems, expected, "活动栏可见项与 LicensePresentation 不一致")
 
-            try UISnapshot.write("activity-bar-\(edition.rawValue)", size: activityBarSize) {
+            try UISnapshot.writeBothLanguages("activity-bar-\(edition.rawValue)", size: activityBarSize) {
                 ActivityBarView().snapshotEnvironment(
                     state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
                 )
@@ -69,7 +69,7 @@ final class UISnapshotTests: XCTestCase {
 
         // 深色只补一张：三档的图标集合差异在浅色下已能判，深色要看的是**对比度**。
         try UISnapshot.applyLicense(.ultra, to: host.state)
-        try UISnapshot.write("activity-bar-ultra-dark", size: activityBarSize, scheme: .dark) {
+        try UISnapshot.writeBothLanguages("activity-bar-ultra-dark", size: activityBarSize, scheme: .dark) {
             ActivityBarView().snapshotEnvironment(
                 state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
             )
@@ -87,7 +87,7 @@ final class UISnapshotTests: XCTestCase {
         try UISnapshot.applyLicense(.ultra, to: host.state)
 
         for scheme in [ColorScheme.light, .dark] {
-            try UISnapshot.write(
+            try UISnapshot.writeBothLanguages(
                 "workspace-home-empty\(scheme == .dark ? "-dark" : "")",
                 size: size,
                 scheme: scheme
@@ -112,7 +112,7 @@ final class UISnapshotTests: XCTestCase {
         let size = CGSize(width: 900, height: 460)
 
         for scheme in [ColorScheme.light, .dark] {
-            try UISnapshot.write(
+            try UISnapshot.writeBothLanguages(
                 "result-table-empty\(scheme == .dark ? "-dark" : "")",
                 size: size,
                 scheme: scheme
@@ -147,7 +147,7 @@ final class UISnapshotTests: XCTestCase {
         let result = QueryResult(columns: columns, rows: rows, executionTime: 0.042)
         XCTAssertEqual(result.columnCount, 20)
 
-        try UISnapshot.write("result-table-dense-20col", size: size) {
+        try UISnapshot.writeBothLanguages("result-table-dense-20col", size: size) {
             ResultTableView(result: result, resultCount: 1, selectedIndex: 0).snapshotEnvironment(
                 state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
             )
@@ -155,7 +155,7 @@ final class UISnapshotTests: XCTestCase {
 
         // 没有结果集的语句（DDL / DML）：走的是另一条分支（`emptyResultSet`），要单独取一张。
         let ddl = QueryResult(columns: [], rows: [], affectedRows: 3)
-        try UISnapshot.write("result-table-no-resultset", size: size) {
+        try UISnapshot.writeBothLanguages("result-table-no-resultset", size: size) {
             ResultTableView(result: ddl).snapshotEnvironment(
                 state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
             )
@@ -167,7 +167,7 @@ final class UISnapshotTests: XCTestCase {
     @MainActor
     func testERDiagramInitialState() throws {
         let host = makeHost()
-        try UISnapshot.write("er-diagram-initial", size: CGSize(width: 860, height: 560)) {
+        try UISnapshot.writeBothLanguages("er-diagram-initial", size: CGSize(width: 860, height: 560)) {
             ERDiagramPanel().snapshotEnvironment(
                 state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
             )

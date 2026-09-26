@@ -10,6 +10,11 @@ set -euo pipefail
 # 为什么不进 `verify-all.sh`：快照是**取证工具**，不是回归门禁 —— 塞进每轮门禁只会拖慢门禁。
 # 它证明的是"界面长这样"，用例本身另有断言（档位生效 / 非空白）。
 #
+# **队列 L-13（2026-09-27）起：每张图都出中英两份**（`-zh` / `-en`），语言是**宿主参数**
+# （`UISnapshot.writeBothLanguages` → `LocalizationManager.beginHostLanguage`：只覆盖、不落盘，
+# 不动用户偏好）。脚本末尾会跑 `Scripts/check-ui-snapshot-languages.py` 把两件事判住：
+# 成对齐全 + **语言确实到了像素上**（未注册为语言无关的图，中英两张必须逐字节不同）。
+#
 # 前置：`TestsUISnapshot/` 是独立 test target，依赖 `DoyahStudioApp`（SwiftPM 允许测试目标依赖可执行目标），
 # 所以这里不碰生产代码、也不给 App 开任何测试后门。
 
@@ -69,3 +74,11 @@ else:
 files = sorted(f for f in os.listdir(out) if f.endswith(".png"))
 print("PNG：" + "、".join(files) if files else "⚠️ 一张 PNG 都没有")
 PY
+
+# 语言覆盖（队列 L-13）：每张图都有中英两份，且**语言真的到了像素上**。
+# 为什么放在这里而不是 verify-all.sh：快照是取证工具、不进每轮门禁 ——
+# 但**取证那一刻**必须把这件事判住（两份都生成了 ≠ 语言进了像素；第 10/11 轮两次
+# 「判据太松」就是这么漏过去的）。判据与理由见 Scripts/check-ui-snapshot-languages.py。
+echo
+echo "==> 语言覆盖（中英成对 + 语言到像素）"
+python3 Scripts/check-ui-snapshot-languages.py --manifest "${OUT}/manifest.json"

@@ -79,11 +79,96 @@ final class LocalizationManager: ObservableObject {
         MainMenuLocalizer.beginHealing()
     }
 
+    /// **当前该用哪种语言**：宿主语境优先，其次用户选择。
+    ///
+    /// 凡是"要**显式把语言传下去**"的地方（Core 那些 `summary(language:)` / `title(language:)`
+    /// / `describe(…, language:)`），一律取这个而不是 `language` —— 只查 `L(...)` 的话，
+    /// 宿主语境管不到那条路。第 13 轮读图抓到的英文残留就是这么来的：中文界面的行详情侧栏
+    /// 上写着 `Text · 12 characters`（`RowDetailPanel` 传的是**用户选择**，而快照的宿主语言是中文，
+    /// 两者不一致时，图里就混着两种语言）。
+    ///
+    /// **系统菜单那条路是例外**（`MainMenuLocalizer` 按 `language` 改写 `NSMenuItem.title`）：
+    /// 菜单栏属于"进程级系统界面"，跟的是用户选择 / 启动语言，不跟渲染语境。
+    var effectiveLanguage: AppLanguage { Self.currentHostScope?.language ?? language }
+
     func text(_ key: LKey, arguments: [CVarArg]) -> String {
-        let template = LocalizedStrings.text(key, language: language)
-        guard !arguments.isEmpty else { return template }
-        return String(format: template, locale: language.locale, arguments: arguments)
+        // 「用哪种语言」这件事有两层：**宿主语境**（界面快照取证，见下）优先于**用户选择**。
+        // 生产路径永远没有宿主语境 ⇒ 与从前逐字同一条路。
+        let scope = Self.currentHostScope
+        let resolved = scope?.language ?? language
+        let template = LocalizedStrings.text(key, language: resolved)
+        let result = arguments.isEmpty
+            ? template
+            : String(format: template, locale: resolved.locale, arguments: arguments)
+        scope?.note(result)
+        return result
     }
+
+    // MARK: - 宿主语境（界面快照取证用，队列 L-13）
+
+    /// 一遍渲染里 `L(...)` 的**观测窗口**：记下这一遍实际取到的文案。
+    ///
+    /// 为什么要记：语言快照只有「两张图不一样」还不够 —— 得说清**差在哪**。
+    /// 观测到的文案集合与像素的两个方向都给判据（见 `UISnapshot.writeBothLanguages` 与
+    /// `Scripts/check-ui-snapshot-languages.py`）：
+    ///   · 两遍文案**不同** ⇒ 两张 PNG 必须不同（否则语言没到像素上，图是假的）；
+    ///   · 两遍文案相同而像素不同 ⇒ 说明有**非文案**的语言敏感输出，清单里会被点名。
+    final class HostScope {
+        let language: AppLanguage
+        private var seen: Set<String> = []
+        private let lock = NSLock()
+
+        init(language: AppLanguage) {
+            self.language = language
+        }
+
+        fileprivate func note(_ text: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            seen.insert(text)
+        }
+
+        /// 这一遍取到的文案（去重；顺序由调用方排序后落清单）。
+        var observed: Set<String> {
+            lock.lock()
+            defer { lock.unlock() }
+            return seen
+        }
+    }
+
+    private static let hostLock = NSLock()
+    /// 宿主语境栈：支持嵌套（虽然目前只有一层），退出时恢复上一层。
+    private static var hostScopes: [HostScope] = []
+
+    private static var currentHostScope: HostScope? {
+        hostLock.lock()
+        defer { hostLock.unlock() }
+        return hostScopes.last
+    }
+
+    /// 进入宿主语境：此后（直到 `endHostLanguage()`）`L(...)` 按 `language` 出文案，
+    /// 并把文案记进返回的窗口。
+    ///
+    /// **只覆盖，不落盘**：它**不写** `UserDefaults`、**不**动 `AppleLanguages`、**不**改
+    /// `language`（用户选择）—— 所以界面快照可以在一轮里把两种语言各拍一遍，
+    /// 而**不会**把助理机器上的语言偏好改掉。生产路径从不调用它（行为逐字不变）。
+    @discardableResult
+    static func beginHostLanguage(_ language: AppLanguage) -> HostScope {
+        let scope = HostScope(language: language)
+        hostLock.lock()
+        hostScopes.append(scope)
+        hostLock.unlock()
+        return scope
+    }
+
+    static func endHostLanguage() {
+        hostLock.lock()
+        if !hostScopes.isEmpty { hostScopes.removeLast() }
+        hostLock.unlock()
+    }
+
+    /// 当前是否有宿主语境（用来如实标注快照记录里的语言来源）。
+    static var isHostLanguageActive: Bool { currentHostScope != nil }
 }
 
 /// 取当前语言文案；带参数时按当前语言格式化。

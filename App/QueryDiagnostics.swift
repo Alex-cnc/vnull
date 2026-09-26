@@ -22,7 +22,7 @@ enum QueryDiagnostics {
         guard !isRealtimeAnalysisSkipped(sql: tab.sql) else { return [] }
         return SQLLinter(
             databaseType: databaseType,
-            language: LocalizationManager.shared.language
+            language: LocalizationManager.shared.effectiveLanguage
         ).analyze(tab.sql)
     }
 

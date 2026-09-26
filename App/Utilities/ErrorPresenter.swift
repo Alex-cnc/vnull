@@ -43,7 +43,7 @@ enum ErrorPresenter {
         // 驱动报的错、但**不是连接类**（R-60）：中性归因（用户取消 / 主动断开 / 协议层…），
         // 逐码一句自己的实话，**不说「连接失败」那套方向**。这里**必须把原始串带上** ——
         // 没这一步，App 在「未知码」这条路上会比改动前少给信息（以前落到底部的反射详情）。
-        if let neutral = ConnectionFailure.describeNonConnection(error, language: LocalizationManager.shared.language) {
+        if let neutral = ConnectionFailure.describeNonConnection(error, language: LocalizationManager.shared.effectiveLanguage) {
             var lines = [neutral.summary]
             if let suggestion = neutral.suggestion { lines.append(suggestion) }
             lines.append("（技术细节：\(String(reflecting: error))）")

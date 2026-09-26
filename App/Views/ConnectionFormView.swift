@@ -723,7 +723,7 @@ struct ConnectionFormView: View {
                         database: database.trimmingCharacters(in: .whitespacesAndNewlines),
                         username: username.trimmingCharacters(in: .whitespacesAndNewlines)
                     )
-                ) ?? ConnectionFailure.describeNonConnection(error, language: LocalizationManager.shared.language)
+                ) ?? ConnectionFailure.describeNonConnection(error, language: LocalizationManager.shared.effectiveLanguage)
                 var head: [String] = []
                 if let failure {
                     head.append(failure.summary)

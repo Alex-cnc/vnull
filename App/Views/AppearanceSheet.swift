@@ -273,7 +273,7 @@ struct AppearanceSheet: View {
                     .font(Theme.font(.body))
                 Picker("", selection: cursorStyleBinding) {
                     ForEach(TerminalCursorStyle.allCases, id: \.self) { style in
-                        Text(style.label(language: LocalizationManager.shared.language)).tag(style)
+                        Text(style.label(language: LocalizationManager.shared.effectiveLanguage)).tag(style)
                     }
                 }
                 .labelsHidden()

@@ -168,13 +168,13 @@ struct ObjectTreeView: View {
                     for group in ObjectTreeGrouping.groupedByType(
                         children,
                         parentID: object.id,
-                        language: LocalizationManager.shared.language
+                        language: LocalizationManager.shared.effectiveLanguage
                     ) {
                         rows.append(
                             VisibleRow(
                                 object: DatabaseObject(
                                     id: group.id,
-                                    name: group.title(language: LocalizationManager.shared.language),
+                                    name: group.title(language: LocalizationManager.shared.effectiveLanguage),
                                     kind: ObjectTreeGrouping.headerKind(for: group.kind),
                                     detail: "\(group.count)"
                                 ),

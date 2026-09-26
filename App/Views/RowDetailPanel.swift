@@ -165,7 +165,7 @@ struct RowDetailPanel: View {
                 .font(Theme.font(.mono))
                 .italic()
                 .foregroundStyle(Theme.text(.tertiary))
-                .help(value.summary(language: LocalizationManager.shared.language))
+                .help(value.summary(language: LocalizationManager.shared.effectiveLanguage))
 
         default:
             // **不要**加 `lineLimit(1)` / `truncationMode(...)`：JSON 已经美化换行，
@@ -187,7 +187,7 @@ struct RowDetailPanel: View {
             // 摘要就是 "NULL" / "空字符串"，正文已经把它说完了。
             return nil
         default:
-            return value.summary(language: LocalizationManager.shared.language)
+            return value.summary(language: LocalizationManager.shared.effectiveLanguage)
         }
     }
 

@@ -62,6 +62,10 @@ final class UISnapshotDataTests: XCTestCase {
     }
 
     /// 深浅各拍一遍（与 L-11 同一套口径：深色看的是对比度与动态色）。
+    ///
+    /// **第 13 轮（L-13）起每张图再各拍两种语言**：由 `writeBothLanguages` 一次给两张
+    /// （`-zh` / `-en`），于是这里的四张 = 浅·中 / 浅·英 / 深·中 / 深·英。
+    /// 返回顺序就是产物顺序（每个 scheme 内先中后英），取 `[0]` 拿到的一直是**浅色·中文**。
     @MainActor
     @discardableResult
     private func snapshotLightAndDark<V: View>(
@@ -75,7 +79,7 @@ final class UISnapshotDataTests: XCTestCase {
         var records: [UISnapshot.Record] = []
         for scheme in [ColorScheme.light, .dark] {
             records.append(
-                try UISnapshot.write(
+                contentsOf: try UISnapshot.writeBothLanguages(
                     "\(name)\(scheme == .dark ? "-dark" : "")",
                     size: size,
                     scheme: scheme
@@ -86,7 +90,7 @@ final class UISnapshotDataTests: XCTestCase {
                         tabs: host.tabs,
                         terminal: host.terminal
                     )
-                }
+                }.records
             )
         }
         return records
@@ -135,7 +139,7 @@ final class UISnapshotDataTests: XCTestCase {
 
         // 对照：同一面板给一份**空图** —— 它同时是「注入空图 → 走 `erDiagramEmpty` 那一支」的
         // 空态证据，也是下面那条棘轮的对照物。
-        let emptyRecord = try UISnapshot.write("er-diagram-injected-empty", size: size) {
+        let emptyPair = try UISnapshot.writeBothLanguages("er-diagram-injected-empty", size: size) {
             ERDiagramPanel(initialDiagram: ERDiagram(tables: [], relationships: [])).snapshotEnvironment(
                 state: host.state, workspace: host.workspace, tabs: host.tabs, terminal: host.terminal
             )
@@ -147,10 +151,26 @@ final class UISnapshotDataTests: XCTestCase {
 
         // 棘轮：有图 / 空图两张必须不同。哪天 `initialDiagram` 被忽略、或 `.onAppear` 的
         // `diagram == nil` 判断被删（注入被 load() 覆盖），两张会一模一样，这条先红。
+        // 两张取**同一语言**（`[0]` 都是浅色·中文）—— 跨语言比会拿"语言本来就不同"顶数。
         let populatedLight = try XCTUnwrap(populated.first)
+        let emptyLight = try XCTUnwrap(emptyPair.records.first)
+        XCTAssertEqual(populatedLight.language, emptyLight.language, "对照的两张必须同语言，否则这条棘轮是假的")
         XCTAssertNotEqual(
-            try digest(of: populatedLight), try digest(of: emptyRecord),
+            try digest(of: populatedLight), try digest(of: emptyLight),
             "有图 / 空图两张快照一模一样 ⇒ 注入没到像素上（`initialDiagram` 被忽略了）"
+        )
+
+        // L-13 的另一半：ER 面板的文案随语言变（footer 的「Cyclic references…」等），
+        // 所以**中文 / 英文两张的像素必须不同** —— 一样就说明宿主语境没传到 `L(...)`。
+        let populatedChinese = try XCTUnwrap(populated.first { $0.language == "zh-Hans" })
+        let populatedEnglish = try XCTUnwrap(populated.first { $0.language == "en" })
+        XCTAssertNotEqual(
+            populatedChinese.localizedStrings, populatedEnglish.localizedStrings,
+            "ER 面板两遍取到的文案一模一样 —— 宿主语言没生效"
+        )
+        XCTAssertNotEqual(
+            try digest(of: populatedChinese), try digest(of: populatedEnglish),
+            "中英两张像素一模一样 ⇒ 语言没到像素上"
         )
     }
 
@@ -357,6 +377,10 @@ final class UISnapshotDataTests: XCTestCase {
         // 两张都会是默认态（无筛选、无分页、无侧栏）—— 摘要相同，这条先红。
         let clientViewLight = try XCTUnwrap(clientView.first)
         let rowDetailLight = try XCTUnwrap(rowDetail.first)
+        XCTAssertEqual(
+            clientViewLight.language, rowDetailLight.language,
+            "对照的两张必须同语言（否则差异可能来自语言而不是侧栏），这条棘轮才成立"
+        )
         XCTAssertNotEqual(
             try digest(of: clientViewLight), try digest(of: rowDetailLight),
             "侧栏开 / 关两张快照一模一样 ⇒ `initialState` 没到像素上"
