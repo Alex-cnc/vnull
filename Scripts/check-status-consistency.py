@@ -14,12 +14,45 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "Docs" / "需求规范书.md"
 STATUSES = "✅🟡⬜➖"
+# 其它文档里「FR-XXX-01（🟡）」这种状态括注，与 §10.1 索引比对（见 cross_document_problems）
+CROSS_DOC_PATTERN = re.compile(r"((?:FR|NFR)-[A-Z]+-\d+)[（(]([✅🟡⬜➖])[）)]")
 
 
 def section(lines: list[str], start_marker: str, end_marker: str) -> list[str]:
     start = next(i for i, l in enumerate(lines) if l.startswith(start_marker))
     end = next(i for i, l in enumerate(lines) if i > start and l.startswith(end_marker))
     return lines[start:end]
+
+
+def cross_document_problems(index: dict[str, tuple[str, int]]) -> list[str]:
+    """非本文件的文档里写「编号（状态标记）」时，必须与 §10.1 索引一致。
+
+    为什么补这条：状态是单一事实来源（§10.1 索引），本文件的正文定义行已有门禁钉住，
+    但其它文档（规划书 / 发布方案 / 设计说明…）会**随手括注一个旧状态** —— 2026-09-26
+    实测抓到两处（规划书 §4.2 里 FR-AI-03 / FR-AI-11 仍写 ⬜，而 SRS 早已是 🟡），
+    这类括注会让人以为"还没做"。要引用**历史**状态时改写措辞（例如「曾是 ⬜」而不要
+    写成 `（⬜）`），否则本门禁会拦。
+    """
+    problems: list[str] = []
+    root = ROOT / "Docs"
+    targets = sorted(root.glob("*.md")) + sorted(root.glob("design/*.md"))
+    scanned = 0
+    for path in targets:
+        if path.name == SPEC.name:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for identifier, mark in CROSS_DOC_PATTERN.findall(line):
+                expected = index.get(identifier)
+                if expected is None:
+                    continue
+                scanned += 1
+                if expected[0] != mark:
+                    problems.append(
+                        f"Docs/{path.relative_to(root)}:{number}: {identifier} 括注 {mark}，"
+                        f"而 §10.1 索引为 {expected[0]}"
+                    )
+    print(f"（跨文档状态括注：扫了 {len(targets) - 1} 份文档、{scanned} 处引用）")
+    return problems
 
 
 def main() -> int:
@@ -72,11 +105,14 @@ def main() -> int:
     if missing:
         problems.append(f"索引表里有 {len(missing)} 条 FR/NFR 在正文找不到定义行：{', '.join(sorted(missing)[:5])}…")
 
+    problems.extend(cross_document_problems(index))
+
     if problems:
         print(f"❌ 状态一致性校验失败（{len(problems)} 处）：")
         for item in problems:
             print(f"   {item}")
-        print("\n提示：改需求状态时要**同时**改正文定义行与 §10.1 索引表（盘点读的是索引表）。")
+        print("\n提示：改需求状态时要**同时**改正文定义行与 §10.1 索引表（盘点读的是索引表）；"
+              "其它文档里的状态括注也要跟着改。")
         return 1
 
     print(f"✅ 状态一致性校验通过（索引表 {len(index)} 条 / 正文定义行 {len(defined)} 条，状态一致）")
